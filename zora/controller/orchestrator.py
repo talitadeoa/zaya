@@ -198,6 +198,7 @@ class Orchestrator:
                 await self._proactive_task
             self._proactive_task = None
         self.tts.stop()
+        self.ui.close()
         await self.client.aclose()
 
     async def run_once(self, text: str) -> None:

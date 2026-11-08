@@ -257,6 +257,18 @@ class TerminalUI:
         if live is not None:
             live.update(self._render_stream_panel(), refresh=True)
 
+    def close(self) -> None:
+        with self._lock:
+            live = self._live
+            self._live = None
+            self._streaming = False
+        if live is not None:
+            try:
+                live.stop()
+            except Exception:
+                pass
+        self._erase_status()
+
     def end_stream(self) -> None:
         if self._quiet:
             return
