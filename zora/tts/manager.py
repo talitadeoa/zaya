@@ -25,6 +25,7 @@ def clean_for_speech(text: str, max_chars: int = 1200) -> str:
     text = re.sub(r"^\s*[-*+]\s+", "", text, flags=re.M)
     text = re.sub(r"^\s*\d+\.\s+", "", text, flags=re.M)
     text = re.sub(r"[*_~>|#]", "", text)
+    text = re.sub(r"\bZora\b", "Zóra", text)
     text = re.sub(r"\s+", " ", text).strip()
     if len(text) > max_chars:
         cut = text[:max_chars]

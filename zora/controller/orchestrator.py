@@ -143,6 +143,7 @@ class Orchestrator:
         self._initiative_session_id: str | None = None
         self._task_session_id: str | None = None
         self._tasks_next_check = 0.0
+        self._task_page_updated_at: str | None = None
         self._agenda_pending_names: list[str] = []
         self.goals = GoalTracker()
         self.tasks = TaskStore()
@@ -1610,9 +1611,21 @@ class Orchestrator:
             return
         if time.monotonic() < self._tasks_next_check:
             return
-        self._tasks_next_check = time.monotonic() + max(
-            5.0, cfg.tasks_poll_minutes * 60.0
+        self._tasks_next_check = time.monotonic() + max(5.0, cfg.tasks_poll_seconds)
+        try:
+            meta = await self.agenda.pages_meta(30)
+        except AgendaError as exc:
+            self.logger.warning("tarefas: %s", exc)
+            return
+        meta_page = next(
+            (item for item in meta if "tarefa" in str(item.get("title") or "").lower()),
+            None,
         )
+        if meta_page is None:
+            return
+        updated_at = str(meta_page.get("updated_at") or "")
+        if updated_at and updated_at == self._task_page_updated_at:
+            return
         try:
             pages = await self.agenda.pages(30)
         except AgendaError as exc:
@@ -1624,6 +1637,7 @@ class Orchestrator:
         )
         if page is None:
             return
+        self._task_page_updated_at = updated_at or str(page.get("updated_at") or "")
         before = {task.id for task in self.tasks.all()}
         synced = self.tasks.sync_text(str(page.get("content") or ""))
         new_tasks = [task for task in synced if task.id not in before]

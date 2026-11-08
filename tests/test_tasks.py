@@ -17,6 +17,14 @@ def test_sync_e_idempotente(tmp_path):
     assert len(store.all()) == 1
 
 
+def test_sync_nao_reseta_status(tmp_path):
+    store = TaskStore(tmp_path / "tasks.json")
+    task = store.upsert("tarefa")
+    store.set_status(task.id, "done")
+    store.sync_text("- tarefa")
+    assert store.all()[0].status == "done"
+
+
 def test_status_persistido(tmp_path):
     path = tmp_path / "tasks.json"
     store = TaskStore(path)

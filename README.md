@@ -310,8 +310,9 @@ acompanha o status (`pending`, `in_progress`, `done`):
 /tarefas concluir <id>
 ```
 
-A Zora verifica a página a cada **15 min** (`ZORA_AGENDA_TASKS_POLL_MINUTES`),
-avisa quando surge tarefa nova e já gera um plano inicial. O estado fica em
+A Zora faz uma checagem leve a cada **30s** (`ZORA_AGENDA_TASKS_POLL_SECONDS`):
+compara o `updated_at` da página e só busca o conteúdo quando ele muda. Ao
+surgir tarefa nova, avisa e gera um plano inicial. O estado fica em
 `~/.local/share/zora/tasks.json` (fora do repositório).
 
 ### Metas pessoais

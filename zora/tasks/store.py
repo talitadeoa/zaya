@@ -57,14 +57,21 @@ class TaskStore:
     def all(self) -> list[Task]:
         return sorted(self._tasks.values(), key=lambda task: task.updated_at)
 
-    def upsert(self, title: str, status: str = "pending", notes: str = "") -> Task:
+    def upsert(
+        self, title: str, status: str | None = None, notes: str | None = None
+    ) -> Task:
         title = " ".join((title or "").split())
         if not title:
             raise ValueError("titulo vazio")
         task_id = _task_id(title)
         existing = self._tasks.get(task_id)
         if existing is None:
-            task = Task(id=task_id, title=title, status=status, notes=notes)
+            task = Task(
+                id=task_id,
+                title=title,
+                status=status or "pending",
+                notes=notes or "",
+            )
             self._tasks[task_id] = task
         else:
             task = existing

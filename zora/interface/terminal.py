@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import threading
-from datetime import datetime
 from pathlib import Path
 
 from rich.console import Console
@@ -28,11 +27,8 @@ _ASCII_ART = [
 _ASCII_COLORS = ["magenta", "bright_magenta", "purple", "bright_blue", "cyan", "bright_cyan"]
 
 
-def _message_title(name: str, color: str, extra: str = "") -> Text:
-    title = Text(f"{name} · {datetime.now().strftime('%H:%M')}", style=f"bold {color}")
-    if extra:
-        title.append(f" · {extra}", style=MUTED)
-    return title
+def _message_title(name: str, color: str) -> Text:
+    return Text(f"{name}:", style=f"bold {color}")
 
 
 class TerminalUI:
@@ -178,7 +174,8 @@ class TerminalUI:
         self._print(
             Panel(
                 escape(text),
-                title=_message_title("Talita", "cyan", "voz" if voice else ""),
+                title=_message_title("Talita", "cyan"),
+                subtitle=Text("voz", style=MUTED) if voice else None,
                 border_style="cyan",
                 padding=(0, 1),
             )
@@ -285,7 +282,8 @@ class TerminalUI:
         self._print(
             Panel(
                 escape(text),
-                title=_message_title("Zora", ACCENT, "iniciativa"),
+                title=_message_title("Zora", ACCENT),
+                subtitle=Text("iniciativa", style=MUTED),
                 border_style=ACCENT,
                 padding=(0, 1),
             )

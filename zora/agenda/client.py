@@ -101,6 +101,18 @@ class AgendaClient:
         }
         return await self._query("notes", params)
 
+    async def pages_meta(self, limit: int = 30) -> list[dict[str, Any]]:
+        if not self.enabled:
+            return []
+        user_id = self._get("AGENDA_USER_ID")
+        params = {
+            "user_id": f"eq.{user_id}",
+            "select": "id,title,updated_at",
+            "order": "updated_at.desc",
+            "limit": str(limit),
+        }
+        return await self._query("pages", params)
+
     async def pages(self, limit: int = 20) -> list[dict[str, Any]]:
         if not self.enabled:
             return []
