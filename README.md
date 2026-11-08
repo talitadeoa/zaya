@@ -264,6 +264,20 @@ precisam de aprovação. Como o serviço não tem terminal, habilite
 `ZORA_OPENCODE_AUTO_APPROVE=true` (perigoso; use só com o bot restrito ao seu
 `chat_id`). Sem isso, ações que exigem permissão serão recusadas.
 
+### Spotify
+
+Controle o Spotify no macOS (app instalado):
+
+```bash
+zora spotify status
+zora spotify toggle
+zora spotify next
+zora spotify volume 40
+```
+
+Por voz: "pausa a música", "próxima música", "aumenta o volume". Se não estiver
+instalado: `brew install --cask spotify`.
+
 ## Arquitetura
 
 ```

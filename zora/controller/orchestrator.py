@@ -54,6 +54,8 @@ from zora.opencode.events import (
 )
 from zora.secondbrain.index import SecondBrainIndex
 from zora.secondbrain.notes import NoteConflict, SecondBrain
+from zora.spotify.controller import SpotifyCommand, SpotifyError, execute as execute_spotify
+from zora.spotify.intents import parse_spotify_command
 from zora.stt.faster_whisper import STTError, WhisperTranscriber
 from zora.tts.base import TTSBackend
 from zora.tts.manager import TTSManager, clean_for_speech
@@ -225,6 +227,9 @@ class Orchestrator:
         if mode:
             self._switch_mode(mode)
             return f"Modo {self.persona.name} ativado."
+        spotify = parse_spotify_command(text)
+        if spotify is not None:
+            return await self._handle_spotify(spotify, speak=False)
         preference = parse_preference(text)
         if preference is not None:
             await self._handle_preference(preference)
@@ -373,6 +378,9 @@ class Orchestrator:
                 continue
 
     async def _dispatch(self, text: str) -> str:
+        spotify = parse_spotify_command(text)
+        if spotify is not None:
+            return await self._handle_spotify(spotify, speak=True)
         preference = parse_preference(text)
         if preference is not None:
             await self._handle_preference(preference)
@@ -386,6 +394,16 @@ class Orchestrator:
             await self._handle_register(intent, original=text)
             return ""
         return await self._handle_task(text)
+
+    async def _handle_spotify(self, command: SpotifyCommand, speak: bool) -> str:
+        try:
+            message = await asyncio.to_thread(execute_spotify, command)
+        except SpotifyError as exc:
+            message = f"Spotify: {exc}"
+        self.ui.info(message)
+        if speak:
+            await self._speak(message)
+        return message
 
     async def _continuous_loop(self) -> bool:
         """Escuta continua real: microfone aberto + segmentacao por VAD/Enter."""

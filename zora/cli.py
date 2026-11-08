@@ -20,6 +20,7 @@ from zora.memory.store import MemoryStore
 from zora.opencode.client import OpenCodeClient, OpenCodeError, load_provider_models
 from zora.secondbrain.index import SecondBrainIndex
 from zora.secondbrain.notes import SecondBrain
+from zora.spotify.controller import SpotifyCommand, SpotifyError, execute as execute_spotify
 from zora.stt.faster_whisper import WhisperTranscriber
 from zora.telegram.client import TelegramClient
 from zora.telegram.service import TelegramService
@@ -86,6 +87,13 @@ def build_parser() -> argparse.ArgumentParser:
     telegram_sub.add_parser("serve", help="escuta e executa as mensagens na Zora")
     telegram_sub.add_parser("me", help="mostra dados do bot")
 
+    spotify_parser = sub.add_parser("spotify", help="controla o Spotify no macOS")
+    spotify_sub = spotify_parser.add_subparsers(dest="spotify_command")
+    for name in ("status", "toggle", "play", "pause", "next", "prev"):
+        spotify_sub.add_parser(name)
+    spotify_volume = spotify_sub.add_parser("volume", help="define o volume (0-100)")
+    spotify_volume.add_argument("value", type=int)
+
     return parser
 
 
@@ -112,6 +120,8 @@ def main() -> None:
             asyncio.run(_whatsapp_command(cfg, args, ui))
         elif args.command == "telegram":
             asyncio.run(_telegram_command(cfg, args, ui))
+        elif args.command == "spotify":
+            _spotify_command(args, ui)
         else:
             asyncio.run(_run_app(cfg, args.verbose))
     except KeyboardInterrupt:
@@ -285,6 +295,29 @@ async def _telegram_serve(cfg: Config, ui: TerminalUI, args, client: TelegramCli
         await orchestrator.aclose()
         store.close()
         index.close()
+
+
+def _spotify_command(args, ui: TerminalUI) -> None:
+    actions = {
+        "status": "status",
+        "toggle": "toggle",
+        "play": "play",
+        "pause": "pause",
+        "next": "next",
+        "prev": "previous",
+    }
+    name = args.spotify_command or "status"
+    command = (
+        SpotifyCommand("volume_set", int(args.value))
+        if name == "volume"
+        else SpotifyCommand(actions.get(name, "status"))
+    )
+    try:
+        ui.success(execute_spotify(command))
+    except SpotifyError as exc:
+        ui.error(str(exc))
+        if "nao instalado" in str(exc):
+            ui.hint("instale com: brew install --cask spotify")
 
 
 def _serve_whatsapp(cfg: Config, ui: TerminalUI, args) -> None:
