@@ -1,0 +1,1676 @@
+"""Orquestrador da Zora: voz -> STT -> contexto -> OpenCode -> resposta/voz."""
+
+from __future__ import annotations
+
+import asyncio
+import contextlib
+import logging
+import os
+import random
+import re
+import select
+import signal
+import sys
+import threading
+import time
+import uuid
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+from zora.audio.recorder import AudioError, ContinuousListener, Recorder
+from zora.config import Config
+from zora.controller.intents import (
+    RegisterIntent,
+    format_context,
+    needs_second_brain_context,
+    parse_preference,
+    parse_register,
+)
+from zora.controller.modes import (
+    PERSONAS,
+    get_persona,
+    parse_mode_switch,
+    persona_block,
+    resolve_mode,
+)
+from zora.controller.proactive import (
+    ReminderSpec,
+    classify_voice_control,
+    greeting_for,
+    in_quiet_hours,
+    parse_reminder,
+)
+from zora.interface.markdown_text import strip_markdown
+from zora.interface.terminal import TerminalUI
+from zora.memory.store import MemoryStore
+from zora.opencode.client import OpenCodeClient, OpenCodeError
+from zora.opencode.events import (
+    event_session_id,
+    event_type,
+    message_error,
+    text_delta,
+    tool_activity,
+)
+from zora.secondbrain.index import SecondBrainIndex
+from zora.secondbrain.notes import NoteConflict, SecondBrain
+from zora.stt.faster_whisper import STTError, WhisperTranscriber
+from zora.tts.base import TTSBackend
+from zora.tts.manager import TTSManager, clean_for_speech
+
+
+class TurnInterrupted(Exception):
+    """Interrupcao solicitada pelo usuario durante um turno."""
+
+
+TOOL_LABELS = {
+    "read": "lendo",
+    "edit": "editando",
+    "write": "escrevendo",
+    "bash": "executando",
+    "grep": "buscando",
+    "glob": "listando",
+    "webfetch": "consultando web",
+    "task": "delegando",
+    "todowrite": "planejando",
+}
+
+# Fim de frase para falar o texto conforme ele chega (pontuação + espaço/fim).
+_SENTENCE_END = re.compile(r"[.!?\n](\s+|$)")
+
+
+
+
+class Orchestrator:
+    def __init__(
+        self,
+        cfg: Config,
+        logger: logging.Logger,
+        ui: TerminalUI,
+        store: MemoryStore,
+        index: SecondBrainIndex,
+        brain: SecondBrain,
+        tts: TTSManager,
+        transcriber: WhisperTranscriber,
+        recorder: Recorder,
+        client: OpenCodeClient,
+    ):
+        self.cfg = cfg
+        self.logger = logger
+        self.ui = ui
+        self.store = store
+        self.index = index
+        self.brain = brain
+        self.tts = tts
+        self.transcriber = transcriber
+        self.recorder = recorder
+        self.client = client
+        self.directory = cfg.project_directory()
+        self.persona = resolve_mode(
+            store.get_meta("mode") or cfg.interface.default_mode
+        )
+
+        self.conversation_id: int | None = None
+        self.session_id: str = ""
+        self._voice_ok: bool | None = None
+        self._voice_msg = ""
+        self._prefs_cache = ""
+        self._prefs_mtime: float = -1.0
+        self._last_activity = time.monotonic()
+        self._busy = False
+        self._recording = False
+        self._listening = False
+        self._mic_muted = False
+        self._permission_active = False
+        self._listener: ContinuousListener | None = None
+        self._speaking_event = asyncio.Event()
+        self._speaking_event.set()
+        self._stt_lock = asyncio.Lock()
+        self._partial_last = ""
+        self._proactive_task: asyncio.Task | None = None
+        self._proactive_count = 0
+        self._proactive_day = datetime.now().astimezone().date()
+        self._last_proactive = 0.0
+        self._tts_lock = asyncio.Lock()
+        self._user_name_cache: str | None = None
+        self._warmup_task: asyncio.Task | None = None
+        self._speech_active = False
+        self._speech_buffer = ""
+        self._speech_pending = ""
+        self._speech_queue: asyncio.Queue[str | None] | None = None
+        self._speech_task: asyncio.Task | None = None
+        self._speech_fed_chars = 0
+        self._answer_buffer = ""
+
+    # ------------------------------------------------------------------- start
+    async def _bootstrap(self) -> None:
+        await self.client.ensure_server()
+        if self.cfg.opencode.auto_approve:
+            self.ui.warning(
+                "auto-aprovação de ferramentas do OpenCode está ATIVA (opencode.auto_approve=true)"
+            )
+        self._prepare_conversation()
+        self.session_id = await self._ensure_session()
+        await self._clear_stale_session()
+        self._refresh_index_on_start()
+        if self._voice_available():
+            self._warmup_task = asyncio.create_task(self._warmup_stt())
+
+    async def _warmup_stt(self) -> None:
+        try:
+            await asyncio.to_thread(self.transcriber.warmup)
+        except Exception as exc:  # pragma: no cover
+            self.logger.debug("warmup do STT falhou: %s", exc)
+
+    async def _shutdown(self) -> None:
+        if self._warmup_task is not None:
+            self._warmup_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await self._warmup_task
+            self._warmup_task = None
+        await self._stop_speech_streaming()
+        if self._listener is not None:
+            self._listener.stop()
+            self._listener = None
+        if self._proactive_task is not None:
+            self._proactive_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await self._proactive_task
+            self._proactive_task = None
+        self.tts.stop()
+        await self.client.aclose()
+
+    async def run_once(self, text: str) -> None:
+        """Executa uma unica instrucao (util para `zora ask`)."""
+        await self._bootstrap()
+        try:
+            raw = text.strip()
+            if not raw:
+                return
+            if raw.startswith("/"):
+                await self._handle_command(raw)
+                return
+            assert self.conversation_id is not None
+            self.store.add_turn(self.conversation_id, "user", raw)
+            await self._dispatch(raw)
+        finally:
+            await self._shutdown()
+
+    async def answer_once(
+        self, text: str, speak: bool = False, close: bool = True
+    ) -> str:
+        """Responde uma instrução externa (ex.: Telegram) e devolve o texto."""
+        if not self.session_id:
+            await self._bootstrap()
+        try:
+            raw = text.strip()
+            if not raw:
+                return ""
+            if raw.startswith("/"):
+                await self._handle_command(raw)
+                return ""
+            assert self.conversation_id is not None
+            self.store.add_turn(self.conversation_id, "user", raw)
+            return await self._dispatch(raw) if speak else await self._dispatch_silent(raw)
+        finally:
+            if close:
+                await self._shutdown()
+
+    async def aclose(self) -> None:
+        await self._shutdown()
+
+    async def _dispatch_silent(self, text: str) -> str:
+        mode = parse_mode_switch(text)
+        if mode:
+            self._switch_mode(mode)
+            return f"Modo {self.persona.name} ativado."
+        preference = parse_preference(text)
+        if preference is not None:
+            await self._handle_preference(preference)
+            return ""
+        reminder = parse_reminder(text)
+        if reminder is not None:
+            await self._handle_reminder(reminder)
+            return ""
+        intent = parse_register(text)
+        if intent is not None:
+            await self._handle_register(intent, original=text)
+            return ""
+        return await self._handle_task_impl(text, speak=False)
+
+    async def start(self) -> None:
+        await self._bootstrap()
+
+        if self.cfg.interface.show_banner:
+            self.ui.banner(
+                project=self.directory,
+                session_id=self.session_id,
+                model=self.cfg.opencode.model,
+                sb_notes=self.index.count(),
+                voice=self.tts.provider,
+                tts_enabled=self.tts.enabled,
+            )
+        else:
+            self.ui.status(
+                self.directory,
+                self.session_id,
+                self.cfg.opencode.model,
+                self.index.count(),
+                self.tts.provider,
+            )
+
+        if self.cfg.proactive.enabled and self.cfg.proactive.startup_greeting:
+            try:
+                await self._startup_greeting()
+            except Exception as exc:  # pragma: no cover
+                self.logger.warning("falha na saudação inicial: %s", exc)
+
+        if self.cfg.proactive.enabled:
+            self._proactive_task = asyncio.create_task(self._proactive_loop(greet=False))
+
+        if self.cfg.audio.continuous and self._voice_available():
+            self.ui.hint(
+                "Escuta contínua: fale à vontade · [M] pausa/retoma o microfone · "
+                "[Esc] interrompe a fala · [T] volta ao texto · "
+                "diga 'parar' para voltar ao texto · 'sair' encerra · Ctrl+C pausa"
+            )
+        else:
+            self.ui.hint("Enter grava por voz · digite para texto · /ajuda · Ctrl+C interrompe")
+
+        try:
+            await self._loop()
+        finally:
+            await self._shutdown()
+
+    def _prepare_conversation(self) -> None:
+        conv = self.store.get_or_create_conversation(str(self.directory))
+        self.conversation_id = int(conv["id"])
+
+    def _refresh_index_on_start(self) -> None:
+        if not self.cfg.secondbrain.path:
+            return
+        if not self.brain.root.exists():
+            self.ui.warning(
+                f"Second Brain não encontrado em {self.brain.root} (use /indexar após configurar)"
+            )
+            return
+        if not (self.cfg.secondbrain.reindex_on_start or self.index.count() == 0):
+            return
+        try:
+            stats = self.index.reindex()
+            if stats["indexed"] or stats["removed"]:
+                self.ui.info(
+                    f"Second Brain indexado: {stats['indexed']} nova(s), "
+                    f"{stats['removed']} removida(s), {stats['total']} no total"
+                )
+        except Exception as exc:  # pragma: no cover - depende do FS
+            self.logger.warning("falha ao indexar Second Brain: %s", exc)
+            self.ui.warning(f"não foi possível indexar o Second Brain: {exc}")
+
+    async def _ensure_session(self) -> str:
+        assert self.conversation_id is not None
+        conv = self.store.get_conversation(self.conversation_id)
+        sid = conv["opencode_session_id"]
+        if self.cfg.opencode.resume_session and sid:
+            existing = await self.client.get_session(sid)
+            if existing:
+                return sid
+        session = await self.client.create_session(
+            title=f"Zora — {self.directory.name}",
+            model=self.client.model,
+        )
+        self.store.set_session(self.conversation_id, session.id)
+        return session.id
+
+    async def _clear_stale_session(self) -> None:
+        """Aborta uma execucao presa (sessao em busy) antes de iniciar outra."""
+        if not self.session_id:
+            return
+        try:
+            status = await self.client.session_status(self.session_id)
+        except OpenCodeError:
+            return
+        if status and isinstance(status, dict) and status.get("type") != "idle":
+            self.logger.warning("sessao presa (%s); abortando antes do proximo turno", status)
+            self.ui.warning("liberando uma execução anterior presa…")
+            await self.client.abort(self.session_id)
+            await asyncio.sleep(0.2)
+
+    # -------------------------------------------------------------------- loop
+    async def _loop(self) -> None:
+        while True:
+            if self.cfg.audio.continuous and self._voice_available():
+                quit_app = await self._continuous_loop()
+                if quit_app:
+                    return
+                continue
+
+            try:
+                text = await self._read_user_input()
+            except EOFError:
+                self.ui.info("até logo.")
+                return
+            except KeyboardInterrupt:
+                self.ui.info("")
+                continue
+
+            if text is None:
+                continue
+            self._mark_activity()
+            text = text.strip()
+            if not text:
+                continue
+
+            if text.startswith("/"):
+                if await self._handle_command(text):
+                    return
+                continue
+
+            self.ui.print_user(text)
+            assert self.conversation_id is not None
+            self.store.add_turn(self.conversation_id, "user", text)
+
+            try:
+                await self._dispatch(text)
+            except (KeyboardInterrupt, asyncio.CancelledError):
+                self.tts.stop()
+                self.ui.warning("interrompido")
+                continue
+
+    async def _dispatch(self, text: str) -> str:
+        preference = parse_preference(text)
+        if preference is not None:
+            await self._handle_preference(preference)
+            return ""
+        reminder = parse_reminder(text)
+        if reminder is not None:
+            await self._handle_reminder(reminder)
+            return ""
+        intent = parse_register(text)
+        if intent is not None:
+            await self._handle_register(intent, original=text)
+            return ""
+        return await self._handle_task(text)
+
+    async def _continuous_loop(self) -> bool:
+        """Escuta continua real: microfone aberto + segmentacao por VAD/Enter."""
+        listener = ContinuousListener(self.cfg.audio)
+        try:
+            listener.start()
+        except AudioError as exc:
+            self.ui.error(f"microfone: {exc}")
+            self.cfg.audio.continuous = False
+            return False
+
+        self._listener = listener
+        self._listening = True
+        self._mic_muted = False
+        self._mark_activity()
+        monitor_stop = threading.Event()
+        monitor = threading.Thread(
+            target=self._enter_monitor,
+            args=(listener, monitor_stop),
+            daemon=True,
+        )
+        monitor.start()
+        self.ui.hint(
+            "Escuta contínua ativa: fale à vontade · [M] pausa/retoma o microfone · "
+            "[Esc] interrompe a fala · [T] volta ao texto · diga 'parar' para o texto · "
+            "'sair' encerra"
+        )
+        self.ui.set_status("● ouvindo…")
+        partial_task: asyncio.Task | None = None
+        last_partial_at = 0.0
+        try:
+            while self.cfg.audio.continuous:
+                now = datetime.now().astimezone()
+                if self.cfg.proactive.reminders and self.store.due_reminders(now.isoformat()):
+                    listener.pause()
+                    try:
+                        await self._fire_due_reminders()
+                    finally:
+                        if not self._mic_muted:
+                            listener.resume()
+
+                try:
+                    utterance = await asyncio.to_thread(listener.next_utterance, 0.5)
+                except (KeyboardInterrupt, asyncio.CancelledError):
+                    self.cfg.audio.continuous = False
+                    self.ui.clear_status()
+                    self.ui.warning("escuta contínua pausada; use /continuo on para retomar")
+                    return False
+
+                if utterance is None:
+                    self._update_idle_status(listener)
+                    if (
+                        self.cfg.stt.partial_transcription
+                        and listener.is_capturing()
+                        and (partial_task is None or partial_task.done())
+                        and time.monotonic() - last_partial_at
+                        >= self.cfg.stt.partial_interval_seconds
+                    ):
+                        snapshot = listener.snapshot(self.cfg.stt.partial_window_seconds)
+                        minimum = int(self.cfg.audio.sample_rate * 0.7)
+                        if snapshot is not None and len(snapshot) >= minimum:
+                            last_partial_at = time.monotonic()
+                            partial_task = asyncio.create_task(self._partial_transcribe(snapshot))
+                    continue
+
+                if partial_task is not None and not partial_task.done():
+                    with contextlib.suppress(Exception):
+                        await partial_task
+                partial_task = None
+                self._partial_last = ""
+
+                listener.pause()
+                self._recording = True
+                try:
+                    text = await self._transcribe_audio(utterance)
+                    if not text:
+                        continue
+                    control = classify_voice_control(text)
+                    if control == "stop":
+                        self.cfg.audio.continuous = False
+                        self.ui.info("modo contínuo encerrado; pode digitar.")
+                        return False
+                    if control == "quit":
+                        self.ui.info("até logo.")
+                        return True
+                    self._mark_activity()
+                    assert self.conversation_id is not None
+                    self.store.add_turn(self.conversation_id, "user", text)
+                    try:
+                        await self._dispatch(text)
+                    except (KeyboardInterrupt, asyncio.CancelledError):
+                        self.tts.stop()
+                        self.ui.warning("interrompido")
+                finally:
+                    self._recording = False
+                    if not self._mic_muted:
+                        listener.resume()
+        finally:
+            self.ui.clear_status()
+            if partial_task is not None and not partial_task.done():
+                with contextlib.suppress(Exception):
+                    await partial_task
+            monitor_stop.set()
+            monitor.join(timeout=0.6)
+            self._listening = False
+            self._mic_muted = False
+            listener.stop()
+            self._listener = None
+        return False
+
+    def _enter_monitor(
+        self,
+        listener: ContinuousListener,
+        stop: threading.Event,
+    ) -> None:
+        """Le teclas no terminal: Enter controla a fala e M pausa/retoma o mic."""
+        try:
+            fd = sys.stdin.fileno()
+        except (AttributeError, ValueError):
+            return
+        use_raw = sys.stdin.isatty()
+        saved: list | None = None
+        raw_active = False
+
+        def enable_raw() -> None:
+            nonlocal saved, raw_active
+            if raw_active or not use_raw:
+                return
+            try:
+                import termios
+                import tty
+
+                saved = termios.tcgetattr(fd)
+                tty.setcbreak(fd)
+                raw_active = True
+            except Exception:
+                saved = None
+                raw_active = False
+
+        def disable_raw() -> None:
+            nonlocal saved, raw_active
+            if not raw_active or saved is None:
+                return
+            try:
+                import termios
+
+                termios.tcsetattr(fd, termios.TCSADRAIN, saved)
+            except Exception:
+                pass
+            saved = None
+            raw_active = False
+
+        try:
+            while not stop.is_set():
+                speaking = not self._speaking_event.is_set()
+                if (
+                    self._recording
+                    or self._permission_active
+                    or (self._busy and not speaking)
+                    or (listener.is_paused() and not self._mic_muted and not speaking)
+                ):
+                    # Durante um turno o stdin pode estar em uso por um prompt
+                    # de permissao: devolve o terminal ao modo normal.
+                    disable_raw()
+                    time.sleep(0.05)
+                    continue
+                enable_raw()
+                try:
+                    ready, _, _ = select.select([fd], [], [], 0.1)
+                except (OSError, ValueError):
+                    return
+                if not ready:
+                    continue
+                try:
+                    data = os.read(fd, 1)
+                except (OSError, ValueError):
+                    return
+                if not data:
+                    return
+                char = data.decode("utf-8", "ignore")
+                if char == "\x1b":
+                    try:
+                        more, _, _ = select.select([fd], [], [], 0.01)
+                    except (OSError, ValueError):
+                        more = []
+                    if more:
+                        # sequencia de seta ou tecla especial: ignora
+                        try:
+                            os.read(fd, 8)
+                        except (OSError, ValueError):
+                            pass
+                        continue
+                    self._interrupt_current()
+                    continue
+                if char in {"m", "M"}:
+                    self._toggle_mute(listener)
+                    continue
+                if char in {"t", "T"}:
+                    self.cfg.audio.continuous = False
+                    self.ui.info("voltando ao modo texto; pode digitar.")
+                    return
+                if char in {"\r", "\n"}:
+                    continue
+                if char.strip():
+                    self.ui.hint(
+                        "Para digitar, diga 'parar' e volte ao modo texto. "
+                        "M alterna o microfone."
+                    )
+        finally:
+            disable_raw()
+
+    def _toggle_mute(self, listener: ContinuousListener) -> None:
+        if self._mic_muted:
+            self._mic_muted = False
+            listener.resume()
+            self.ui.success("escuta retomada")
+            self.ui.set_status("● ouvindo…")
+            return
+        self._mic_muted = True
+        listener.pause()
+        self.ui.success("escuta pausada")
+        self.ui.set_status("⏸ escuta pausada", "pressione M para voltar a ouvir")
+
+    def _interrupt_current(self) -> None:
+        """Esc: interrompe a fala e a execucao atual, voltando a ouvir."""
+        if not self._busy:
+            self.tts.stop()
+            return
+        self.ui.info("interrompendo…")
+        self.tts.stop()
+        try:
+            os.kill(os.getpid(), signal.SIGINT)
+        except OSError:
+            pass
+
+    async def _read_user_input(self) -> str | None:
+        raw = await asyncio.to_thread(self.ui.prompt, "Você")
+        if raw.strip():
+            return raw.strip()
+        return await self._voice_input()
+
+    def _voice_available(self) -> bool:
+        if self._voice_ok is None:
+            ok, msg = Recorder.available()
+            self._voice_ok = ok
+            self._voice_msg = msg
+            if not ok:
+                self.ui.warning(f"voz indisponível: {msg}")
+        return bool(self._voice_ok)
+
+    def _update_idle_status(self, listener: ContinuousListener) -> None:
+        if self._mic_muted:
+            return
+        if listener.is_capturing():
+            if self._partial_last:
+                return
+            self.ui.set_status("● ouvindo…", "fala detectada")
+        else:
+            self.ui.set_status("● ouvindo…")
+
+    async def _transcribe_audio(self, audio) -> str | None:
+        self.ui.set_status("◐ transcrevendo…")
+        async with self._stt_lock:
+            try:
+                text = await asyncio.to_thread(self.transcriber.transcribe, audio)
+            except STTError as exc:
+                self.ui.clear_status()
+                self.ui.error(str(exc))
+                return None
+        if not text:
+            self.ui.clear_status()
+            return None
+        self.ui.clear_status()
+        self.ui.print_transcript(text)
+        return text
+
+    async def _partial_transcribe(self, audio) -> None:
+        async with self._stt_lock:
+            try:
+                text = await asyncio.to_thread(self.transcriber.transcribe, audio, False)
+            except Exception as exc:  # pragma: no cover
+                self.logger.debug("transcricao parcial falhou: %s", exc)
+                return
+        if text and text != self._partial_last:
+            self._partial_last = text
+            self.ui.partial(text)
+
+    async def _capture_voice(self, announce: bool = True) -> str | None:
+        await self._speaking_event.wait()
+        self._recording = True
+        try:
+            if announce:
+                self.ui.set_status("● ouvindo…", "fale e faça uma pausa para encerrar")
+            try:
+                audio = await asyncio.to_thread(self.recorder.record_until_silence)
+            except AudioError as exc:
+                self.ui.clear_status()
+                self.ui.error(f"microfone: {exc}")
+                return None
+            except (KeyboardInterrupt, asyncio.CancelledError):
+                self.recorder.stop()
+                self.ui.clear_status()
+                raise
+            if audio is None or len(audio) == 0:
+                self.ui.clear_status()
+                return None
+            return await self._transcribe_audio(audio)
+        finally:
+            self._recording = False
+            self.ui.clear_status()
+
+    async def _voice_input(self) -> str | None:
+        text = await self._capture_voice(announce=True)
+        if text is None:
+            return None
+        if not self.cfg.stt.confirm_transcript:
+            return text
+        try:
+            correction = await asyncio.to_thread(self.ui.prompt, "Enter aceitar / correção")
+        except EOFError:
+            correction = ""
+        if correction.strip():
+            return correction.strip()
+        return text
+
+    # ------------------------------------------------------------------- tasks
+    async def _handle_task(self, text: str) -> str:
+        self._busy = True
+        try:
+            return await self._handle_task_impl(text)
+        finally:
+            self._busy = False
+
+    async def _handle_task_impl(self, text: str, speak: bool = True) -> str:
+        mode = parse_mode_switch(text)
+        if mode:
+            self._switch_mode(mode)
+            message = f"Modo {self.persona.name} ativado."
+            if speak:
+                await self._speak(message)
+            return message
+        assert self.conversation_id is not None
+        await self._clear_stale_session()
+        self.ui.set_status("◐ pensando…")
+        hits = []
+        if self.cfg.secondbrain.auto_context and needs_second_brain_context(text):
+            self.ui.info("Consultando Second Brain...")
+            try:
+                hits = await asyncio.to_thread(
+                    self.index.search, text, self.cfg.secondbrain.context_results
+                )
+            except Exception as exc:  # pragma: no cover
+                self.logger.warning("busca no Second Brain falhou: %s", exc)
+            if hits:
+                self.ui.context_hits(hits)
+                self.store.add_turn(
+                    self.conversation_id,
+                    "context",
+                    "Notas usadas: " + ", ".join(hit.rel_path for hit in hits),
+                )
+
+        prompt = text
+        if hits:
+            context = format_context(hits)
+            prompt = (
+                f"{context}\n\n---\n\n"
+                f"Pedido do usuário: {text}\n\n"
+                "Responda em português do Brasil, de forma concisa e direta. "
+                "Use o contexto acima somente quando for relevante. "
+                "Não leia nem edite arquivos do Second Brain para esta resposta: "
+                "o contexto já foi fornecido pela Zora."
+            )
+        prompt = persona_block(self.persona) + "\n\n---\n\n" + prompt
+        preferences = self._preferences_block()
+        if preferences:
+            prompt = preferences + "\n\n---\n\n" + prompt
+        if self.cfg.interface.concise:
+            prompt = (
+                "[Diretriz da Zora: seja conciso e direto; "
+                "use ferramentas apenas quando necessário.]\n\n" + prompt
+            )
+
+        streaming = self._start_speech_streaming() if speak else False
+        try:
+            answer = await self._run_turn(prompt)
+        except TurnInterrupted:
+            self.ui.clear_status()
+            self.ui.warning("execução interrompida; a sessão foi preservada")
+            await self._stop_speech_streaming()
+            return ""
+        except (KeyboardInterrupt, asyncio.CancelledError):
+            self.ui.clear_status()
+            await self.client.abort(self.session_id)
+            self.tts.stop()
+            self.ui.warning("execução interrompida")
+            await self._stop_speech_streaming()
+            return ""
+        except OpenCodeError as exc:
+            self.ui.clear_status()
+            self.ui.error(str(exc))
+            if exc.body:
+                self.logger.debug("corpo do erro: %s", exc.body)
+            await self._stop_speech_streaming()
+            return ""
+
+        if not answer:
+            self.ui.clear_status()
+            self.ui.warning("o agente não retornou texto.")
+            await self._stop_speech_streaming()
+            return ""
+
+        self.store.add_turn(self.conversation_id, "assistant", answer)
+        if streaming:
+            self.ui.set_status("▶ falando…")
+            await self._finish_speech_streaming(answer)
+        elif speak:
+            if self.tts.enabled:
+                self.ui.set_status("▶ falando…")
+            await self._speak(answer)
+        self.ui.clear_status()
+        return answer
+
+    async def _run_turn(self, text: str) -> str:
+        """Executa o turno com Ctrl+C escopado: aborta e devolve o controle."""
+        loop = asyncio.get_running_loop()
+        interrupt = asyncio.Event()
+
+        def on_sigint(signum, frame):
+            loop.call_soon_threadsafe(interrupt.set)
+
+        previous = None
+        try:
+            previous = signal.getsignal(signal.SIGINT)
+            signal.signal(signal.SIGINT, on_sigint)
+        except (ValueError, OSError):
+            previous = None
+
+        turn_task = asyncio.create_task(self._turn_impl(text))
+        interrupt_task = asyncio.create_task(interrupt.wait())
+        try:
+            done, _pending = await asyncio.wait(
+                {turn_task, interrupt_task}, return_when=asyncio.FIRST_COMPLETED
+            )
+            if turn_task in done:
+                return turn_task.result()
+
+            self.tts.stop()
+            await self.client.abort(self.session_id)
+            turn_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await turn_task
+            raise TurnInterrupted()
+        finally:
+            interrupt_task.cancel()
+            if previous is not None:
+                try:
+                    signal.signal(signal.SIGINT, previous)
+                except (ValueError, OSError):
+                    pass
+
+    async def _turn_impl(self, text: str) -> str:
+        assert self.conversation_id is not None
+        before = await self.client.latest_assistant(self.session_id)
+        before_id = (before or {}).get("info", {}).get("id")
+
+        queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+        stop = asyncio.Event()
+
+        async def pump() -> None:
+            try:
+                async for event in self.client.stream_events(stop=stop):
+                    if event_session_id(event) == self.session_id:
+                        await queue.put(event)
+            except asyncio.CancelledError:
+                return
+            except Exception as exc:  # pragma: no cover
+                self.logger.warning("stream de eventos caiu: %s", exc)
+
+        pump_task = asyncio.create_task(pump())
+        user_message_id = "msg_z" + uuid.uuid4().hex[:24]
+        try:
+            await self.client.prompt_async(
+                self.session_id,
+                text,
+                model=self.client.model,
+                message_id=user_message_id,
+            )
+            streamed = await self._consume_events(queue, ignore_message_id=user_message_id)
+        finally:
+            stop.set()
+            pump_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await pump_task
+
+        if streamed.strip():
+            return streamed
+
+        answer = await self._await_final_message(before_id)
+        if answer:
+            self.ui.print_markdown(answer)
+            return answer
+        return ""
+
+    async def _consume_events(
+        self,
+        queue: asyncio.Queue[dict[str, Any]],
+        ignore_message_id: str | None = None,
+    ) -> str:
+        started = time.monotonic()
+        last_event_ts = started
+        last_text: dict[str, str] = {}
+        collected: list[str] = []
+        seen_tools: set[str] = set()
+        wrote_stream = False
+        saw_activity = False
+        saw_busy = False
+        tool_running = False
+        self._answer_buffer = ""
+
+        try:
+            while True:
+                elapsed = time.monotonic() - started
+                if elapsed > self.cfg.opencode.request_timeout:
+                    self.ui.warning("tempo limite da execução atingido")
+                    break
+
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=1.0)
+                except TimeoutError:
+                    event = None
+
+                if event is None:
+                    try:
+                        status = await self.client.session_status(self.session_id)
+                    except OpenCodeError:
+                        status = None
+                    if status and not (isinstance(status, dict) and status.get("type") == "idle"):
+                        saw_busy = True
+                    idle = (
+                        bool(status) and isinstance(status, dict) and status.get("type") == "idle"
+                    )
+                    if idle and (saw_activity or saw_busy) and elapsed > 0.8:
+                        break
+                    if idle and not saw_activity and elapsed > 1.5:
+                        break
+                    if (
+                        saw_busy
+                        and not tool_running
+                        and time.monotonic() - last_event_ts > self.cfg.opencode.stall_timeout
+                    ):
+                        self.ui.warning("o agente parou de responder; abortando a execução")
+                        await self.client.abort(self.session_id)
+                        raise OpenCodeError("o agente ficou sem responder (timeout de inatividade)")
+                    continue
+
+                last_event_ts = time.monotonic()
+                kind = event_type(event)
+                props = event.get("properties") or {}
+
+                if kind == "message.part.updated":
+                    saw_activity = True
+                    part = props.get("part") or {}
+                    if ignore_message_id and str(part.get("messageID", "")) == ignore_message_id:
+                        continue
+                    if part.get("type") == "text" and not (
+                        part.get("synthetic") or part.get("ignored")
+                    ):
+                        part_id = part.get("id", "")
+                        previous = last_text.get(part_id, "")
+                        delta, current = text_delta(part, previous)
+                        last_text[part_id] = current
+                        if delta:
+                            collected.append(delta)
+                            for chunk in self._feed_display(delta):
+                                if not wrote_stream:
+                                    self.ui.begin_stream()
+                                    wrote_stream = True
+                                self.ui.token(chunk)
+                            self._feed_speech(delta)
+                    elif part.get("type") == "tool":
+                        state = part.get("state") or {}
+                        tstatus = state.get("status")
+                        if tstatus in {"running", "pending"}:
+                            tool_running = True
+                        elif tstatus in {"completed", "error"}:
+                            tool_running = False
+                        activity = tool_activity(part)
+                        if activity:
+                            call_id, tool, detail = activity
+                            if call_id not in seen_tools:
+                                seen_tools.add(call_id)
+                                if not wrote_stream:
+                                    label = TOOL_LABELS.get(tool, tool)
+                                    self.ui.tool(label, detail)
+                elif kind == "session.idle":
+                    break
+                elif kind == "session.error":
+                    error = props.get("error") or {}
+                    raise OpenCodeError(f"erro na sessão OpenCode: {error}")
+                elif kind in {"permission.asked", "permission.v2.asked"}:
+                    await self._handle_permission(props, kind)
+        finally:
+            for chunk in self._flush_display():
+                if not wrote_stream:
+                    self.ui.begin_stream()
+                    wrote_stream = True
+                self.ui.token(chunk)
+            if wrote_stream:
+                self.ui.end_stream()
+
+        return "".join(collected).strip()
+
+    async def _handle_permission(
+        self, props: dict[str, Any], kind: str = "permission.asked"
+    ) -> None:
+        permission_id = props.get("id") or props.get("requestID")
+        tool = props.get("permission") or props.get("action") or "ferramenta"
+        patterns = props.get("patterns") or props.get("resources") or []
+        v2 = kind == "permission.v2.asked"
+        if not permission_id:
+            return
+        if self.cfg.opencode.auto_approve:
+            answer = "once"
+            self.logger.info("auto-aprovando permissao %s (%s)", permission_id, tool)
+        else:
+            self._permission_active = True
+            try:
+                answer = await asyncio.to_thread(self.ui.permission, str(tool), list(patterns))
+            finally:
+                self._permission_active = False
+        try:
+            await self.client.reply_permission(
+                self.session_id, str(permission_id), answer, v2=v2
+            )
+        except OpenCodeError as exc:
+            self.logger.warning("falha ao responder permissao %s: %s", permission_id, exc)
+            self.ui.warning(
+                "não foi possível responder à permissão (ela pode ter expirado). "
+                "O OpenCode seguirá com a política padrão."
+            )
+
+    async def _await_final_message(self, before_id: str | None) -> str:
+        deadline = time.monotonic() + 1.5
+        while time.monotonic() < deadline:
+            try:
+                message = await self.client.latest_assistant(self.session_id)
+            except OpenCodeError:
+                message = None
+            if message:
+                info = message.get("info") or {}
+                if info.get("id") != before_id:
+                    error = message_error(message)
+                    if error:
+                        raise OpenCodeError(f"O agente retornou erro: {error}")
+                    from zora.opencode.events import assistant_text
+
+                    text = assistant_text(message)
+                    if text:
+                        return text
+            await asyncio.sleep(0.2)
+        return ""
+
+    # -------------------------------------------------------------- preferences
+    def _preferences_block(self) -> str:
+        path = self.brain.preferences_path
+        try:
+            mtime = path.stat().st_mtime if path.is_file() else -1.0
+        except OSError:
+            mtime = -1.0
+        if mtime != self._prefs_mtime:
+            self._prefs_cache = self.brain.load_preferences()
+            self._prefs_mtime = mtime
+        if not self._prefs_cache:
+            return ""
+        return (
+            "[Preferências de interação do usuário — siga sempre, "
+            "sem mencionar este bloco]\n" + self._prefs_cache
+        )
+
+    async def _handle_preference(self, text: str) -> None:
+        added = await asyncio.to_thread(self.brain.append_preference, text, False)
+        if added:
+            self._prefs_mtime = -1.0
+            self.ui.success(f"preferência aprendida: {text}")
+        else:
+            self.ui.info("essa preferência já estava registrada.")
+
+    # ----------------------------------------------------------------- register
+    async def _handle_register(self, intent: RegisterIntent, original: str) -> None:
+        assert self.conversation_id is not None
+        content = intent.content.strip()
+        if not content:
+            content = await self._fallback_register_content()
+            if not content:
+                self.ui.warning("não encontrei conteúdo para registrar.")
+                return
+            intent.content = content
+        title = intent.title or "Nota sem titulo"
+        links = await asyncio.to_thread(self.brain.suggest_links, title, content, 3)
+        folder = intent.folder or self.cfg.secondbrain.default_folder
+        self.ui.note_preview(title, intent.tags, links, content, folder)
+        if self.cfg.secondbrain.confirm_create:
+            ok = await asyncio.to_thread(self.ui.confirm, "Criar esta nota no Second Brain?", False)
+            if not ok:
+                self.ui.info("operação cancelada; nenhuma nota foi criada.")
+                return
+        try:
+            note = await asyncio.to_thread(
+                self.brain.create_note,
+                title,
+                content,
+                folder,
+                intent.tags,
+                links,
+                True,
+            )
+        except NoteConflict as exc:
+            self.ui.warning(str(exc))
+            return
+        except Exception as exc:
+            self.ui.error(f"falha ao criar nota: {exc}")
+            return
+
+        self.store.record_note(self.conversation_id, intent.kind, str(note.path), note.title)
+        self.ui.success(f"nota criada: {note.rel_path}")
+        await self._speak(f"Nota criada: {note.title}")
+
+    async def _fallback_register_content(self) -> str:
+        assert self.conversation_id is not None
+        for turn in reversed(self.store.turns(self.conversation_id, limit=6)):
+            if turn["role"] == "assistant":
+                return str(turn["text"])
+        return ""
+
+    # ----------------------------------------------------------------- commands
+    async def _handle_command(self, text: str) -> bool:
+        command, _, argument = text.partition(" ")
+        command = command.lower().strip()
+        argument = argument.strip()
+
+        if command in {"/sair", "/quit", "/exit"}:
+            self.ui.info("até logo.")
+            return True
+        if command in {"/ajuda", "/help"}:
+            self.ui.help()
+        elif command == "/status":
+            await self._show_status()
+        elif command == "/novo":
+            await self._new_session()
+        elif command == "/sessao":
+            self.ui.info(f"sessão OpenCode: {self.session_id}")
+        elif command == "/buscar":
+            if not argument:
+                self.ui.warning("uso: /buscar <termo>")
+            else:
+                hits = await asyncio.to_thread(
+                    self.index.search, argument, max(5, self.cfg.secondbrain.context_results)
+                )
+                self.ui.search_results(hits)
+        elif command == "/nota":
+            if not argument:
+                self.ui.warning("uso: /nota <título>")
+            else:
+                try:
+                    note = await asyncio.to_thread(self.brain.read_note, argument)
+                    self.ui.print_note(note)
+                except FileNotFoundError as exc:
+                    self.ui.warning(str(exc))
+        elif command == "/indexar":
+            self.ui.info("reindexando Second Brain...")
+            try:
+                stats = await asyncio.to_thread(self.index.reindex, True)
+                self.ui.success(
+                    f"{stats['indexed']} nota(s) indexada(s), {stats['total']} no total"
+                )
+            except Exception as exc:
+                self.ui.error(f"falha ao indexar: {exc}")
+        elif command == "/modelo":
+            await self._switch_model(argument)
+        elif command in {"/modo", "/perfil", "/persona"}:
+            self._switch_mode(argument)
+        elif command == "/voz":
+            self._switch_voice(argument)
+        elif command == "/interromper":
+            await self.client.abort(self.session_id)
+            self.tts.stop()
+            self.ui.info("interrupção enviada.")
+        elif command in {"/lembrar", "/lembrete"}:
+            if not argument:
+                self.ui.warning("uso: /lembrar <texto> em 30 minutos")
+            else:
+                spec = parse_reminder(argument, require_prefix=False)
+                if spec is None:
+                    self.ui.warning("não entendi o horário. Ex.: /lembrar beber água em 30 minutos")
+                else:
+                    await self._handle_reminder(spec)
+        elif command == "/lembretes":
+            self.ui.reminders(self.store.pending_reminders())
+        elif command == "/cancelar":
+            try:
+                reminder_id = int(argument)
+            except ValueError:
+                self.ui.warning("uso: /cancelar <id>")
+            else:
+                if self.store.cancel_reminder(reminder_id):
+                    self.ui.success(f"lembrete #{reminder_id} cancelado")
+                else:
+                    self.ui.warning(f"lembrete #{reminder_id} não encontrado")
+        elif command == "/proativo":
+            self._toggle_proactive(argument)
+        elif command in {"/continuo", "/contínuo"}:
+            self._toggle_continuous(argument)
+        elif command in {"/fala", "/ouvir"}:
+            self._toggle_continuous("on")
+        elif command in {"/texto", "/digitar"}:
+            self._toggle_continuous("off")
+        elif command == "/contexto":
+            self._toggle_context(argument)
+        elif command in {"/preferencia", "/preferência"}:
+            if not argument:
+                self.ui.warning("uso: /preferencia <texto>")
+            else:
+                await self._handle_preference(argument)
+        elif command in {"/preferencias", "/preferências"}:
+            text = self.brain.load_preferences()
+            self.ui.print_markdown(text or "(sem preferências registradas)", "Preferências")
+        elif command == "/confirmar":
+            self._toggle_create_confirmation(argument)
+        elif command in {"/autoaprovar", "/autoapprove"}:
+            self._toggle_auto_approve(argument)
+        elif command == "/historico":
+            self._show_history()
+        else:
+            self.ui.warning(f"comando desconhecido: {command} (use /ajuda)")
+        return False
+
+    async def _show_status(self) -> None:
+        health = await self.client.health()
+        sb_stats = self.index.stats()
+        mem = self.store.stats()
+        self.ui.status(
+            self.directory,
+            self.session_id,
+            self.cfg.opencode.model,
+            sb_stats["notes"],
+            self.tts.provider,
+        )
+        self.ui.info(f"servidor: {self.client.endpoint} · saudável={bool(health)}")
+        self.ui.info(
+            f"memória operacional: {mem['conversations']} conversa(s), "
+            f"{mem['turns']} turno(s), {mem['records']} registro(s)"
+        )
+        pending = self.store.reminder_stats()["pending"]
+        self.ui.info(
+            f"proativo: {'ativo' if self.cfg.proactive.enabled else 'desativado'} · "
+            f"{pending} lembrete(s) pendente(s)"
+        )
+        self.ui.info(f"second brain: {self.brain.root} · {sb_stats}")
+        self.ui.info(f"modo ativo: {self.persona.name} ({self.persona.key})")
+
+    async def _new_session(self) -> None:
+        assert self.conversation_id is not None
+        conv = self.store.create_conversation(str(self.directory), title="Nova conversa")
+        self.conversation_id = int(conv["id"])
+        session = await self.client.create_session(
+            title=f"Zora — {self.directory.name}", model=self.client.model
+        )
+        self.store.set_session(self.conversation_id, session.id)
+        self.session_id = session.id
+        self.ui.success(f"nova sessão: {session.id}")
+
+    async def _switch_model(self, argument: str) -> None:
+        if not argument:
+            self.ui.warning("uso: /modelo <provider/model>")
+            return
+        from zora.opencode.models import ModelRef
+
+        try:
+            model = ModelRef.parse(argument)
+        except ValueError as exc:
+            self.ui.error(str(exc))
+            return
+        self.cfg.opencode.model = model.slug
+        self.store.set_meta("model", model.slug)
+        self.ui.success(f"modelo da próxima mensagem: {model.slug}")
+
+    def _switch_mode(self, argument: str) -> None:
+        if not argument:
+            self.ui.info(f"modo atual: {self.persona.name} ({self.persona.key})")
+            for persona in PERSONAS.values():
+                self.ui.info(f"  {persona.key}: {persona.name} — {persona.summary}")
+            return
+        persona = get_persona(argument)
+        if persona is None:
+            options = ", ".join(PERSONAS)
+            self.ui.warning(f"modo desconhecido: {argument} (opções: {options})")
+            return
+        self.persona = persona
+        self.store.set_meta("mode", persona.key)
+        self.ui.success(f"modo ativo: {persona.name} — {persona.summary}")
+
+    def _switch_voice(self, argument: str) -> None:
+        arg = argument.lower().strip()
+        if arg in {"on", "ligar"}:
+            self.tts.enabled = True
+            self.ui.success("voz ativada")
+        elif arg in {"off", "desligar"}:
+            self.tts.enabled = False
+            self.ui.success("voz desativada")
+        elif arg in {"edge", "say", "none"}:
+            self.tts.set_provider(arg)
+            self.ui.success(f"provedor de voz: {arg}")
+        elif not arg:
+            self.ui.info(
+                f"voz={'ligada' if self.tts.enabled else 'desligada'} · provedor={self.tts.provider}"
+            )
+        else:
+            self.ui.warning("uso: /voz on|off|edge|say|none")
+
+    def _toggle_context(self, argument: str) -> None:
+        arg = argument.lower().strip()
+        if arg in {"on", "off"}:
+            self.cfg.secondbrain.auto_context = arg == "on"
+        else:
+            self.cfg.secondbrain.auto_context = not self.cfg.secondbrain.auto_context
+        state = "ativado" if self.cfg.secondbrain.auto_context else "desativado"
+        self.ui.success(f"contexto automático do Second Brain {state}")
+
+    def _toggle_create_confirmation(self, argument: str) -> None:
+        arg = argument.lower().strip()
+        if arg in {"on", "off"}:
+            self.cfg.secondbrain.confirm_create = arg == "on"
+        else:
+            self.cfg.secondbrain.confirm_create = not self.cfg.secondbrain.confirm_create
+        state = "pedindo confirmação" if self.cfg.secondbrain.confirm_create else "sem confirmação"
+        self.ui.success(f"criação de nota: {state}")
+
+    def _toggle_auto_approve(self, argument: str) -> None:
+        arg = argument.lower().strip()
+        if arg in {"on", "off"}:
+            self.cfg.opencode.auto_approve = arg == "on"
+        else:
+            self.cfg.opencode.auto_approve = not self.cfg.opencode.auto_approve
+        if self.cfg.opencode.auto_approve:
+            self.ui.warning(
+                "auto-aprovação de ferramentas ATIVA: o agente pode executar "
+                "comandos e editar arquivos sem perguntar."
+            )
+        else:
+            self.ui.success("auto-aprovação de ferramentas desativada")
+
+    def _show_history(self) -> None:
+        assert self.conversation_id is not None
+        turns = self.store.turns(self.conversation_id, limit=10)
+        if not turns:
+            self.ui.info("sem histórico nesta conversa.")
+            return
+        for turn in turns:
+            text = str(turn["text"])
+            if len(text) > 300:
+                text = text[:300] + "..."
+            self.ui.console.print(f"[bold]{escape_user(turn['role'])}[/]: {escape_user(text)}")
+
+    # --------------------------------------------------------------- proativas
+    def _mark_activity(self) -> None:
+        self._last_activity = time.monotonic()
+
+    def _user_name(self) -> str:
+        if self._user_name_cache is None:
+            preferences = self.brain.load_preferences()
+            match = re.search(r"Nome preferido:\s*([^\n.]+)", preferences, re.IGNORECASE)
+            self._user_name_cache = match.group(1).strip() if match else ""
+        return self._user_name_cache
+
+    async def _handle_reminder(self, spec: ReminderSpec) -> None:
+        reminder_id = self.store.add_reminder(spec.label, spec.due.isoformat(timespec="seconds"))
+        when = spec.due.strftime("%d/%m às %H:%M")
+        self.ui.success(f"lembrete #{reminder_id} para {when}: {spec.label}")
+        await self._speak(f"Combinado. Vou te lembrar de {spec.label} {when}.")
+
+    def _toggle_continuous(self, argument: str) -> None:
+        arg = argument.lower().strip()
+        if arg in {"on", "off"}:
+            self.cfg.audio.continuous = arg == "on"
+        else:
+            self.cfg.audio.continuous = not self.cfg.audio.continuous
+        if self.cfg.audio.continuous:
+            self.ui.success("modo contínuo ativado; fale à vontade")
+        else:
+            self.ui.success("modo contínuo desativado; use Enter para falar")
+
+    def _toggle_proactive(self, argument: str) -> None:
+        arg = argument.lower().strip()
+        if arg in {"on", "off"}:
+            self.cfg.proactive.enabled = arg == "on"
+        else:
+            self.cfg.proactive.enabled = not self.cfg.proactive.enabled
+        if self.cfg.proactive.enabled:
+            if self._proactive_task is None or self._proactive_task.done():
+                self._proactive_task = asyncio.create_task(self._proactive_loop(greet=False))
+            self.ui.success("iniciativa proativa ativada")
+        else:
+            self.ui.success("iniciativa proativa desativada (lembretes já criados ficam salvos)")
+
+    async def _proactive_loop(self, greet: bool = True) -> None:
+        cfg = self.cfg.proactive
+        if not cfg.enabled:
+            return
+        await asyncio.sleep(1.0)
+        if greet and cfg.startup_greeting:
+            await self._startup_greeting()
+        while True:
+            await asyncio.sleep(max(5.0, cfg.check_interval_seconds))
+            if not self.cfg.proactive.enabled:
+                continue
+            if self._busy or self._recording or self._listening:
+                continue
+            now = datetime.now().astimezone()
+            if in_quiet_hours(now, cfg.quiet_hours):
+                continue
+            try:
+                if cfg.reminders:
+                    await self._fire_due_reminders()
+                if cfg.idle_checkin:
+                    idle_for = (time.monotonic() - self._last_activity) / 60.0
+                    if idle_for >= cfg.idle_minutes and self._can_idle_checkin(now):
+                        await self._say_proactive(self._idle_message())
+                        self._last_activity = time.monotonic()
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # pragma: no cover
+                self.logger.warning("falha na rotina proativa: %s", exc)
+
+    async def _fire_due_reminders(self) -> None:
+        if not self.cfg.proactive.reminders:
+            return
+        now = datetime.now().astimezone()
+        if in_quiet_hours(now, self.cfg.proactive.quiet_hours):
+            return
+        for row in self.store.due_reminders(now.isoformat()):
+            await self._say_proactive(f"Lembrete: {row['text']}", count=False)
+            self.store.mark_reminder_spoken(int(row["id"]))
+
+    def _can_idle_checkin(self, now: datetime) -> bool:
+        cfg = self.cfg.proactive
+        if self._proactive_day != now.date():
+            self._proactive_day = now.date()
+            self._proactive_count = 0
+        if self._proactive_count >= cfg.daily_max:
+            return False
+        elapsed = (time.monotonic() - self._last_proactive) / 60.0
+        return elapsed >= cfg.min_interval_minutes
+
+    async def _say_proactive(self, text: str, count: bool = True) -> None:
+        self.ui.proactive(text)
+        if count:
+            self._proactive_count += 1
+            self._last_proactive = time.monotonic()
+        await self._speak(text)
+
+    def _idle_message(self) -> str:
+        options = [
+            "Ainda estou por aqui. Quer continuar de onde paramos?",
+            "Se quiser, posso resumir o que fizemos até agora.",
+            "Quer retomar algum projeto ou revisar suas metas?",
+            "Estou disponível se quiser pensar em algo junto.",
+        ]
+        return random.choice(options)
+
+    async def _startup_greeting(self) -> None:
+        now = datetime.now().astimezone()
+        name = self._user_name()
+        greeting = greeting_for(now)
+        message = f"{greeting}, {name}." if name else f"{greeting}."
+        pending = self.store.pending_reminders()
+        if pending:
+            message += f" Você tem {len(pending)} lembrete(s) pendente(s)."
+        else:
+            message += " Estou pronta quando você quiser."
+        if in_quiet_hours(now, self.cfg.proactive.quiet_hours):
+            self.ui.proactive(message)
+            return
+        await self._say_proactive(message, count=False)
+
+    # ------------------------------------------------------------------- voice
+    def _start_speech_streaming(self) -> bool:
+        """Fala a resposta por frases conforme o texto faz streaming."""
+        if not self.tts.enabled:
+            return False
+        self._speech_buffer = ""
+        self._speech_pending = ""
+        self._speech_fed_chars = 0
+        self._speech_active = True
+        self._speech_queue = asyncio.Queue()
+        self._speech_task = asyncio.create_task(self._speech_worker())
+        return True
+
+    def _feed_speech(self, text: str) -> None:
+        if not self._speech_active or not text:
+            return
+        self._speech_buffer += text
+        for sentence in self._flush_sentences():
+            clean = clean_for_speech(sentence)
+            if clean:
+                self._speech_fed_chars += len(clean)
+                self._enqueue_speech(clean)
+
+    def _enqueue_speech(self, text: str) -> None:
+        self._speech_pending = ""
+        if self._speech_queue is not None and text:
+            self._speech_queue.put_nowait(text)
+
+    def _flush_sentences(self) -> list[str]:
+        buf = self._speech_buffer
+        out: list[str] = []
+        while True:
+            match = _SENTENCE_END.search(buf)
+            if match is None:
+                break
+            sentence = buf[: match.start() + 1].strip()
+            buf = buf[match.end() :]
+            if sentence:
+                out.append(sentence)
+        self._speech_buffer = buf
+        return out
+
+    def _take_display_units(self, force: bool = False) -> list[str]:
+        """Separa o texto ja exibivel em frases/linhas (preserva quebras)."""
+        buf = self._answer_buffer
+        units: list[str] = []
+        while True:
+            match = _SENTENCE_END.search(buf)
+            if match is None:
+                break
+            end = match.end()
+            units.append(buf[:end])
+            buf = buf[end:]
+        if force:
+            if buf.strip():
+                units.append(buf)
+            buf = ""
+        elif len(buf) > 240:
+            cut = buf.rfind(" ", 0, 240)
+            if cut <= 0:
+                cut = 240
+            units.append(buf[: cut + 1])
+            buf = buf[cut + 1 :]
+        self._answer_buffer = buf
+        return units
+
+    def _feed_display(self, delta: str) -> list[str]:
+        self._answer_buffer += delta
+        cleaned: list[str] = []
+        for unit in self._take_display_units():
+            text = strip_markdown(unit)
+            if text.strip():
+                cleaned.append(text)
+        return cleaned
+
+    def _flush_display(self) -> list[str]:
+        cleaned: list[str] = []
+        for unit in self._take_display_units(force=True):
+            text = strip_markdown(unit)
+            if text.strip():
+                cleaned.append(text)
+        return cleaned
+
+    async def _speech_worker(self) -> None:
+        queue = self._speech_queue
+        if queue is None:
+            return
+        chunk = await queue.get()
+        prepared = await self._prepare_speech(chunk)
+        play_task: asyncio.Task | None = None
+        try:
+            while chunk is not None:
+                play_task = asyncio.create_task(self._play_prepared(prepared))
+                nxt = await queue.get()
+                prepared_next = await self._prepare_speech(nxt)
+                await play_task
+                play_task = None
+                if nxt is not None and self.cfg.tts.sentence_pause_ms > 0:
+                    await asyncio.sleep(self.cfg.tts.sentence_pause_ms / 1000.0)
+                chunk = nxt
+                prepared = prepared_next
+        finally:
+            if play_task is not None and not play_task.done():
+                play_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError, Exception):
+                    await play_task
+
+    async def _prepare_speech(
+        self, chunk: str | None
+    ) -> tuple[TTSBackend, Path] | None:
+        if chunk is None:
+            return None
+        try:
+            return await self.tts.prepare(chunk)
+        except (KeyboardInterrupt, asyncio.CancelledError):
+            self.tts.stop()
+            raise
+        except Exception as exc:  # pragma: no cover
+            self.logger.warning("falha no TTS: %s", exc)
+            return None
+
+    async def _play_prepared(self, prepared: tuple[TTSBackend, Path] | None) -> None:
+        if prepared is None:
+            return
+        async with self._tts_lock:
+            self._speaking_event.clear()
+            try:
+                await self.tts.play_prepared(prepared)
+            except (KeyboardInterrupt, asyncio.CancelledError):
+                self.tts.stop()
+                raise
+            except Exception as exc:  # pragma: no cover
+                self.logger.warning("falha na reproducao do TTS: %s", exc)
+            finally:
+                self._speaking_event.set()
+
+    async def _finish_speech_streaming(self, fallback: str) -> None:
+        if not self._speech_active:
+            return
+        tail = self._speech_buffer.strip()
+        clean_tail = clean_for_speech(tail) if tail else ""
+        if clean_tail:
+            self._speech_fed_chars += len(clean_tail)
+            self._speech_pending = f"{self._speech_pending} {clean_tail}".strip()
+        if self._speech_fed_chars == 0 and fallback:
+            clean_tail = clean_for_speech(fallback)
+            self._speech_fed_chars += len(clean_tail)
+            self._speech_pending = f"{self._speech_pending} {clean_tail}".strip()
+        queue = self._speech_queue
+        if queue is not None:
+            if self._speech_pending:
+                await queue.put(self._speech_pending)
+                self._speech_pending = ""
+            await queue.put(None)
+            task = self._speech_task
+            if task is not None:
+                with contextlib.suppress(asyncio.CancelledError, Exception):
+                    await task
+        self._speech_active = False
+        self._speech_task = None
+        self._speech_queue = None
+        self._speech_buffer = ""
+        self._speech_pending = ""
+
+    async def _stop_speech_streaming(self) -> None:
+        if not self._speech_active:
+            return
+        self._speech_active = False
+        self.tts.stop()
+        task = self._speech_task
+        if task is not None and not task.done():
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await task
+        self._speech_task = None
+        self._speech_queue = None
+        self._speech_buffer = ""
+        self._speech_pending = ""
+
+    async def _speak(self, text: str) -> None:
+        if not self.tts.enabled:
+            return
+        async with self._tts_lock:
+            self._speaking_event.clear()
+            try:
+                await self.tts.speak(text)
+            except (KeyboardInterrupt, asyncio.CancelledError):
+                self.tts.stop()
+                raise
+            except Exception as exc:  # pragma: no cover
+                self.logger.warning("falha no TTS: %s", exc)
+            finally:
+                self._speaking_event.set()
+
+
+def escape_user(text: str) -> str:
+    from rich.markup import escape
+
+    return escape(str(text))
