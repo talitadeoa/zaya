@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timedelta
 from typing import Any, Awaitable, Callable
 
+from rich.markup import escape
 from rich.panel import Panel
 from rich.syntax import Syntax
 from rich.text import Text
@@ -15,9 +17,20 @@ from textual.screen import ModalScreen
 from textual.widgets import Footer, Header, Input, OptionList, RichLog, Static
 
 from zora.audio.recorder import ContinuousListener
+from zora.focus import moon_phase, period_label, principal_phase_today
 
 ACCENT = "magenta"
 MUTED = "grey62"
+
+_ASCII_ZORA = [
+    " ███████╗ ██████╗ ██████╗  █████╗ ",
+    " ╚══███╔╝██╔═══██╗██╔══██╗██╔══██╗",
+    "   ███╔╝ ██║   ██║██████╔╝███████║",
+    "  ███╔╝  ██║   ██║██╔══██╗██╔══██║",
+    " ███████╗╚██████╔╝██║  ██║██║  ██║",
+    " ╚══════╝ ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝",
+]
+_ASCII_COLORS = ["magenta", "bright_magenta", "purple", "bright_blue", "cyan", "bright_cyan"]
 
 _HELP = (
     "Comandos nesta interface: /sair, /ajuda. "
@@ -102,6 +115,7 @@ class ZoraTextualApp(App):
         Binding("f2", "push_to_talk", "Falar"),
         Binding("f3", "toggle_voice", "Voz on/off"),
         Binding("f4", "toggle_listen", "Escuta contínua"),
+        Binding("escape", "interrupt", "Interromper"),
         Binding("ctrl+t", "toggle_theme", "Tema"),
         Binding("ctrl+l", "clear_chat", "Limpar"),
     ]
@@ -161,11 +175,96 @@ class ZoraTextualApp(App):
     async def on_mount(self) -> None:
         self.title = "Zora"
         self.sub_title = self._subtitle
-        self._write_zora(
-            "Oi, Talita. Esta é a interface nova (fase 1). "
-            "Digite uma mensagem ou use /ajuda."
-        )
+        await self._render_welcome()
         self.query_one("#input", Input).focus()
+
+    async def _render_welcome(self) -> None:
+        log = self._log()
+        for line, color in zip(_ASCII_ZORA, _ASCII_COLORS, strict=False):
+            log.write(Text(line, style=f"bold {color}"))
+        log.write(Text("assistente pessoal · OpenCode · Second Brain", style=MUTED))
+        if self._voice is not None:
+            try:
+                self._write_focus_panel()
+                self._write_goals_table()
+                await self._write_moon_note()
+            except Exception:
+                pass
+        log.write(
+            Text(
+                "Digite uma mensagem, F2 para falar, F4 para escuta contínua, F1 para comandos.",
+                style=MUTED,
+            )
+        )
+
+    def _write_focus_panel(self) -> None:
+        focus = self._voice.focus.current
+        if focus is None:
+            self._log().write(
+                Text("Nenhum foco definido; use /foco definir semanal <texto>.", style=MUTED)
+            )
+            return
+        body = Text()
+        if focus.label:
+            body.append(focus.label + "\n", style="bold")
+        for goal in focus.goals:
+            body.append(f"• {goal}\n")
+        body.append(f"\n{focus.start} → {focus.end}", style=MUTED)
+        self._log().write(
+            Panel(
+                body,
+                title=Text(f"Foco {period_label(focus.period)}", style="bold cyan"),
+                title_align="left",
+                border_style="cyan",
+                padding=(0, 1),
+            )
+        )
+
+    def _write_goals_table(self) -> None:
+        from rich.table import Table
+
+        goals = self._voice.goals.all()
+        if not goals:
+            return
+        table = Table(
+            title="Metas de longo prazo",
+            border_style=ACCENT,
+            header_style=f"bold {ACCENT}",
+        )
+        table.add_column("Meta", style="bold")
+        table.add_column("Próximo passo", style=MUTED)
+        for goal in goals:
+            table.add_row(escape(goal.label), escape(goal.next_step or "—"))
+        self._log().write(
+            Panel(
+                table,
+                title=Text("Metas de longo prazo", style=f"bold {ACCENT}"),
+                title_align="left",
+                border_style=ACCENT,
+                padding=(0, 1),
+            )
+        )
+
+    async def _write_moon_note(self) -> None:
+        _key, name, illumination = moon_phase()
+        self._log().write(
+            Text(f"Lua: {name} · {illumination * 100:.0f}% iluminada", style=MUTED)
+        )
+        phase = principal_phase_today(datetime.now().astimezone() + timedelta(days=1))
+        if phase is None:
+            return
+        _key, phase_name, moment = phase
+        manifestation = ""
+        try:
+            manifestation = await self._voice.agenda.lunation_note(
+                moment.date().isoformat()
+            )
+        except Exception:
+            manifestation = ""
+        line = f"Amanhã: {phase_name}"
+        if manifestation:
+            line += f" — manifestações na Agenda: {manifestation}"
+        self._log().write(Text(line, style=MUTED))
 
     async def on_unmount(self) -> None:
         self._stop_listening()
@@ -264,6 +363,16 @@ class ZoraTextualApp(App):
             return
         self._voice_replies = not self._voice_replies
         self._set_status("voz ligada" if self._voice_replies else "voz desligada")
+
+    async def action_interrupt(self) -> None:
+        if self._voice is None:
+            return
+        self._voice.tts.stop()
+        try:
+            await self._voice.client.abort(self._voice.session_id)
+        except Exception:
+            pass
+        self._set_status("interrompido")
 
     def action_toggle_listen(self) -> None:
         if self._voice is None:

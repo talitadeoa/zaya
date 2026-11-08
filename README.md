@@ -369,11 +369,14 @@ zora --ui textual       # equivalente
 ```
 
 São dois front-ends do mesmo cérebro — você escolhe um ao iniciar; o serviço do
-Telegram pode rodar junto. A TUI tem layout com cabeçalho, chat, entrada e
-status, streaming, diffs e raciocínio. Atalhos: **F1** paleta, **F2** falar
-(push-to-talk), **F3** voz on/off, **F4** escuta contínua, **Ctrl+T** tema e
-**Ctrl+L** limpar. Para fixar: `ZORA_UI=textual` ou `ui = "textual"` em
-`[interface]`.
+Telegram pode rodar junto. A TUI abre com o **ASCII da Zora**, o **foco/metas** e
+a **fase da lua**, e tem chat com streaming, diffs e raciocínio. Atalhos: **F1**
+paleta, **F2** falar (push-to-talk), **F3** voz on/off, **F4** escuta contínua,
+**Esc** interromper, **Ctrl+T** tema e **Ctrl+L** limpar. Para fixar:
+`ZORA_UI=textual` ou `ui = "textual"` em `[interface]`.
+
+No terminal antigo (`zora`) continuam os atalhos **M** (mudo), **T** (texto) e
+**Esc** (interromper), porque ali não há campo de texto consumindo as letras.
 
 ## Arquitetura
 
