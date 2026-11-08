@@ -150,6 +150,9 @@ class ZoraTextualApp(App):
         scrollbar-color: #79DCFD;
         scrollbar-background: #140a24;
     }
+    .card {
+        margin-bottom: 1;
+    }
     #status {
         height: 1;
         color: #A8EFDB;
@@ -236,9 +239,13 @@ class ZoraTextualApp(App):
         self._mount(
             Panel(
                 body,
-                title=Text(f"Foco {period_label(focus.period)}", style=f"bold {CYAN}"),
+                title=Text(
+                    f" ✨ Foco {period_label(focus.period)} ",
+                    style=f"bold {CYAN} on #08222b",
+                ),
                 title_align="left",
                 border_style=CYAN,
+                style="on #08222b",
                 padding=(0, 1),
             )
         )
@@ -260,9 +267,10 @@ class ZoraTextualApp(App):
         self._mount(
             Panel(
                 table,
-                title=Text("Metas de longo prazo", style=f"bold {ACCENT}"),
+                title=Text(" 🎯 Metas ", style=f"bold {ACCENT} on #160a28"),
                 title_align="left",
                 border_style=ACCENT,
+                style="on #160a28",
                 padding=(0, 1),
             )
         )
@@ -292,9 +300,10 @@ class ZoraTextualApp(App):
         self._mount(
             Panel(
                 body,
-                title=Text("Lua", style=f"bold {LILAC}"),
+                title=Text(" 🌙 Lua ", style=f"bold {LILAC} on #0b2a24"),
                 title_align="left",
                 border_style=CYAN,
+                style="on #0b2a24",
                 padding=(0, 1),
             )
         )
@@ -581,12 +590,12 @@ class ZoraTextualApp(App):
             pass
 
     def _mount(self, renderable) -> None:
-        self._log().mount(Static(renderable))
+        self._log().mount(Static(renderable, classes="card"))
         self.call_after_refresh(self._scroll_chat)
 
     def update_stream(self, text: str) -> None:
         if self._stream_widget is None:
-            self._stream_widget = Static()
+            self._stream_widget = Static(classes="card")
             self._log().mount(self._stream_widget)
         body = Text("Zora: ", style=f"bold {ACCENT}")
         body.append(text)
@@ -601,9 +610,10 @@ class ZoraTextualApp(App):
         self._stream_widget.update(
             Panel(
                 Text(answer),
-                title=Text("Zora:", style=f"bold {ACCENT}"),
+                title=Text(" Zora: ", style=f"bold {ACCENT} on #160a28"),
                 title_align="left",
                 border_style=ACCENT,
+                style="on #160a28",
                 padding=(0, 1),
             )
         )
@@ -616,9 +626,12 @@ class ZoraTextualApp(App):
         self._mount(
             Panel(
                 Syntax(patch, "diff", theme="monokai", word_wrap=True),
-                title=f"diff · {filename}",
+                title=Text(
+                    f" diff · {filename} ", style=f"bold {MINT} on #0b2a24"
+                ),
                 title_align="left",
                 border_style=MINT,
+                style="on #0b2a24",
                 padding=(0, 1),
             )
         )
@@ -630,9 +643,10 @@ class ZoraTextualApp(App):
         self._mount(
             Panel(
                 Text(text),
-                title=Text("Talita:", style=f"bold {CYAN}"),
+                title=Text(" Talita: ", style=f"bold {CYAN} on #08222b"),
                 title_align="left",
                 border_style=CYAN,
+                style="on #08222b",
                 padding=(0, 1),
             )
         )
@@ -641,9 +655,10 @@ class ZoraTextualApp(App):
         self._mount(
             Panel(
                 Text(text),
-                title=Text("Zora:", style=f"bold {ACCENT}"),
+                title=Text(" Zora: ", style=f"bold {ACCENT} on #160a28"),
                 title_align="left",
                 border_style=ACCENT,
+                style="on #160a28",
                 padding=(0, 1),
             )
         )
