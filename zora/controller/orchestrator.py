@@ -252,6 +252,11 @@ class Orchestrator:
             if close:
                 await self._shutdown()
 
+    async def prepare(self) -> None:
+        """Sobe servidor/sessão antes do primeiro uso (aquece a TUI)."""
+        if not self.session_id:
+            await self._bootstrap()
+
     async def answer_stream(self, text: str, sink) -> str:
         """Como answer_once, mas envia tokens/eventos para um sink de UI."""
         self._stream_sink = sink

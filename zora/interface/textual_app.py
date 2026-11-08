@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from datetime import datetime, timedelta
 from typing import Any, Awaitable, Callable
 
@@ -94,10 +95,14 @@ class TextualSink:
     def __init__(self, app: "ZoraTextualApp"):
         self.app = app
         self.buffer = ""
+        self._last_update = 0.0
 
     def token(self, text: str) -> None:
         self.buffer += text
-        self.app.update_stream(self.buffer)
+        now = time.monotonic()
+        if now - self._last_update >= 0.06:
+            self._last_update = now
+            self.app.update_stream(self.buffer)
 
     def reasoning(self, text: str) -> None:
         snippet = " ".join((text or "").split())[-90:]

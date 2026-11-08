@@ -214,6 +214,7 @@ async def _run_textual(cfg: Config, verbose: bool) -> None:
     from zora.interface.textual_app import ZoraTextualApp
 
     orchestrator, store, index = _build_app(cfg, verbose, quiet=True)
+    await orchestrator.prepare()
 
     async def answer(text: str, sink) -> str:
         return await orchestrator.answer_stream(text, sink)
