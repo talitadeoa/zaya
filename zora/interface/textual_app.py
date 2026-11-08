@@ -553,15 +553,9 @@ class ZoraTextualApp(App):
 
     # ------------------------------------------------------------------ helpers
     def update_stream(self, text: str) -> None:
-        self.query_one("#stream", Static).update(
-            Panel(
-                Text(text),
-                title=Text("Zora:", style=f"bold {ACCENT}"),
-                title_align="left",
-                border_style=ACCENT,
-                padding=(0, 1),
-            )
-        )
+        body = Text("Zora: ", style=f"bold {ACCENT}")
+        body.append(text)
+        self.query_one("#stream", Static).update(body)
 
     def write_diff(self, filename: str, patch: str) -> None:
         if not patch.strip():

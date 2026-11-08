@@ -865,8 +865,13 @@ class Orchestrator:
         assert self.conversation_id is not None
         await self._clear_stale_session()
         self.ui.set_status("◐ pensando…")
+        fast = self.cfg.interface.fast
         hits = []
-        if self.cfg.secondbrain.auto_context and needs_second_brain_context(text):
+        if (
+            not fast
+            and self.cfg.secondbrain.auto_context
+            and needs_second_brain_context(text)
+        ):
             self.ui.info("Consultando Second Brain...")
             try:
                 hits = await asyncio.to_thread(
@@ -893,14 +898,15 @@ class Orchestrator:
                 "Não leia nem edite arquivos do Second Brain para esta resposta: "
                 "o contexto já foi fornecido pela Zora."
             )
-        goals = self.goals.detect(text)
-        if goals:
-            prompt = goal_block(goals) + "\n\n---\n\n" + prompt
-            self.store.add_turn(
-                self.conversation_id,
-                "context",
-                "Metas relacionadas: " + ", ".join(goal.label for goal in goals),
-            )
+        if not fast:
+            goals = self.goals.detect(text)
+            if goals:
+                prompt = goal_block(goals) + "\n\n---\n\n" + prompt
+                self.store.add_turn(
+                    self.conversation_id,
+                    "context",
+                    "Metas relacionadas: " + ", ".join(goal.label for goal in goals),
+                )
         prompt = persona_block(self.persona) + "\n\n---\n\n" + prompt
         preferences = self._preferences_block()
         if preferences:
@@ -909,6 +915,11 @@ class Orchestrator:
             prompt = (
                 "[Diretriz da Zora: seja conciso e direto; "
                 "use ferramentas apenas quando necessário.]\n\n" + prompt
+            )
+        if fast:
+            prompt = (
+                "[Modo rápido: responda em no máximo 3 frases, sem rodeios nem "
+                "contexto extra.]\n\n" + prompt
             )
 
         streaming = self._start_speech_streaming() if speak else False
@@ -1380,6 +1391,8 @@ class Orchestrator:
             self._toggle_continuous("off")
         elif command == "/contexto":
             self._toggle_context(argument)
+        elif command in {"/rapido", "/rápido", "/fast"}:
+            self._toggle_fast(argument)
         elif command in {"/preferencia", "/preferência"}:
             if not argument:
                 self.ui.warning("uso: /preferencia <texto>")
@@ -1715,6 +1728,15 @@ class Orchestrator:
             )
         else:
             self.ui.warning("uso: /voz on|off|edge|say|none")
+
+    def _toggle_fast(self, argument: str) -> None:
+        arg = argument.lower().strip()
+        if arg in {"on", "off"}:
+            self.cfg.interface.fast = arg == "on"
+        else:
+            self.cfg.interface.fast = not self.cfg.interface.fast
+        state = "ativado" if self.cfg.interface.fast else "desativado"
+        self.ui.success(f"modo rápido {state}")
 
     def _toggle_context(self, argument: str) -> None:
         arg = argument.lower().strip()
