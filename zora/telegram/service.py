@@ -132,7 +132,7 @@ class TelegramService:
             return
         backend, path = prepared
         try:
-            await self.client.send_audio(path, chat_id=chat_id, as_voice=False)
+            await self.client.send_audio(path, chat_id=chat_id, as_voice=True)
         finally:
             backend.cleanup(path)
 

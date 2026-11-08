@@ -256,8 +256,8 @@ zora telegram serve
 `zora telegram serve` fica ouvindo texto e áudio e executa cada mensagem na
 Zora (OpenCode + Second Brain), respondendo no próprio Telegram quando termina.
 O `poll` usa long polling (não precisa de túnel HTTPS). Áudio funciona via
-`zora telegram audio arquivo.mp3`; para respostas também em áudio, defina
-`ZORA_TELEGRAM_VOICE_REPLIES=true`.
+`zora telegram audio arquivo.mp3`; para respostas também como mensagem de voz
+(OGG/Opus, requer `ffmpeg`), defina `ZORA_TELEGRAM_VOICE_REPLIES=true`.
 
 Para a Zora **editar arquivos** pelo Telegram, as ferramentas do OpenCode
 precisam de aprovação. Como o serviço não tem terminal, habilite

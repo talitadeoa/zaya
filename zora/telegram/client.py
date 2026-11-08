@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
+import shutil
+import subprocess
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -75,10 +79,22 @@ class TelegramClient:
             raise TelegramError(f"arquivo de audio nao encontrado: {audio}")
         target = self._resolve_chat(chat_id)
         field = "voice" if as_voice else "audio"
-        with audio.open("rb") as fh:
-            files = {field: (audio.name, fh, "audio/mpeg")}
-            data = {"chat_id": target, "caption": caption}
-            return await self._post_multipart("sendVoice" if as_voice else "sendAudio", data, files)
+        mime = "audio/mpeg"
+        cleanup: Path | None = None
+        if as_voice:
+            audio = await asyncio.to_thread(_to_ogg_opus, audio)
+            cleanup = audio
+            mime = "audio/ogg"
+        try:
+            with audio.open("rb") as fh:
+                files = {field: (audio.name, fh, mime)}
+                data = {"chat_id": target, "caption": caption}
+                return await self._post_multipart(
+                    "sendVoice" if as_voice else "sendAudio", data, files
+                )
+        finally:
+            if cleanup is not None:
+                cleanup.unlink(missing_ok=True)
 
     async def send_chat_action(
         self, chat_id: str | int | None = None, action: str = "typing"
@@ -158,6 +174,39 @@ class TelegramClient:
         if self._owns_http and self._http is not None:
             await self._http.aclose()
             self._http = None
+
+
+def _to_ogg_opus(source: Path) -> Path:
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        raise TelegramError(
+            "ffmpeg nao encontrado; instale com 'brew install ffmpeg' para enviar voz"
+        )
+    with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as fh:
+        target = Path(fh.name)
+    try:
+        subprocess.run(
+            [
+                ffmpeg,
+                "-y",
+                "-i",
+                str(source),
+                "-c:a",
+                "libopus",
+                "-b:a",
+                "48k",
+                "-vbr",
+                "on",
+                str(target),
+            ],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except Exception as exc:
+        target.unlink(missing_ok=True)
+        raise TelegramError(f"falha ao converter audio para ogg/opus: {exc}") from exc
+    return target
 
 
 def _split_text(text: str, limit: int = _MAX_TEXT) -> list[str]:

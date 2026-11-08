@@ -43,6 +43,31 @@ async def test_send_message_endpoint_e_payload():
 
 
 @pytest.mark.asyncio
+async def test_send_voice_usa_sendvoice(tmp_path, monkeypatch):
+    import zora.telegram.client as mod
+
+    source = tmp_path / "a.mp3"
+    source.write_bytes(b"fake")
+    converted = tmp_path / "a.ogg"
+    converted.write_bytes(b"OggS")
+    monkeypatch.setattr(mod, "_to_ogg_opus", lambda _path: converted)
+
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url.path)
+        return httpx.Response(200, json={"ok": True, "result": {"message_id": 5}})
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    client = TelegramClient(_cfg(), http=http)
+    result = await client.send_audio(source, as_voice=True)
+    await http.aclose()
+
+    assert result["message_id"] == 5
+    assert calls[0].endswith("/sendVoice")
+
+
+@pytest.mark.asyncio
 async def test_get_updates_e_download():
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path.endswith("/getUpdates"):
