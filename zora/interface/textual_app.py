@@ -7,19 +7,73 @@ from typing import Awaitable, Callable
 from rich.panel import Panel
 from rich.text import Text
 from textual.app import App, ComposeResult
+from textual.binding import Binding
 from textual.containers import Vertical
-from textual.widgets import Footer, Header, Input, RichLog, Static
+from textual.screen import ModalScreen
+from textual.widgets import Footer, Header, Input, OptionList, RichLog, Static
 
 ACCENT = "magenta"
 MUTED = "grey62"
 
 _HELP = (
     "Comandos nesta interface: /sair, /ajuda. "
+    "Atalhos: F1 abre a paleta de comandos, Ctrl+T alterna o tema, Ctrl+L limpa a conversa. "
     "Os demais comandos (agenda, tarefas, metas, finanças) continuam no modo terminal."
 )
 
 
+class CommandPalette(ModalScreen[str | None]):
+    CSS = """
+    CommandPalette {
+        align: center middle;
+        background: #000000aa;
+    }
+    #palette {
+        width: 64;
+        height: auto;
+        max-height: 20;
+        border: round #a855f7;
+        background: #140a24;
+        padding: 1;
+    }
+    #palette-input {
+        margin-bottom: 1;
+    }
+    """
+
+    def compose(self) -> ComposeResult:
+        yield Vertical(
+            Input(placeholder="Buscar comando…", id="palette-input"),
+            OptionList(id="palette-list"),
+            id="palette",
+        )
+
+    def on_mount(self) -> None:
+        self._refresh("")
+        self.query_one("#palette-input", Input).focus()
+
+    def _refresh(self, query: str) -> None:
+        options = self.query_one("#palette-list", OptionList)
+        options.clear_options()
+        needle = query.lower().strip()
+        for label in self.app.palette_labels():
+            if needle in label.lower():
+                options.add_option(label)
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        self._refresh(event.value)
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        self.dismiss(str(event.option.prompt))
+
+
 class ZoraTextualApp(App):
+    BINDINGS = [
+        Binding("f1", "command_palette", "Comandos"),
+        Binding("ctrl+t", "toggle_theme", "Tema"),
+        Binding("ctrl+l", "clear_chat", "Limpar"),
+    ]
+
     CSS = """
     Screen {
         background: #0b0614;
@@ -98,6 +152,39 @@ class ZoraTextualApp(App):
         if answer:
             self._write_zora(answer)
         status.update("● pronto")
+
+    # --------------------------------------------------------------- palette
+    def palette_labels(self) -> list[str]:
+        return [
+            "Ajuda",
+            "Alternar tema",
+            "Limpar conversa",
+            "Focar entrada",
+            "Sair",
+        ]
+
+    def action_command_palette(self) -> None:
+        self.push_screen(CommandPalette(), self._run_palette_action)
+
+    def _run_palette_action(self, label: str | None) -> None:
+        if not label:
+            return
+        if label == "Ajuda":
+            self._write_note(_HELP)
+        elif label == "Alternar tema":
+            self.action_toggle_theme()
+        elif label == "Limpar conversa":
+            self.action_clear_chat()
+        elif label == "Focar entrada":
+            self.query_one("#input", Input).focus()
+        elif label == "Sair":
+            self.exit()
+
+    def action_toggle_theme(self) -> None:
+        self.theme = "textual-light" if "dark" in self.theme else "textual-dark"
+
+    def action_clear_chat(self) -> None:
+        self.query_one("#chat", RichLog).clear()
 
     # ------------------------------------------------------------------ helpers
     def _log(self) -> RichLog:
