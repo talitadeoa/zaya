@@ -151,6 +151,16 @@ class WhatsAppConfig(BaseModel):
     webhook_port: int = 8765
 
 
+class AgendaConfig(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    enabled: bool = True
+    # .env do projeto Agenda (Supabase). Nada e copiado para o repo da Zora.
+    env_file: str = "~/agenda-git/agenda/.env"
+    poll_minutes: float = 30.0
+    max_items: int = 5
+
+
 class TelegramConfig(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
@@ -177,6 +187,7 @@ class Config(BaseModel):
     proactive: ProactiveConfig = Field(default_factory=ProactiveConfig)
     whatsapp: WhatsAppConfig = Field(default_factory=WhatsAppConfig)
     telegram: TelegramConfig = Field(default_factory=TelegramConfig)
+    agenda: AgendaConfig = Field(default_factory=AgendaConfig)
     data_dir: str = ""
 
     # Caminho de onde o config foi carregado (informativo).
@@ -325,6 +336,9 @@ _ENV_MAP: dict[str, tuple[str, str]] = {
     "ZORA_TELEGRAM_ALLOWED_CHAT_ID": ("telegram", "allowed_chat_id"),
     "ZORA_TELEGRAM_API_BASE_URL": ("telegram", "api_base_url"),
     "ZORA_TELEGRAM_POLL_TIMEOUT": ("telegram", "poll_timeout"),
+    "ZORA_AGENDA_ENV_FILE": ("agenda", "env_file"),
+    "ZORA_AGENDA_POLL_MINUTES": ("agenda", "poll_minutes"),
+    "ZORA_AGENDA_MAX_ITEMS": ("agenda", "max_items"),
 }
 
 _BOOL_KEYS = {
@@ -345,6 +359,7 @@ _BOOL_KEYS = {
     "ZORA_WHATSAPP_ENABLED": ("whatsapp", "enabled"),
     "ZORA_TELEGRAM_ENABLED": ("telegram", "enabled"),
     "ZORA_TELEGRAM_VOICE_REPLIES": ("telegram", "voice_replies"),
+    "ZORA_AGENDA_ENABLED": ("agenda", "enabled"),
 }
 
 
@@ -444,6 +459,12 @@ api_version = "v21.0"
 webhook_host = "127.0.0.1"
 webhook_port = 8765
 # access_token e verify_token vão apenas no .env/ambiente.
+
+[agenda]
+enabled = true
+env_file = "~/agenda-git/agenda/.env"
+poll_minutes = 30
+max_items = 5
 
 [telegram]
 enabled = false

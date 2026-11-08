@@ -278,6 +278,12 @@ zora spotify volume 40
 Por voz: "pausa a música", "próxima música", "aumenta o volume". Se não estiver
 instalado: `brew install --cask spotify`.
 
+### Agenda proativa
+
+A Zora lê as tarefas do dia na Agenda (mesma base Supabase) e avisa quando há
+pendências novas. Configure `ZORA_AGENDA_ENV_FILE` apontando para o `.env` do
+projeto Agenda e ajuste a frequência em `ZORA_AGENDA_POLL_MINUTES` (padrão 30).
+
 ## Arquitetura
 
 ```

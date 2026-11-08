@@ -18,6 +18,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from zora.agenda.client import AgendaClient, AgendaError
 from zora.audio.recorder import AudioError, ContinuousListener, Recorder
 from zora.config import Config
 from zora.controller.intents import (
@@ -134,6 +135,11 @@ class Orchestrator:
         self._proactive_count = 0
         self._proactive_day = datetime.now().astimezone().date()
         self._last_proactive = 0.0
+        self._last_idle_message = ""
+        self.agenda = AgendaClient(cfg.agenda)
+        self._agenda_next_check = 0.0
+        self._agenda_seen: set[str] = set()
+        self._agenda_day = None
         self._tts_lock = asyncio.Lock()
         self._user_name_cache: str | None = None
         self._warmup_task: asyncio.Task | None = None
@@ -1428,6 +1434,7 @@ class Orchestrator:
             try:
                 if cfg.reminders:
                     await self._fire_due_reminders()
+                await self._check_agenda(now)
                 if cfg.idle_checkin:
                     idle_for = (time.monotonic() - self._last_activity) / 60.0
                     if idle_for >= cfg.idle_minutes and self._can_idle_checkin(now):
@@ -1437,6 +1444,41 @@ class Orchestrator:
                 raise
             except Exception as exc:  # pragma: no cover
                 self.logger.warning("falha na rotina proativa: %s", exc)
+
+    async def _check_agenda(self, now: datetime) -> None:
+        cfg = self.cfg.agenda
+        if not cfg.enabled or not self.agenda.enabled:
+            return
+        if time.monotonic() < self._agenda_next_check:
+            return
+        self._agenda_next_check = time.monotonic() + max(5.0, cfg.poll_minutes * 60.0)
+        try:
+            tasks = await self.agenda.pending_today(now.date().isoformat())
+        except AgendaError as exc:
+            self.logger.warning("agenda: %s", exc)
+            return
+        if now.date() != self._agenda_day:
+            self._agenda_day = now.date()
+            self._agenda_seen = set()
+        ids = {str(task.get("id")) for task in tasks if task.get("id")}
+        new_ids = ids - self._agenda_seen
+        self._agenda_seen = ids
+        if not new_ids:
+            return
+        new_tasks = [task for task in tasks if str(task.get("id")) in new_ids]
+        names = [str(task.get("text") or "tarefa") for task in new_tasks]
+        shown = names[: cfg.max_items]
+        if len(names) > len(shown):
+            shown.append(f"e mais {len(names) - len(shown)}")
+        if ids == new_ids:
+            message = (
+                f"Na agenda de hoje você tem {len(names)} tarefa(s) pendente(s): "
+                + ", ".join(shown)
+                + "."
+            )
+        else:
+            message = "Novas tarefas na agenda: " + ", ".join(shown) + "."
+        await self._say_proactive(message)
 
     async def _fire_due_reminders(self) -> None:
         if not self.cfg.proactive.reminders:
@@ -1471,14 +1513,31 @@ class Orchestrator:
             "Se quiser, posso resumir o que fizemos até agora.",
             "Quer retomar algum projeto ou revisar suas metas?",
             "Estou disponível se quiser pensar em algo junto.",
+            "Quer que eu dê uma olhada na agenda de hoje?",
+            "Como está seu ânimo agora? Posso ajudar a organizar o próximo passo.",
+            "Se quiser, eu listo o que ainda falta na agenda.",
+            "Posso te ajudar a destravar alguma coisa?",
+            "Quer só conversar um pouco ou prefere avançar em algo prático?",
+            "Estou aqui. O que está ocupando sua cabeça agora?",
+            "Quer que eu resuma as pendências e a gente escolha uma coisa só?",
         ]
-        return random.choice(options)
+        choices = [option for option in options if option != self._last_idle_message]
+        message = random.choice(choices or options)
+        self._last_idle_message = message
+        return message
 
     async def _startup_greeting(self) -> None:
         now = datetime.now().astimezone()
         name = self._user_name()
         greeting = greeting_for(now)
-        message = f"{greeting}, {name}." if name else f"{greeting}."
+        base = f"{greeting}, {name}" if name else greeting
+        options = [
+            f"{base}.",
+            f"{base}! Como você está hoje?",
+            f"{base}. Estou por aqui.",
+            f"{base}. Vamos ver o que o dia pede?",
+        ]
+        message = random.choice(options)
         pending = self.store.pending_reminders()
         if pending:
             message += f" Você tem {len(pending)} lembrete(s) pendente(s)."
