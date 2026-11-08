@@ -8,7 +8,8 @@ from zora.interface.textual_app import ZoraTextualApp
 
 @pytest.mark.asyncio
 async def test_app_textual_responde_sem_erro():
-    async def answer(text: str) -> str:
+    async def answer(text: str, sink) -> str:
+        sink.token(f"eco: {text}")
         return f"eco: {text}"
 
     app = ZoraTextualApp(answer)

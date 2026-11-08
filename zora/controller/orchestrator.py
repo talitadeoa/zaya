@@ -138,6 +138,7 @@ class Orchestrator:
         self._listening = False
         self._voice_mode = bool(cfg.audio.continuous)
         self._pending_input = ""
+        self._stream_sink = None
         self._mic_muted = False
         self._continuous_hint_shown = False
         self._permission_active = False
@@ -250,6 +251,14 @@ class Orchestrator:
         finally:
             if close:
                 await self._shutdown()
+
+    async def answer_stream(self, text: str, sink) -> str:
+        """Como answer_once, mas envia tokens/eventos para um sink de UI."""
+        self._stream_sink = sink
+        try:
+            return await self.answer_once(text, speak=False, close=False)
+        finally:
+            self._stream_sink = None
 
     async def aclose(self) -> None:
         await self._shutdown()
@@ -1084,6 +1093,8 @@ class Orchestrator:
                         last_reasoning[part_id] = current
                         if current:
                             self.ui.reasoning(current)
+                            if self._stream_sink is not None:
+                                self._stream_sink.reasoning(current)
                     elif part.get("type") == "text" and not (
                         part.get("synthetic") or part.get("ignored")
                     ):
@@ -1098,6 +1109,8 @@ class Orchestrator:
                                     self.ui.begin_stream()
                                     wrote_stream = True
                                 self.ui.token(chunk)
+                                if self._stream_sink is not None:
+                                    self._stream_sink.token(chunk)
                             self._feed_speech(delta)
                     elif part.get("type") == "tool":
                         state = part.get("state") or {}
@@ -1114,11 +1127,15 @@ class Orchestrator:
                                 if not wrote_stream:
                                     label = TOOL_LABELS.get(tool, tool)
                                     self.ui.tool(label, detail)
+                                    if self._stream_sink is not None:
+                                        self._stream_sink.tool(label, detail)
                         if tstatus in {"completed", "error"} and self.cfg.interface.show_diffs:
                             diff = tool_diff(part)
                             if diff:
                                 filename, patch = diff
                                 self.ui.diff(filename, patch)
+                                if self._stream_sink is not None:
+                                    self._stream_sink.diff(filename, patch)
                 elif kind == "session.idle":
                     break
                 elif kind == "session.error":
@@ -1132,6 +1149,8 @@ class Orchestrator:
                     self.ui.begin_stream()
                     wrote_stream = True
                 self.ui.token(chunk)
+                if self._stream_sink is not None:
+                    self._stream_sink.token(chunk)
             if wrote_stream:
                 self.ui.end_stream()
 

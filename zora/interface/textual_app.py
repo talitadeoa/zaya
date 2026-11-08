@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Awaitable, Callable
 
 from rich.panel import Panel
+from rich.syntax import Syntax
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -67,6 +68,30 @@ class CommandPalette(ModalScreen[str | None]):
         self.dismiss(str(event.option.prompt))
 
 
+class TextualSink:
+    """Recebe tokens e eventos do orquestrador e atualiza a UI."""
+
+    def __init__(self, app: "ZoraTextualApp"):
+        self.app = app
+        self.buffer = ""
+
+    def token(self, text: str) -> None:
+        self.buffer += text
+        self.app.update_stream(self.buffer)
+
+    def reasoning(self, text: str) -> None:
+        snippet = " ".join((text or "").split())[-90:]
+        if snippet:
+            self.app.query_one("#status", Static).update(f"◐ {snippet}")
+
+    def tool(self, name: str, detail: str = "") -> None:
+        line = f"▸ {name} {detail}".strip()
+        self.app.query_one("#status", Static).update(line)
+
+    def diff(self, filename: str, patch: str) -> None:
+        self.app.write_diff(filename, patch)
+
+
 class ZoraTextualApp(App):
     BINDINGS = [
         Binding("f1", "command_palette", "Comandos"),
@@ -83,6 +108,11 @@ class ZoraTextualApp(App):
         border: round #a855f7;
         padding: 0 1;
     }
+    #stream {
+        height: auto;
+        max-height: 20;
+        padding: 0 1;
+    }
     #status {
         height: 1;
         color: #9ca3af;
@@ -96,7 +126,7 @@ class ZoraTextualApp(App):
 
     def __init__(
         self,
-        answer: Callable[[str], Awaitable[str]],
+        answer: Callable[[str, TextualSink], Awaitable[str]],
         cleanup: Callable[[], Awaitable[None]] | None = None,
         subtitle: str = "",
     ):
@@ -109,6 +139,7 @@ class ZoraTextualApp(App):
         yield Header(show_clock=True)
         yield Vertical(
             RichLog(id="chat", highlight=True, markup=True, wrap=True),
+            Static("", id="stream"),
             Static("● pronto", id="status"),
         )
         yield Input(placeholder="Digite uma mensagem ou /ajuda", id="input")
@@ -144,13 +175,19 @@ class ZoraTextualApp(App):
 
         self._write_user(text)
         status = self.query_one("#status", Static)
+        stream = self.query_one("#stream", Static)
+        stream.update("")
         status.update("◐ pensando…")
+        sink = TextualSink(self)
         try:
-            answer = await self._answer(text)
+            answer = await self._answer(text, sink)
         except Exception as exc:  # pragma: no cover - depende do backend
             answer = f"Erro: {exc}"
+        stream.update("")
         if answer:
             self._write_zora(answer)
+        elif sink.buffer:
+            self._write_zora(sink.buffer)
         status.update("● pronto")
 
     # --------------------------------------------------------------- palette
@@ -187,6 +224,30 @@ class ZoraTextualApp(App):
         self.query_one("#chat", RichLog).clear()
 
     # ------------------------------------------------------------------ helpers
+    def update_stream(self, text: str) -> None:
+        self.query_one("#stream", Static).update(
+            Panel(
+                Text(text),
+                title=Text("Zora:", style=f"bold {ACCENT}"),
+                title_align="left",
+                border_style=ACCENT,
+                padding=(0, 1),
+            )
+        )
+
+    def write_diff(self, filename: str, patch: str) -> None:
+        if not patch.strip():
+            return
+        self._log().write(
+            Panel(
+                Syntax(patch, "diff", theme="monokai", word_wrap=True),
+                title=f"diff · {filename}",
+                title_align="left",
+                border_style="green",
+                padding=(0, 1),
+            )
+        )
+
     def _log(self) -> RichLog:
         return self.query_one("#chat", RichLog)
 

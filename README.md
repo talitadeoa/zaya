@@ -366,9 +366,11 @@ e exibe os **diffs** das ferramentas de edição em caixas coloridas. Desative c
 zora --ui textual
 ```
 
-Layout com cabeçalho, chat, entrada e barra de status. Nesta fase a conversa é
-por texto (sem voz/streaming); o restante continua no modo terminal. Também dá
-para fixar com `ZORA_UI=textual` ou `ui = "textual"` em `[interface]`.
+Layout com cabeçalho, chat, entrada e barra de status. A resposta aparece em
+streaming, diffs de edição entram como caixas coloridas e o raciocínio aparece
+no status. A conversa ainda é por texto (sem voz); o restante continua no modo
+terminal. Também dá para fixar com `ZORA_UI=textual` ou `ui = "textual"` em
+`[interface]`.
 
 ## Arquitetura
 

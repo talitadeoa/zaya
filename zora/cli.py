@@ -207,8 +207,8 @@ async def _run_textual(cfg: Config, verbose: bool) -> None:
 
     orchestrator, store, index = _build_app(cfg, verbose, quiet=True)
 
-    async def answer(text: str) -> str:
-        return await orchestrator.answer_once(text, speak=False, close=False)
+    async def answer(text: str, sink) -> str:
+        return await orchestrator.answer_stream(text, sink)
 
     async def cleanup() -> None:
         await orchestrator.aclose()
