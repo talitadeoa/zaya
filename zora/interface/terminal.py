@@ -175,7 +175,9 @@ class TerminalUI:
             Panel(
                 escape(text),
                 title=_message_title("Talita", "cyan"),
+                title_align="left",
                 subtitle=Text("voz", style=MUTED) if voice else None,
+                subtitle_align="right",
                 border_style="cyan",
                 padding=(0, 1),
             )
@@ -197,7 +199,13 @@ class TerminalUI:
     def _render_stream_panel(self) -> Panel:
         text = "".join(self._stream_buffer)
         title = self._stream_title or _message_title("Zora", ACCENT)
-        return Panel(escape(text), title=title, border_style=ACCENT, padding=(0, 1))
+        return Panel(
+            escape(text),
+            title=title,
+            title_align="left",
+            border_style=ACCENT,
+            padding=(0, 1),
+        )
 
     def _start_live(self) -> None:
         with self._lock:
@@ -266,6 +274,7 @@ class TerminalUI:
                 Panel(
                     escape(text),
                     title=title or _message_title("Zora", ACCENT),
+                    title_align="left",
                     border_style=ACCENT,
                     padding=(0, 1),
                 )
@@ -275,7 +284,15 @@ class TerminalUI:
 
     def print_markdown(self, text: str, title: str | None = None) -> None:
         header = title or _message_title("Zora", ACCENT)
-        self._print(Panel(Markdown(text or ""), title=header, border_style=ACCENT, padding=(0, 1)))
+        self._print(
+            Panel(
+                Markdown(text or ""),
+                title=header,
+                title_align="left",
+                border_style=ACCENT,
+                padding=(0, 1),
+            )
+        )
 
     def proactive(self, text: str) -> None:
         self._print()
@@ -283,7 +300,9 @@ class TerminalUI:
             Panel(
                 escape(text),
                 title=_message_title("Zora", ACCENT),
+                title_align="left",
                 subtitle=Text("iniciativa", style=MUTED),
+                subtitle_align="right",
                 border_style=ACCENT,
                 padding=(0, 1),
             )
