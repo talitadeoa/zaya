@@ -121,6 +121,9 @@ class InterfaceConfig(BaseModel):
     steering: bool = True
     # Pede respostas diretas ao agente, reduzindo exploracao desnecessaria.
     concise: bool = True
+    # Mostrar raciocinio e diffs das ferramentas no terminal.
+    show_reasoning: bool = True
+    show_diffs: bool = True
     # Modo inicial: academica | carreira | assistente | conversa.
     default_mode: str = "assistente"
 
@@ -387,6 +390,8 @@ _BOOL_KEYS = {
     "ZORA_PROACTIVE_STARTUP_GREETING": ("proactive", "startup_greeting"),
     "ZORA_PROACTIVE_IDLE_CHECKIN": ("proactive", "idle_checkin"),
     "ZORA_PROACTIVE_REMINDERS": ("proactive", "reminders"),
+    "ZORA_UI_SHOW_REASONING": ("interface", "show_reasoning"),
+    "ZORA_UI_SHOW_DIFFS": ("interface", "show_diffs"),
     "ZORA_WHATSAPP_ENABLED": ("whatsapp", "enabled"),
     "ZORA_TELEGRAM_ENABLED": ("telegram", "enabled"),
     "ZORA_TELEGRAM_VOICE_REPLIES": ("telegram", "voice_replies"),
@@ -485,6 +490,8 @@ show_banner = true
 speak_tool_activity = false
 steering = true
 concise = true
+show_reasoning = true
+show_diffs = true
 default_mode = "assistente"     # academica | carreira | assistente | conversa
 
 [whatsapp]

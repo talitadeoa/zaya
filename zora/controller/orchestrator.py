@@ -54,6 +54,7 @@ from zora.opencode.events import (
     message_error,
     text_delta,
     tool_activity,
+    tool_diff,
 )
 from zora.secondbrain.index import SecondBrainIndex
 from zora.secondbrain.notes import NoteConflict, SecondBrain
@@ -967,6 +968,7 @@ class Orchestrator:
         started = time.monotonic()
         last_event_ts = started
         last_text: dict[str, str] = {}
+        last_reasoning: dict[str, str] = {}
         collected: list[str] = []
         seen_tools: set[str] = set()
         wrote_stream = False
@@ -1020,7 +1022,14 @@ class Orchestrator:
                     part = props.get("part") or {}
                     if ignore_message_id and str(part.get("messageID", "")) == ignore_message_id:
                         continue
-                    if part.get("type") == "text" and not (
+                    if part.get("type") == "reasoning" and self.cfg.interface.show_reasoning:
+                        part_id = part.get("id", "")
+                        previous = last_reasoning.get(part_id, "")
+                        _delta, current = text_delta(part, previous)
+                        last_reasoning[part_id] = current
+                        if current:
+                            self.ui.reasoning(current)
+                    elif part.get("type") == "text" and not (
                         part.get("synthetic") or part.get("ignored")
                     ):
                         part_id = part.get("id", "")
@@ -1050,6 +1059,11 @@ class Orchestrator:
                                 if not wrote_stream:
                                     label = TOOL_LABELS.get(tool, tool)
                                     self.ui.tool(label, detail)
+                        if tstatus in {"completed", "error"} and self.cfg.interface.show_diffs:
+                            diff = tool_diff(part)
+                            if diff:
+                                filename, patch = diff
+                                self.ui.diff(filename, patch)
                 elif kind == "session.idle":
                     break
                 elif kind == "session.error":

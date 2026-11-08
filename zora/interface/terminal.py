@@ -10,6 +10,7 @@ from rich.live import Live
 from rich.markdown import Markdown
 from rich.markup import escape
 from rich.panel import Panel
+from rich.syntax import Syntax
 from rich.table import Table
 from rich.text import Text
 
@@ -351,6 +352,26 @@ class TerminalUI:
     def tool(self, name: str, detail: str = "") -> None:
         detail_text = f" [white]{escape(detail)}[/]" if detail else ""
         self._print(f"  [blue]▸ {escape(name)}[/]{detail_text}")
+
+    def reasoning(self, text: str) -> None:
+        clean = " ".join((text or "").split())
+        if not clean:
+            return
+        self.set_status("◐ pensando…", clean[-110:])
+
+    def diff(self, filename: str, patch: str) -> None:
+        if not patch.strip():
+            return
+        self._print()
+        self._print(
+            Panel(
+                Syntax(patch, "diff", theme="monokai", word_wrap=True),
+                title=f"diff · {escape(filename)}",
+                title_align="left",
+                border_style="green",
+                padding=(0, 1),
+            )
+        )
 
     # ---------------------------------------------------------------- context
     def context_hits(self, hits) -> None:

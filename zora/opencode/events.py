@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import difflib
 import json
 from collections.abc import AsyncIterator
 from typing import Any
 
 TEXT_PART = "text"
 TOOL_PART = "tool"
+REASONING_PART = "reasoning"
+PATCH_PART = "patch"
 
 
 async def iter_sse_json(lines: AsyncIterator[str]) -> AsyncIterator[dict[str, Any]]:
@@ -90,6 +93,52 @@ def tool_activity(part: dict[str, Any]) -> tuple[str, str, str] | None:
         return part.get("callID", ""), tool, title or "concluido"
     if status == "error":
         return part.get("callID", ""), tool, f"erro: {state.get('error', '')}"
+    return None
+
+
+def tool_diff(part: dict[str, Any]) -> tuple[str, str] | None:
+    """Extrai (arquivo, diff) de uma ferramenta concluida, quando houver."""
+    if part.get("type") != TOOL_PART:
+        return None
+    state = part.get("state") or {}
+    if state.get("status") not in {"completed", "error"}:
+        return None
+    tool = str(part.get("tool") or "")
+    payload = state.get("input") or {}
+    metadata = state.get("metadata") or {}
+    filename = str(
+        payload.get("filePath")
+        or payload.get("path")
+        or payload.get("file")
+        or payload.get("filename")
+        or ""
+    )
+    if isinstance(metadata, dict):
+        for key in ("diff", "patch"):
+            value = metadata.get(key)
+            if isinstance(value, str) and value.strip():
+                return filename or "arquivo", value
+    for key in ("patch", "diff"):
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return filename or "arquivo", value
+    if tool in {"edit", "write", "patch"}:
+        old = payload.get("oldString")
+        new = payload.get("newString", payload.get("content"))
+        if isinstance(new, str) and new != old:
+            old_text = old if isinstance(old, str) else ""
+            name = filename or "arquivo"
+            patch = "\n".join(
+                difflib.unified_diff(
+                    old_text.splitlines(),
+                    new.splitlines(),
+                    fromfile=f"a/{name}",
+                    tofile=f"b/{name}",
+                    lineterm="",
+                )
+            )
+            if patch.strip():
+                return name, patch
     return None
 
 

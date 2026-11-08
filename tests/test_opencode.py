@@ -14,8 +14,43 @@ from zora.opencode.events import (
     message_error,
     text_delta,
     tool_activity,
+    tool_diff,
 )
 from zora.opencode.models import ModelRef
+
+
+def test_tool_diff_edit():
+    part = {
+        "type": "tool",
+        "tool": "edit",
+        "state": {
+            "status": "completed",
+            "input": {"filePath": "a.py", "oldString": "a\nb", "newString": "a\nc"},
+        },
+    }
+    result = tool_diff(part)
+    assert result is not None
+    name, patch = result
+    assert name == "a.py"
+    assert "-b" in patch
+    assert "+c" in patch
+
+
+def test_tool_diff_metadata():
+    part = {
+        "type": "tool",
+        "tool": "write",
+        "state": {
+            "status": "completed",
+            "input": {"filePath": "x"},
+            "metadata": {"diff": "--- a\n+++ b"},
+        },
+    }
+    assert tool_diff(part) == ("x", "--- a\n+++ b")
+
+
+def test_tool_diff_ignora_nao_ferramenta():
+    assert tool_diff({"type": "text"}) is None
 
 
 async def _lines():

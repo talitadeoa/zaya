@@ -329,6 +329,12 @@ sozinha por padrão**. Para ativar os avisos, use `ZORA_AGENDA_NOTIFY_PENDING=tr
 Configure `ZORA_AGENDA_ENV_FILE` apontando para o `.env` do projeto Agenda e
 ajuste a frequência em `ZORA_AGENDA_POLL_MINUTES` (padrão 30).
 
+### Pensamentos e diffs
+
+Durante a execução, a Zora mostra um resumo do **raciocínio** na linha de status
+e exibe os **diffs** das ferramentas de edição em caixas coloridas. Desative com
+`ZORA_UI_SHOW_REASONING=false` e/ou `ZORA_UI_SHOW_DIFFS=false`.
+
 ## Arquitetura
 
 ```
