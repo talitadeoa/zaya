@@ -101,10 +101,12 @@ def build_parser() -> argparse.ArgumentParser:
         item = browser_sub.add_parser(name)
         item.add_argument("url")
         item.add_argument("--headless", action="store_true")
+        item.add_argument("--headed", action="store_true")
     browser_shot = browser_sub.add_parser("screenshot")
     browser_shot.add_argument("url")
     browser_shot.add_argument("path")
     browser_shot.add_argument("--headless", action="store_true")
+    browser_shot.add_argument("--headed", action="store_true")
     browser_login = browser_sub.add_parser("login", help="abre o navegador para login persistente")
     browser_login.add_argument("url")
 
@@ -345,6 +347,8 @@ async def _browser_command(cfg: Config, args, ui: TerminalUI) -> None:
         return
     headless = cfg.browser.headless
     if args.browser_command == "login":
+        headless = False
+    elif getattr(args, "headed", False):
         headless = False
     elif getattr(args, "headless", False):
         headless = True
