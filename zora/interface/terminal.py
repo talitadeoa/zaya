@@ -353,6 +353,53 @@ class TerminalUI:
         detail_text = f" [white]{escape(detail)}[/]" if detail else ""
         self._print(f"  [blue]▸ {escape(name)}[/]{detail_text}")
 
+    def dashboard(self, agenda_metas: list, goals: list) -> None:
+        if not agenda_metas and not goals:
+            self.warning("nenhuma meta configurada")
+            return
+        self._print()
+        if agenda_metas:
+            table = Table(
+                title="Metas da Agenda",
+                border_style="cyan",
+                header_style="bold cyan",
+            )
+            table.add_column("Período", style="cyan", no_wrap=True)
+            table.add_column("Meta")
+            for row in agenda_metas:
+                table.add_row(
+                    escape(str(row.get("period") or "—")),
+                    escape(str(row.get("text") or "")),
+                )
+            self._print(
+                Panel(
+                    table,
+                    title=Text("Metas da Agenda", style="bold cyan"),
+                    title_align="left",
+                    border_style="cyan",
+                    padding=(0, 1),
+                )
+            )
+        if goals:
+            table = Table(
+                title="Metas pessoais",
+                border_style=ACCENT,
+                header_style=f"bold {ACCENT}",
+            )
+            table.add_column("Meta", style="bold")
+            table.add_column("Próximo passo", style=MUTED)
+            for goal in goals:
+                table.add_row(escape(goal.label), escape(goal.next_step or "—"))
+            self._print(
+                Panel(
+                    table,
+                    title=Text("Metas pessoais", style=f"bold {ACCENT}"),
+                    title_align="left",
+                    border_style=ACCENT,
+                    padding=(0, 1),
+                )
+            )
+
     def reasoning(self, text: str) -> None:
         clean = " ".join((text or "").split())
         if not clean:
@@ -493,7 +540,8 @@ class TerminalUI:
             ("/novo", "inicia nova conversa e sessão no OpenCode"),
             ("/modelo <provider/model>", "troca o modelo da sessão"),
             ("/modo [nome]", "lista ou troca o modo (academica, carreira, assistente, conversa)"),
-            ("/metas", "lista as metas pessoais configuradas"),
+            ("/metas", "painel visual com as metas da Agenda e pessoais"),
+            ("/painel", "mesmo painel de metas"),
             ("/tarefas [sync]", "lista/sincroniza as tarefas de longo prazo"),
             ("/voz on|off|edge|say|none", "controla a voz"),
             ("/preferencia <texto>", "aprende uma preferência (taste)"),

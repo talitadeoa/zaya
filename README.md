@@ -105,7 +105,8 @@ smoke tests.
 | `/novo` | nova conversa + nova sessão OpenCode |
 | `/modelo <provider/model>` | troca o modelo |
 | `/modo [nome]` | lista ou troca o modo ativo |
-| `/metas` | lista as metas pessoais configuradas |
+| `/metas` | painel visual com as metas da Agenda e pessoais |
+| `/painel` | mesmo painel de metas |
 | `/tarefas [sync]` | lista/sincroniza as tarefas de longo prazo |
 | `/voz on\|off\|edge\|say\|none` | controla a voz |
 | `/continuo on\|off` | escuta contínua sem Enter |

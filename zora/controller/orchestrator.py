@@ -1259,8 +1259,8 @@ class Orchestrator:
             await self._switch_model(argument)
         elif command in {"/modo", "/perfil", "/persona"}:
             self._switch_mode(argument)
-        elif command in {"/metas", "/objetivos"}:
-            self._show_goals()
+        elif command in {"/metas", "/objetivos", "/painel"}:
+            await self._show_dashboard()
         elif command in {"/tarefas", "/tarefa"}:
             await self._handle_tasks(argument)
         elif command == "/voz":
@@ -1368,15 +1368,14 @@ class Orchestrator:
         self.store.set_meta("model", model.slug)
         self.ui.success(f"modelo da próxima mensagem: {model.slug}")
 
-    def _show_goals(self) -> None:
-        goals = self.goals.all()
-        if not goals:
-            self.ui.warning("nenhuma meta configurada em ~/.config/zora/goals.json")
-            return
-        self.ui.info(f"{len(goals)} meta(s) configurada(s):")
-        for goal in goals:
-            detail = f" — {goal.next_step}" if goal.next_step else ""
-            self.ui.info(f"  {goal.label}{detail}")
+    async def _show_dashboard(self) -> None:
+        agenda_metas: list[dict[str, Any]] = []
+        if self.cfg.agenda.enabled and self.agenda.enabled:
+            try:
+                agenda_metas = await self.agenda.metas()
+            except AgendaError as exc:
+                self.logger.warning("metas da agenda: %s", exc)
+        self.ui.dashboard(agenda_metas, self.goals.all())
 
     def _find_task(self, query: str) -> Task | None:
         query = query.strip().lower()
