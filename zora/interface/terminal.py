@@ -362,38 +362,38 @@ class TerminalUI:
         detail_text = f" [white]{escape(detail)}[/]" if detail else ""
         self._print(f"  [blue]▸ {escape(name)}[/]{detail_text}")
 
-    def dashboard(self, agenda_metas: list, goals: list) -> None:
-        if not agenda_metas and not goals:
+    def dashboard(self, focus, goals: list, moon=None) -> None:
+        if not focus and not goals:
             self.warning("nenhuma meta configurada")
             return
         self._print()
         for line, color in zip(_ASCII_METAS, _ASCII_COLORS, strict=False):
             self._print(Text(line, style=f"bold {color}"))
-        if agenda_metas:
-            table = Table(
-                title="Metas da Agenda",
-                border_style="cyan",
-                header_style="bold cyan",
-            )
-            table.add_column("Período", style="cyan", no_wrap=True)
-            table.add_column("Meta")
-            for row in agenda_metas:
-                table.add_row(
-                    escape(str(row.get("period") or "—")),
-                    escape(str(row.get("text") or "")),
-                )
+        if focus:
+            from zora.focus import period_label
+
+            body = Text()
+            if focus.label:
+                body.append(focus.label + "\n", style="bold")
+            for goal in focus.goals:
+                body.append(f"• {goal}\n")
+            body.append(f"\n{focus.start} → {focus.end}", style=MUTED)
             self._print(
                 Panel(
-                    table,
-                    title=Text("Metas da Agenda", style="bold cyan"),
+                    body,
+                    title=Text(
+                        f"Foco {period_label(focus.period)}", style="bold cyan"
+                    ),
                     title_align="left",
                     border_style="cyan",
                     padding=(0, 1),
                 )
             )
+        else:
+            self.info("nenhum foco definido; use /foco definir semanal <texto>")
         if goals:
             table = Table(
-                title="Metas pessoais",
+                title="Metas de longo prazo",
                 border_style=ACCENT,
                 header_style=f"bold {ACCENT}",
             )
@@ -404,11 +404,16 @@ class TerminalUI:
             self._print(
                 Panel(
                     table,
-                    title=Text("Metas pessoais", style=f"bold {ACCENT}"),
+                    title=Text("Metas de longo prazo", style=f"bold {ACCENT}"),
                     title_align="left",
                     border_style=ACCENT,
                     padding=(0, 1),
                 )
+            )
+        if moon:
+            _key, name, illumination = moon
+            self._print(
+                Text(f"Lua: {name} · {illumination * 100:.0f}% iluminada", style=MUTED)
             )
 
     def reasoning(self, text: str) -> None:
@@ -551,8 +556,9 @@ class TerminalUI:
             ("/novo", "inicia nova conversa e sessão no OpenCode"),
             ("/modelo <provider/model>", "troca o modelo da sessão"),
             ("/modo [nome]", "lista ou troca o modo (academica, carreira, assistente, conversa)"),
-            ("/metas", "painel visual com as metas da Agenda e pessoais"),
+            ("/metas", "painel visual com foco atual e metas de longo prazo"),
             ("/painel", "mesmo painel de metas"),
+            ("/foco [definir|limpar]", "define/limpa o foco do ciclo"),
             ("/tarefas [sync]", "lista/sincroniza as tarefas de longo prazo"),
             ("/voz on|off|edge|say|none", "controla a voz"),
             ("/preferencia <texto>", "aprende uma preferência (taste)"),

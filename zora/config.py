@@ -160,6 +160,15 @@ class WhatsAppConfig(BaseModel):
     webhook_port: int = 8765
 
 
+class FocusConfig(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    enabled: bool = True
+    path: str = "~/.config/zora/focus.json"
+    # Perguntar sobre o foco nas fases principais da lua.
+    prompt_on_moon: bool = True
+
+
 class BrowserConfig(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
@@ -211,6 +220,7 @@ class Config(BaseModel):
     whatsapp: WhatsAppConfig = Field(default_factory=WhatsAppConfig)
     telegram: TelegramConfig = Field(default_factory=TelegramConfig)
     agenda: AgendaConfig = Field(default_factory=AgendaConfig)
+    focus: FocusConfig = Field(default_factory=FocusConfig)
     browser: BrowserConfig = Field(default_factory=BrowserConfig)
     data_dir: str = ""
 
@@ -373,6 +383,7 @@ _ENV_MAP: dict[str, tuple[str, str]] = {
     "ZORA_AGENDA_MAX_ITEMS": ("agenda", "max_items"),
     "ZORA_AGENDA_TASKS_POLL_SECONDS": ("agenda", "tasks_poll_seconds"),
     "ZORA_AGENDA_NOTIFY_PENDING": ("agenda", "notify_pending"),
+    "ZORA_FOCUS_PATH": ("focus", "path"),
     "ZORA_BROWSER_PROFILE_DIR": ("browser", "profile_dir"),
     "ZORA_BROWSER_TIMEOUT_MS": ("browser", "timeout_ms"),
 }
@@ -401,6 +412,8 @@ _BOOL_KEYS = {
     "ZORA_AGENDA_ENABLED": ("agenda", "enabled"),
     "ZORA_BROWSER_ENABLED": ("browser", "enabled"),
     "ZORA_BROWSER_HEADLESS": ("browser", "headless"),
+    "ZORA_FOCUS_ENABLED": ("focus", "enabled"),
+    "ZORA_FOCUS_PROMPT_ON_MOON": ("focus", "prompt_on_moon"),
 }
 
 
@@ -512,6 +525,11 @@ enabled = true
 profile_dir = ""          # vazio => <data_dir>/browser
 headless = true
 timeout_ms = 30000
+
+[focus]
+enabled = true
+path = "~/.config/zora/focus.json"
+prompt_on_moon = true
 
 [agenda]
 enabled = true

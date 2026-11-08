@@ -22,6 +22,7 @@ from zora.agenda.client import AgendaClient, AgendaError
 from zora.audio.recorder import AudioError, ContinuousListener, Recorder
 from zora.config import Config
 from zora.controller.goals import GoalTracker, goal_block
+from zora.focus import KEY_PHASES, RITUALS, FocusStore, moon_phase, period_label
 from zora.controller.intents import (
     RegisterIntent,
     format_context,
@@ -149,6 +150,7 @@ class Orchestrator:
         self._task_page_updated_at: str | None = None
         self._agenda_pending_names: list[str] = []
         self.goals = GoalTracker()
+        self.focus = FocusStore(cfg.focus.path)
         self.tasks = TaskStore()
         self.agenda = AgendaClient(cfg.agenda)
         self._agenda_next_check = 0.0
@@ -300,6 +302,11 @@ class Orchestrator:
 
         if self.cfg.proactive.enabled:
             self._proactive_task = asyncio.create_task(self._proactive_loop(greet=False))
+
+        try:
+            await self._check_focus(datetime.now().astimezone())
+        except Exception as exc:  # pragma: no cover
+            self.logger.warning("falha ao checar foco: %s", exc)
 
         if not (self.cfg.audio.continuous and self._voice_available()):
             self.ui.hint(
@@ -1292,6 +1299,8 @@ class Orchestrator:
             self._switch_mode(argument)
         elif command in {"/metas", "/objetivos", "/painel"}:
             await self._show_dashboard()
+        elif command in {"/foco", "/focos"}:
+            await self._handle_focus(argument)
         elif command in {"/tarefas", "/tarefa"}:
             await self._handle_tasks(argument)
         elif command == "/voz":
@@ -1400,13 +1409,71 @@ class Orchestrator:
         self.ui.success(f"modelo da próxima mensagem: {model.slug}")
 
     async def _show_dashboard(self) -> None:
-        agenda_metas: list[dict[str, Any]] = []
-        if self.cfg.agenda.enabled and self.agenda.enabled:
-            try:
-                agenda_metas = await self.agenda.metas()
-            except AgendaError as exc:
-                self.logger.warning("metas da agenda: %s", exc)
-        self.ui.dashboard(agenda_metas, self.goals.all())
+        self.ui.dashboard(self.focus.current, self.goals.all(), moon_phase())
+
+    async def _handle_focus(self, argument: str) -> None:
+        parts = argument.strip().split(maxsplit=2)
+        sub = parts[0].lower() if parts else ""
+        if sub in {"definir", "novo", "set"}:
+            if len(parts) < 3:
+                self.ui.warning("uso: /foco definir semanal|mensal|trimestral <texto>")
+                return
+            period_raw = parts[1].lower()
+            period = {
+                "semanal": "week",
+                "semana": "week",
+                "mensal": "month",
+                "mes": "month",
+                "mês": "month",
+                "trimestral": "quarter",
+                "trimestre": "quarter",
+            }.get(period_raw)
+            if period is None:
+                self.ui.warning("período inválido; use semanal, mensal ou trimestral")
+                return
+            text = parts[2].strip()
+            goals = [part.strip() for part in re.split(r"[;,]", text) if part.strip()]
+            if len(goals) <= 1:
+                goals = []
+            focus = self.focus.set(period, text, goals)
+            self.ui.success(f"foco {period_label(focus.period)} definido até {focus.end}")
+            await self._show_dashboard()
+            return
+        if sub in {"limpar", "clear", "remover"}:
+            self.focus.clear()
+            self.ui.success("foco limpo")
+            return
+        focus = self.focus.current
+        if focus is None:
+            self.ui.info("nenhum foco definido; use /foco definir semanal <texto>")
+        else:
+            self.ui.info(
+                f"foco {period_label(focus.period)}: {focus.label} "
+                f"({focus.start} → {focus.end})"
+            )
+            for goal in focus.goals:
+                self.ui.info(f"  • {goal}")
+        _key, name, illumination = moon_phase()
+        self.ui.info(f"lua: {name} · {illumination * 100:.0f}%")
+
+    async def _check_focus(self, now: datetime) -> None:
+        if not self.cfg.focus.enabled:
+            return
+        key, name, _illumination = moon_phase(now)
+        if self.cfg.focus.prompt_on_moon and key in KEY_PHASES:
+            today = now.date().isoformat()
+            if self.focus.last_moon_prompt() != today:
+                self.focus.set_last_moon_prompt(today)
+                ritual = RITUALS[key][1]
+                await self._say_proactive(
+                    f"Hoje é {name}. Ritual do ciclo: {ritual}. "
+                    "Quer definir ou ajustar o foco?"
+                )
+                return
+        if self.focus.is_expired(now):
+            await self._say_proactive(
+                "Seu foco atual venceu. Quer definir um novo foco para o próximo ciclo?"
+            )
 
     def _find_task(self, query: str) -> Task | None:
         query = query.strip().lower()
@@ -1616,6 +1683,7 @@ class Orchestrator:
                     await self._fire_due_reminders()
                 await self._check_agenda(now)
                 await self._check_task_page(now)
+                await self._check_focus(now)
                 if cfg.idle_checkin:
                     idle_for = (time.monotonic() - self._last_activity) / 60.0
                     if idle_for >= cfg.idle_minutes and self._can_idle_checkin(now):

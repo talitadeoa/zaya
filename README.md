@@ -106,8 +106,9 @@ smoke tests.
 | `/novo` | nova conversa + nova sessão OpenCode |
 | `/modelo <provider/model>` | troca o modelo |
 | `/modo [nome]` | lista ou troca o modo ativo |
-| `/metas` | painel visual com as metas da Agenda e pessoais |
+| `/metas` | painel com foco atual e metas de longo prazo |
 | `/painel` | mesmo painel de metas |
+| `/foco [definir\\|limpar]` | define/limpa o foco do ciclo |
 | `/tarefas [sync]` | lista/sincroniza as tarefas de longo prazo |
 | `/voz on\|off\|edge\|say\|none` | controla a voz |
 | `/continuo on\|off` | escuta contínua sem Enter |
@@ -318,11 +319,18 @@ quiser. Para checagem automática, defina `ZORA_AGENDA_TASKS_POLL_SECONDS=30`
 (compara o `updated_at` e só busca o conteúdo quando muda). O estado fica em
 `~/.local/share/zora/tasks.json` (fora do repositório).
 
-### Metas pessoais
+### Metas e focos
 
-A Zora detecta quando a conversa toca em metas configuradas em
-`~/.config/zora/goals.json` e prioriza o assunto no prompt, sugerindo o próximo
-passo. Use `/metas` para listar. O arquivo é local e não vai para o repositório.
+O painel (`/metas` ou `/painel`) mostra o **foco atual** e as **metas de longo
+prazo** (`~/.config/zora/goals.json`). As metas da Agenda não são duplicadas.
+
+- `/foco definir semanal <texto>` (ou `mensal` / `trimestral`)
+- `/foco limpar`
+- O foco fica em `~/.config/zora/focus.json`.
+
+Nas fases principais da lua (nova, quarto crescente, cheia e quarto minguante),
+a Zora pergunta no início se você quer definir ou ajustar o foco, com um ritual
+para a fase.
 
 ### Agenda proativa
 
