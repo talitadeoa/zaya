@@ -185,7 +185,7 @@ class ZoraTextualApp(App):
         self._cleanup = cleanup
         self._subtitle = subtitle
         self._voice = voice
-        self._voice_replies = bool(voice is not None and voice.tts.enabled)
+        self._voice_replies = False
         self._continuous = False
         self._listener = None
         self._listen_task: asyncio.Task | None = None
@@ -360,7 +360,8 @@ class ZoraTextualApp(App):
                     self._speak_and_resume(answer, listener), exclusive=False
                 )
             else:
-                status.update("● pronto")
+                self._status_base = ""
+                status.update("...")
         finally:
             if not delegated:
                 self._turn_running = False
