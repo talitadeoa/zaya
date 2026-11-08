@@ -135,6 +135,10 @@ class ZoraTextualApp(App):
     #chat {
         border: round #D644FB;
         padding: 0 1;
+        scrollbar-size-vertical: 1;
+        scrollbar-size-horizontal: 0;
+        scrollbar-color: #79DCFD;
+        scrollbar-background: #140a24;
     }
     #stream {
         height: auto;
@@ -172,7 +176,7 @@ class ZoraTextualApp(App):
         self._turn_running = False
 
     def compose(self) -> ComposeResult:
-        yield Header(show_clock=True)
+        yield Header(show_clock=False)
         yield Vertical(
             RichLog(id="chat", highlight=True, markup=True, wrap=True),
             Static("", id="stream"),
