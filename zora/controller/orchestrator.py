@@ -121,6 +121,7 @@ class Orchestrator:
         self._recording = False
         self._listening = False
         self._mic_muted = False
+        self._continuous_hint_shown = False
         self._permission_active = False
         self._listener: ContinuousListener | None = None
         self._speaking_event = asyncio.Event()
@@ -268,13 +269,7 @@ class Orchestrator:
         if self.cfg.proactive.enabled:
             self._proactive_task = asyncio.create_task(self._proactive_loop(greet=False))
 
-        if self.cfg.audio.continuous and self._voice_available():
-            self.ui.hint(
-                "Escuta contínua: fale à vontade · [M] pausa/retoma o microfone · "
-                "[Esc] interrompe a fala · [T] volta ao texto · "
-                "diga 'parar' para voltar ao texto · 'sair' encerra · Ctrl+C pausa"
-            )
-        else:
+        if not (self.cfg.audio.continuous and self._voice_available()):
             self.ui.hint("Enter grava por voz · digite para texto · /ajuda · Ctrl+C interrompe")
 
         try:
@@ -413,11 +408,12 @@ class Orchestrator:
             daemon=True,
         )
         monitor.start()
-        self.ui.hint(
-            "Escuta contínua ativa: fale à vontade · [M] pausa/retoma o microfone · "
-            "[Esc] interrompe a fala · [T] volta ao texto · diga 'parar' para o texto · "
-            "'sair' encerra"
-        )
+        if not self._continuous_hint_shown:
+            self.ui.hint(
+                "Escuta contínua: fale à vontade · [M] mudo · [Esc] interrompe · "
+                "[T] texto · 'sair' encerra"
+            )
+            self._continuous_hint_shown = True
         self.ui.set_status("● ouvindo…")
         partial_task: asyncio.Task | None = None
         last_partial_at = 0.0
