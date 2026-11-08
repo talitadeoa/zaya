@@ -27,6 +27,15 @@ _ASCII_ART = [
 ]
 _ASCII_COLORS = ["magenta", "bright_magenta", "purple", "bright_blue", "cyan", "bright_cyan"]
 
+_ASCII_METAS = [
+    " ███╗   ███╗███████╗████████╗ █████╗ ███████╗",
+    " ████╗ ████║██╔════╝╚══██╔══╝██╔══██╗██╔════╝",
+    " ██╔████╔██║█████╗     ██║   ███████║███████╗",
+    " ██║╚██╔╝██║██╔══╝     ██║   ██╔══██║╚════██║",
+    " ██║ ╚═╝ ██║███████╗   ██║   ██║  ██║███████║",
+    " ╚═╝     ╚═╝╚══════╝   ╚═╝   ╚═╝  ╚═╝╚══════╝",
+]
+
 
 def _message_title(name: str, color: str) -> Text:
     return Text(f"{name}:", style=f"bold {color}")
@@ -358,6 +367,8 @@ class TerminalUI:
             self.warning("nenhuma meta configurada")
             return
         self._print()
+        for line, color in zip(_ASCII_METAS, _ASCII_COLORS, strict=False):
+            self._print(Text(line, style=f"bold {color}"))
         if agenda_metas:
             table = Table(
                 title="Metas da Agenda",
