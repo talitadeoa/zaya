@@ -1605,6 +1605,9 @@ class Orchestrator:
             )
         else:
             message = "Novas tarefas na agenda: " + ", ".join(shown) + "."
+        if not cfg.notify_pending:
+            self.logger.debug("agenda: %s", message)
+            return
         await self._say_proactive(message)
 
     async def _check_task_page(self, now: datetime) -> None:
@@ -1704,13 +1707,13 @@ class Orchestrator:
             "Se quiser, posso resumir o que fizemos até agora.",
             "Quer retomar algum projeto ou revisar suas metas?",
             "Estou disponível se quiser pensar em algo junto.",
-            "Quer que eu dê uma olhada na agenda de hoje?",
-            "Como está seu ânimo agora? Posso ajudar a organizar o próximo passo.",
-            "Se quiser, eu listo o que ainda falta na agenda.",
+            "Como está seu ânimo agora?",
+            "Quer só conversar um pouco?",
             "Posso te ajudar a destravar alguma coisa?",
-            "Quer só conversar um pouco ou prefere avançar em algo prático?",
-            "Estou aqui. O que está ocupando sua cabeça agora?",
-            "Quer que eu resuma as pendências e a gente escolha uma coisa só?",
+            "O que está ocupando sua cabeça agora?",
+            "Quer um café e uma pausa?",
+            "Tô por aqui, sem pressa.",
+            "Como foi seu dia até agora?",
         ]
         choices = [option for option in options if option != self._last_idle_message]
         message = random.choice(choices or options)
@@ -1721,8 +1724,6 @@ class Orchestrator:
         now = datetime.now().astimezone()
         hora = now.strftime("%H:%M")
         pending = self.store.pending_reminders()
-        agenda = ", ".join(self._agenda_pending_names[:5]) or "nenhuma"
-        metas = ", ".join(goal.label for goal in self.goals.all()) or "nenhuma"
         last = self._last_idle_message or "(nenhuma)"
         if greeting:
             instruction = (
@@ -1738,11 +1739,8 @@ class Orchestrator:
             f"Contexto: agora são {hora} ({greeting_for(now)}). "
             f"Modo ativo: {self.persona.name}. "
             f"Lembretes pendentes: {len(pending)}. "
-            f"Tarefas pendentes na agenda: {agenda}. "
-            f"Metas: {metas}. "
             f"Última mensagem de iniciativa: {last}.\n\n"
-            "Não fale sobre tarefas ou metas a menos que haja algo novo, urgente "
-            "ou diretamente ligado ao momento; evite repetir pendências.\n\n"
+            "Não fale sobre tarefas, agenda ou metas; foque em presença e conversa.\n\n"
             f"{instruction} Responda APENAS com a frase, em português do Brasil, "
             "com no máximo 25 palavras. Não use listas, emojis ou aspas. Não diga "
             "que é uma IA e não repita a última mensagem. Não precisa usar o nome "

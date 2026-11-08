@@ -324,9 +324,10 @@ passo. Use `/metas` para listar. O arquivo é local e não vai para o repositór
 
 ### Agenda proativa
 
-A Zora lê as tarefas do dia na Agenda (mesma base Supabase) e avisa quando há
-pendências novas. Configure `ZORA_AGENDA_ENV_FILE` apontando para o `.env` do
-projeto Agenda e ajuste a frequência em `ZORA_AGENDA_POLL_MINUTES` (padrão 30).
+A Zora lê as tarefas do dia na Agenda (mesma base Supabase), mas **não avisa
+sozinha por padrão**. Para ativar os avisos, use `ZORA_AGENDA_NOTIFY_PENDING=true`.
+Configure `ZORA_AGENDA_ENV_FILE` apontando para o `.env` do projeto Agenda e
+ajuste a frequência em `ZORA_AGENDA_POLL_MINUTES` (padrão 30).
 
 ## Arquitetura
 

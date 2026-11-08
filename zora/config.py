@@ -171,6 +171,8 @@ class AgendaConfig(BaseModel):
     env_file: str = "~/agenda-git/agenda/.env"
     poll_minutes: float = 30.0
     max_items: int = 5
+    # Avisar proativamente sobre tarefas pendentes do dia.
+    notify_pending: bool = False
     # Checagem leve da pagina "tarefas pra zora" (detecta updated_at).
     tasks_poll_seconds: float = 30.0
 
@@ -361,6 +363,7 @@ _ENV_MAP: dict[str, tuple[str, str]] = {
     "ZORA_AGENDA_POLL_MINUTES": ("agenda", "poll_minutes"),
     "ZORA_AGENDA_MAX_ITEMS": ("agenda", "max_items"),
     "ZORA_AGENDA_TASKS_POLL_SECONDS": ("agenda", "tasks_poll_seconds"),
+    "ZORA_AGENDA_NOTIFY_PENDING": ("agenda", "notify_pending"),
     "ZORA_BROWSER_PROFILE_DIR": ("browser", "profile_dir"),
     "ZORA_BROWSER_TIMEOUT_MS": ("browser", "timeout_ms"),
 }
@@ -498,6 +501,7 @@ enabled = true
 env_file = "~/agenda-git/agenda/.env"
 poll_minutes = 30
 max_items = 5
+notify_pending = false
 tasks_poll_seconds = 30
 
 [telegram]
