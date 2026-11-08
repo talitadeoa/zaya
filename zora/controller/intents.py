@@ -31,10 +31,9 @@ TITLE_RE = re.compile(
 )
 
 CONTEXT_KEYWORDS = re.compile(
-    r"\b(projeto|projetos|decidim\w*|decis\w+|anterior\w*|lembr\w+|mem[óo]ria|"
+    r"\b(projeto[s]?|decidim\w*|decis\w+|lembr\w+|mem[óo]ria|"
     r"second\s*brain|nota[s]?|ideia[s]?|reuni[ãa]o|reuni[õo]es|aprendi\w*|"
-    r"continu\w+|aquele|aquela|hist[óo]rico|contexto|documentad\w+|registrad\w+|"
-    r"j[áa]\s+falamos|falamos)\b",
+    r"hist[óo]rico|j[áa]\s+falamos|falamos\s+sobre)\b",
     re.IGNORECASE,
 )
 

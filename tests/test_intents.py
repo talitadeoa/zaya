@@ -62,6 +62,8 @@ def test_context_keywords():
     assert needs_second_brain_context("continue aquele projeto de automação")
     assert needs_second_brain_context("o que decidimos sobre o deploy?")
     assert not needs_second_brain_context("escreva uma função fibonacci em python")
+    assert not needs_second_brain_context("se for texto continua por texto")
+    assert needs_second_brain_context("lembra da decisão sobre o CEP?")
 
 
 def test_derive_title_and_format_context():
