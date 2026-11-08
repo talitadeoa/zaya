@@ -79,7 +79,7 @@ zora
 - Diga **"sair"** para encerrar.
 - A transcrição é enviada **direto**, sem pedido de confirmação
   (`stt.confirm_transcript = false`).
-- **Enter** envia o texto digitado; com o campo vazio, grava uma instrução por voz (push-to-talk).
+- **Enter** envia o texto digitado; com o campo vazio, volta para a escuta contínua por voz.
 - Digitar texto envia a instrução diretamente.
 - **Ctrl+C** interrompe a execução atual ou pausa a escuta contínua.
 

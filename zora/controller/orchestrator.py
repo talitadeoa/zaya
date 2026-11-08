@@ -292,7 +292,9 @@ class Orchestrator:
             self._proactive_task = asyncio.create_task(self._proactive_loop(greet=False))
 
         if not (self.cfg.audio.continuous and self._voice_available()):
-            self.ui.hint("Enter grava por voz · digite para texto · /ajuda · Ctrl+C interrompe")
+            self.ui.hint(
+                "Enter vazio volta à escuta contínua · digite para texto · /ajuda · Ctrl+C interrompe"
+            )
 
         try:
             await self._loop()
@@ -376,6 +378,9 @@ class Orchestrator:
             self._mark_activity()
             text = text.strip()
             if not text:
+                if self._voice_available():
+                    self.cfg.audio.continuous = True
+                    self.ui.info("voltando para a escuta contínua…")
                 continue
 
             if text.startswith("/"):
@@ -664,9 +669,7 @@ class Orchestrator:
 
     async def _read_user_input(self) -> str | None:
         raw = await asyncio.to_thread(self.ui.prompt, "Você")
-        if raw.strip():
-            return raw.strip()
-        return await self._voice_input()
+        return raw.strip()
 
     def _voice_available(self) -> bool:
         if self._voice_ok is None:
