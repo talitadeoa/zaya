@@ -296,6 +296,7 @@ class ZoraTextualApp(App):
         listener = self._listener
         if listener is not None and self._continuous:
             listener.pause()
+        delegated = False
         try:
             self._write_user(text)
             status = self.query_one("#status", Static)
@@ -314,11 +315,27 @@ class ZoraTextualApp(App):
                 self._write_zora(sink.buffer)
             if answer and self._voice_replies and self._voice is not None:
                 status.update("▶ falando…")
-                try:
-                    await self._voice.speak_text(answer)
-                except Exception:
-                    pass
-            status.update("● pronto")
+                delegated = True
+                self.run_worker(
+                    self._speak_and_resume(answer, listener), exclusive=False
+                )
+            else:
+                status.update("● pronto")
+        finally:
+            if (
+                not delegated
+                and listener is not None
+                and self._continuous
+                and listener is self._listener
+            ):
+                listener.resume()
+                self._set_status("● ouvindo…")
+
+    async def _speak_and_resume(self, answer: str, listener) -> None:
+        try:
+            await self._voice.speak_text(answer)
+        except Exception:
+            pass
         finally:
             if (
                 listener is not None
@@ -327,6 +344,8 @@ class ZoraTextualApp(App):
             ):
                 listener.resume()
                 self._set_status("● ouvindo…")
+            else:
+                self._set_status("● pronto")
 
     async def action_push_to_talk(self) -> None:
         if self._voice is None:
