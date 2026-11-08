@@ -7,7 +7,6 @@ import time
 from datetime import datetime, timedelta
 from typing import Any, Awaitable, Callable
 
-from rich import box
 from rich.markup import escape
 from rich.panel import Panel
 from rich.syntax import Syntax
@@ -55,7 +54,7 @@ class CommandPalette(ModalScreen[str | None]):
         width: 64;
         height: auto;
         max-height: 20;
-        border: solid #D644FB;
+        border: round #D644FB;
         background: #140a24;
         padding: 1;
     }
@@ -139,7 +138,7 @@ class ZoraTextualApp(App):
         color: #e5e7eb;
     }
     #chat {
-        border: solid #D644FB;
+        border: round #D644FB;
         padding: 0 1;
         scrollbar-size-vertical: 1;
         scrollbar-size-horizontal: 0;
@@ -157,7 +156,7 @@ class ZoraTextualApp(App):
         padding: 0 1;
     }
     #input {
-        border: solid #79DCFD;
+        border: round #79DCFD;
         height: 5;
         margin-bottom: 1;
     }
@@ -231,7 +230,6 @@ class ZoraTextualApp(App):
         self._log().write(
             Panel(
                 body,
-                box=box.SQUARE,
                 title=Text(f"Foco {period_label(focus.period)}", style=f"bold {CYAN}"),
                 title_align="left",
                 border_style=CYAN,
@@ -256,7 +254,6 @@ class ZoraTextualApp(App):
         self._log().write(
             Panel(
                 table,
-                box=box.SQUARE,
                 title=Text("Metas de longo prazo", style=f"bold {ACCENT}"),
                 title_align="left",
                 border_style=ACCENT,
@@ -289,7 +286,6 @@ class ZoraTextualApp(App):
         self._log().write(
             Panel(
                 body,
-                box=box.SQUARE,
                 title=Text("Lua", style=f"bold {LILAC}"),
                 title_align="left",
                 border_style=CYAN,
@@ -584,7 +580,6 @@ class ZoraTextualApp(App):
         self._log().write(
             Panel(
                 Syntax(patch, "diff", theme="monokai", word_wrap=True),
-                box=box.SQUARE,
                 title=f"diff · {filename}",
                 title_align="left",
                 border_style=MINT,
@@ -599,7 +594,6 @@ class ZoraTextualApp(App):
         self._log().write(
             Panel(
                 Text(text),
-                box=box.SQUARE,
                 title=Text("Talita:", style=f"bold {CYAN}"),
                 title_align="left",
                 border_style=CYAN,
@@ -611,7 +605,6 @@ class ZoraTextualApp(App):
         self._log().write(
             Panel(
                 Text(text),
-                box=box.SQUARE,
                 title=Text("Zora:", style=f"bold {ACCENT}"),
                 title_align="left",
                 border_style=ACCENT,
