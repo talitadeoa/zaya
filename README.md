@@ -368,8 +368,8 @@ zora --ui textual
 
 Layout com cabeçalho, chat, entrada e barra de status. A resposta aparece em
 streaming, diffs de edição entram como caixas coloridas e o raciocínio aparece
-no status. A conversa ainda é por texto (sem voz); o restante continua no modo
-terminal. Também dá para fixar com `ZORA_UI=textual` ou `ui = "textual"` em
+no status. **F2** grava por voz (push-to-talk) e **F3** liga/desliga a voz da
+resposta. Também dá para fixar com `ZORA_UI=textual` ou `ui = "textual"` em
 `[interface]`.
 
 ## Arquitetura

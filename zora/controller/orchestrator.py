@@ -260,6 +260,9 @@ class Orchestrator:
         finally:
             self._stream_sink = None
 
+    async def speak_text(self, text: str) -> None:
+        await self._speak(text)
+
     async def aclose(self) -> None:
         await self._shutdown()
 

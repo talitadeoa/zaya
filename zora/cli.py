@@ -213,7 +213,9 @@ async def _run_textual(cfg: Config, verbose: bool) -> None:
     async def cleanup() -> None:
         await orchestrator.aclose()
 
-    app = ZoraTextualApp(answer, cleanup=cleanup, subtitle=cfg.opencode.model)
+    app = ZoraTextualApp(
+        answer, cleanup=cleanup, subtitle=cfg.opencode.model, voice=orchestrator
+    )
     try:
         await app.run_async()
     finally:

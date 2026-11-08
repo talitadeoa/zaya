@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Awaitable, Callable
+import asyncio
+from typing import Any, Awaitable, Callable
 
 from rich.panel import Panel
 from rich.syntax import Syntax
@@ -18,7 +19,7 @@ MUTED = "grey62"
 
 _HELP = (
     "Comandos nesta interface: /sair, /ajuda. "
-    "Atalhos: F1 abre a paleta de comandos, Ctrl+T alterna o tema, Ctrl+L limpa a conversa. "
+    "Atalhos: F1 paleta, F2 falar, F3 voz on/off, Ctrl+T tema, Ctrl+L limpar. "
     "Os demais comandos (agenda, tarefas, metas, finanças) continuam no modo terminal."
 )
 
@@ -95,6 +96,8 @@ class TextualSink:
 class ZoraTextualApp(App):
     BINDINGS = [
         Binding("f1", "command_palette", "Comandos"),
+        Binding("f2", "push_to_talk", "Falar"),
+        Binding("f3", "toggle_voice", "Voz on/off"),
         Binding("ctrl+t", "toggle_theme", "Tema"),
         Binding("ctrl+l", "clear_chat", "Limpar"),
     ]
@@ -129,11 +132,14 @@ class ZoraTextualApp(App):
         answer: Callable[[str, TextualSink], Awaitable[str]],
         cleanup: Callable[[], Awaitable[None]] | None = None,
         subtitle: str = "",
+        voice: Any | None = None,
     ):
         super().__init__()
         self._answer = answer
         self._cleanup = cleanup
         self._subtitle = subtitle
+        self._voice = voice
+        self._voice_replies = bool(voice is not None and voice.tts.enabled)
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -172,7 +178,9 @@ class ZoraTextualApp(App):
         if text in {"/", "/ajuda", "/help"}:
             self._write_note(_HELP)
             return
+        await self.submit_text(text)
 
+    async def submit_text(self, text: str) -> None:
         self._write_user(text)
         status = self.query_one("#status", Static)
         stream = self.query_one("#stream", Static)
@@ -188,7 +196,57 @@ class ZoraTextualApp(App):
             self._write_zora(answer)
         elif sink.buffer:
             self._write_zora(sink.buffer)
+        if answer and self._voice_replies and self._voice is not None:
+            status.update("▶ falando…")
+            try:
+                await self._voice.speak_text(answer)
+            except Exception:
+                pass
         status.update("● pronto")
+
+    async def action_push_to_talk(self) -> None:
+        if self._voice is None:
+            self._set_status("voz indisponível")
+            return
+        recorder = self._voice.recorder
+        transcriber = self._voice.transcriber
+        self._set_status("🎙 ouvindo… fale e faça uma pausa")
+
+        def on_state(state: str) -> None:
+            try:
+                self.call_from_thread(self._set_status, f"🎙 {state}")
+            except Exception:
+                pass
+
+        try:
+            audio = await asyncio.to_thread(
+                recorder.record_until_silence, on_state, 20.0
+            )
+        except Exception:
+            self._set_status("microfone indisponível")
+            return
+        if audio is None or len(audio) == 0:
+            self._set_status("não ouvi nada")
+            return
+        self._set_status("◐ transcrevendo…")
+        try:
+            text = await asyncio.to_thread(transcriber.transcribe, audio)
+        except Exception:
+            text = ""
+        if not text.strip():
+            self._set_status("não entendi")
+            return
+        await self.submit_text(text.strip())
+
+    async def action_toggle_voice(self) -> None:
+        if self._voice is None:
+            self._set_status("voz indisponível")
+            return
+        self._voice_replies = not self._voice_replies
+        self._set_status("voz ligada" if self._voice_replies else "voz desligada")
+
+    def _set_status(self, text: str) -> None:
+        self.query_one("#status", Static).update(text)
 
     # --------------------------------------------------------------- palette
     def palette_labels(self) -> list[str]:
