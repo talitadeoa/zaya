@@ -384,7 +384,6 @@ class Orchestrator:
                 if self._voice_available():
                     self._voice_mode = True
                     self.cfg.audio.continuous = True
-                    self.ui.info("voltando para a escuta contínua…")
                 continue
 
             self._voice_mode = False
