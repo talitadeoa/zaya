@@ -637,7 +637,6 @@ class Orchestrator:
                     continue
                 if char.strip():
                     self.cfg.audio.continuous = False
-                    self.ui.info("voltando ao modo texto; pode digitar.")
                     return
         finally:
             disable_raw()
@@ -1645,10 +1644,9 @@ class Orchestrator:
         synced = self.tasks.sync_text(str(page.get("content") or ""))
         new_tasks = [task for task in synced if task.id not in before]
         for task in new_tasks:
-            self.ui.info(f"nova tarefa na Agenda: {task.title}")
             plan = task.notes or await self._plan_task(task.title)
             self.tasks.set_status(task.id, "in_progress", plan or "")
-            await self._say_proactive(f"Nova tarefa na página de tarefas: {task.title}")
+            self.logger.debug("nova tarefa sincronizada: %s", task.title)
 
     async def _plan_task(self, title: str) -> str:
         prompt = (
@@ -1743,6 +1741,8 @@ class Orchestrator:
             f"Tarefas pendentes na agenda: {agenda}. "
             f"Metas: {metas}. "
             f"Última mensagem de iniciativa: {last}.\n\n"
+            "Não fale sobre tarefas ou metas a menos que haja algo novo, urgente "
+            "ou diretamente ligado ao momento; evite repetir pendências.\n\n"
             f"{instruction} Responda APENAS com a frase, em português do Brasil, "
             "com no máximo 25 palavras. Não use listas, emojis ou aspas. Não diga "
             "que é uma IA e não repita a última mensagem. Não precisa usar o nome "
