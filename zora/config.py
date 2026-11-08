@@ -124,6 +124,8 @@ class InterfaceConfig(BaseModel):
     # Mostrar raciocinio e diffs das ferramentas no terminal.
     show_reasoning: bool = True
     show_diffs: bool = True
+    # Mostrar o painel de metas ao iniciar.
+    show_metas_on_start: bool = True
     # Modo inicial: academica | carreira | assistente | conversa.
     default_mode: str = "assistente"
 
@@ -392,6 +394,7 @@ _BOOL_KEYS = {
     "ZORA_PROACTIVE_REMINDERS": ("proactive", "reminders"),
     "ZORA_UI_SHOW_REASONING": ("interface", "show_reasoning"),
     "ZORA_UI_SHOW_DIFFS": ("interface", "show_diffs"),
+    "ZORA_UI_SHOW_METAS_ON_START": ("interface", "show_metas_on_start"),
     "ZORA_WHATSAPP_ENABLED": ("whatsapp", "enabled"),
     "ZORA_TELEGRAM_ENABLED": ("telegram", "enabled"),
     "ZORA_TELEGRAM_VOICE_REPLIES": ("telegram", "voice_replies"),
@@ -492,6 +495,7 @@ steering = true
 concise = true
 show_reasoning = true
 show_diffs = true
+show_metas_on_start = true
 default_mode = "assistente"     # academica | carreira | assistente | conversa
 
 [whatsapp]

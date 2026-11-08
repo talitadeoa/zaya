@@ -286,6 +286,12 @@ class Orchestrator:
                 self.tts.provider,
             )
 
+        if self.cfg.interface.show_metas_on_start:
+            try:
+                await self._show_dashboard()
+            except Exception as exc:  # pragma: no cover
+                self.logger.warning("painel de metas: %s", exc)
+
         if self.cfg.proactive.enabled and self.cfg.proactive.startup_greeting:
             try:
                 await self._startup_greeting()
