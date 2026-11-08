@@ -680,6 +680,9 @@ class Orchestrator:
             pass
 
     async def _read_user_input(self) -> str | None:
+        # Se estamos pedindo texto, o modo voz fica desligado ate uma acao explicita.
+        self._voice_mode = False
+        self.cfg.audio.continuous = False
         raw = await asyncio.to_thread(self.ui.prompt, "Talita")
         return raw.strip()
 
