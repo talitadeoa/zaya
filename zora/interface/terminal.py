@@ -418,6 +418,35 @@ class TerminalUI:
         if moon_note:
             self._print(Text(moon_note, style=MUTED))
 
+    def watchlist(self, rows: list[dict]) -> None:
+        if not rows:
+            self.info("carteira vazia; use /carteira add <ticker>")
+            return
+        table = Table(
+            title="Carteira",
+            border_style=ACCENT,
+            header_style=f"bold {ACCENT}",
+        )
+        table.add_column("Ativo")
+        table.add_column("Ticker", style=MUTED)
+        table.add_column("Preço", justify="right")
+        table.add_column("Variação", justify="right")
+        for row in rows:
+            change = str(row.get("change") or "?")
+            if change.startswith("+"):
+                change_text = Text(change, style="green")
+            elif change.startswith("-"):
+                change_text = Text(change, style="red")
+            else:
+                change_text = Text(change, style=MUTED)
+            table.add_row(
+                escape(str(row.get("label") or "")),
+                escape(str(row.get("ticker") or "")),
+                escape(str(row.get("price") or "?")),
+                change_text,
+            )
+        self._print(table)
+
     def reasoning(self, text: str) -> None:
         clean = " ".join((text or "").split())
         if not clean:
@@ -559,6 +588,7 @@ class TerminalUI:
             ("/modelo <provider/model>", "troca o modelo da sessão"),
             ("/modo [nome]", "lista ou troca o modo (academica, carreira, assistente, conversa, financas)"),
             ("/bolsa <ticker>", "cotação rápida (ex.: PETR4, AAPL)"),
+            ("/carteira [add|remover]", "lista/acompanha seus ativos"),
             ("/metas", "painel visual com foco atual e metas de longo prazo"),
             ("/painel", "mesmo painel de metas"),
             ("/foco [definir|limpar]", "define/limpa o foco do ciclo"),

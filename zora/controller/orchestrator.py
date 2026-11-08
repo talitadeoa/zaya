@@ -23,6 +23,7 @@ from zora.audio.recorder import AudioError, ContinuousListener, Recorder
 from zora.config import Config
 from zora.controller.goals import GoalTracker, goal_block
 from zora.finance.quotes import FinanceError, fetch_quote, format_quote
+from zora.finance.watchlist import Watchlist
 from zora.focus import (
     RITUALS,
     FocusStore,
@@ -157,6 +158,7 @@ class Orchestrator:
         self._task_page_updated_at: str | None = None
         self._agenda_pending_names: list[str] = []
         self.goals = GoalTracker()
+        self.watchlist = Watchlist()
         self.focus = FocusStore(cfg.focus.path)
         self.tasks = TaskStore()
         self.agenda = AgendaClient(cfg.agenda)
@@ -1308,6 +1310,8 @@ class Orchestrator:
             await self._show_dashboard()
         elif command in {"/bolsa", "/acao", "/ações"}:
             await self._handle_quote(argument)
+        elif command in {"/carteira", "/watchlist", "/watch"}:
+            await self._handle_watchlist(argument)
         elif command in {"/foco", "/focos"}:
             await self._handle_focus(argument)
         elif command in {"/tarefas", "/tarefa"}:
@@ -1445,6 +1449,65 @@ class Orchestrator:
             self.ui.error(str(exc))
             return
         self.ui.info(format_quote(quote))
+
+    async def _handle_watchlist(self, argument: str) -> None:
+        parts = argument.strip().split(maxsplit=1)
+        sub = parts[0].lower() if parts else ""
+        rest = parts[1].strip() if len(parts) > 1 else ""
+        if sub in {"add", "adicionar", "+"}:
+            if not rest:
+                self.ui.warning("uso: /carteira add <ticker> ou /carteira add Nome=TICKER")
+                return
+            if "=" in rest:
+                label, ticker = rest.split("=", 1)
+            else:
+                label, ticker = rest, rest
+            item = self.watchlist.add(label, ticker)
+            self.ui.success(f"{item.label} ({item.ticker}) na carteira")
+            return
+        if sub in {"remove", "remover", "del", "-"}:
+            if not rest:
+                self.ui.warning("uso: /carteira remover <ticker>")
+                return
+            if self.watchlist.remove(rest):
+                self.ui.success(f"{rest.upper()} removido da carteira")
+            else:
+                self.ui.warning(f"{rest.upper()} não estava na carteira")
+            return
+        items = self.watchlist.all()
+        if not items:
+            self.ui.info("carteira vazia; use /carteira add <ticker>")
+            return
+        results = await asyncio.gather(
+            *(fetch_quote(item.ticker) for item in items), return_exceptions=True
+        )
+        rows: list[dict[str, str]] = []
+        for item, result in zip(items, results, strict=False):
+            if isinstance(result, Exception):
+                rows.append(
+                    {
+                        "label": item.label,
+                        "ticker": item.ticker,
+                        "price": "?",
+                        "change": "?",
+                    }
+                )
+                continue
+            price = f"{result.price:.2f}" if result.price is not None else "?"
+            change = (
+                f"{result.change_pct:+.2f}%"
+                if result.change_pct is not None
+                else "?"
+            )
+            rows.append(
+                {
+                    "label": item.label,
+                    "ticker": result.symbol,
+                    "price": f"{result.currency} {price}".strip(),
+                    "change": change,
+                }
+            )
+        self.ui.watchlist(rows)
 
     async def _handle_focus(self, argument: str) -> None:
         parts = argument.strip().split(maxsplit=2)

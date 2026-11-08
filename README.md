@@ -107,6 +107,7 @@ smoke tests.
 | `/modelo <provider/model>` | troca o modelo |
 | `/modo [nome]` | lista ou troca o modo ativo |
 | `/bolsa <ticker>` | cotação rápida (ex.: PETR4, AAPL) |
+| `/carteira [add\|remover]` | lista/acompanha seus ativos |
 | `/metas` | painel com foco atual e metas de longo prazo |
 | `/painel` | mesmo painel de metas |
 | `/foco [definir\\|limpar]` | define/limpa o foco do ciclo |
@@ -321,6 +322,17 @@ Por padrão a Zora **não checa a página sozinha** — use `/tarefas sync` quan
 quiser. Para checagem automática, defina `ZORA_AGENDA_TASKS_POLL_SECONDS=30`
 (compara o `updated_at` e só busca o conteúdo quando muda). O estado fica em
 `~/.local/share/zora/tasks.json` (fora do repositório).
+
+### Carteira
+
+A Zora acompanha os ativos que você salvar em `~/.config/zora/watchlist.json`:
+
+```bash
+/carteira                 # cotações da carteira
+/carteira add PETR4       # adiciona
+/carteira add Petroleo=PETR4
+/carteira remover PETR4
+```
 
 ### Metas e focos
 
