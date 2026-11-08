@@ -166,6 +166,7 @@ class ZoraTextualApp(App):
         self._listener = None
         self._listen_task: asyncio.Task | None = None
         self._insert_mode = False
+        self._turn_running = False
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -290,9 +291,13 @@ class ZoraTextualApp(App):
         if text in {"/", "/ajuda", "/help"}:
             self._write_note(_HELP)
             return
-        await self.submit_text(text)
+        self.run_worker(self.submit_text(text), exclusive=False)
 
     async def submit_text(self, text: str) -> None:
+        if self._turn_running:
+            self._set_status("aguarde o turno atual…")
+            return
+        self._turn_running = True
         listener = self._listener
         if listener is not None and self._continuous:
             listener.pause()
@@ -322,6 +327,8 @@ class ZoraTextualApp(App):
             else:
                 status.update("● pronto")
         finally:
+            if not delegated:
+                self._turn_running = False
             if (
                 not delegated
                 and listener is not None
@@ -337,6 +344,7 @@ class ZoraTextualApp(App):
         except Exception:
             pass
         finally:
+            self._turn_running = False
             if (
                 listener is not None
                 and self._continuous
@@ -347,7 +355,10 @@ class ZoraTextualApp(App):
             else:
                 self._set_status("● pronto")
 
-    async def action_push_to_talk(self) -> None:
+    def action_push_to_talk(self) -> None:
+        self.run_worker(self._push_to_talk(), exclusive=False)
+
+    async def _push_to_talk(self) -> None:
         if self._voice is None:
             self._set_status("voz indisponível")
             return
