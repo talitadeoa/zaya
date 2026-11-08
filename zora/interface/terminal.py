@@ -17,6 +17,16 @@ from rich.text import Text
 ACCENT = "magenta"
 MUTED = "grey62"
 
+_ASCII_ART = [
+    " ███████╗ ██████╗ ██████╗  █████╗ ",
+    " ╚══███╔╝██╔═══██╗██╔══██╗██╔══██╗",
+    "   ███╔╝ ██║   ██║██████╔╝███████║",
+    "  ███╔╝  ██║   ██║██╔══██╗██╔══██║",
+    " ███████╗╚██████╔╝██║  ██║██║  ██║",
+    " ╚══════╝ ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝",
+]
+_ASCII_COLORS = ["magenta", "bright_magenta", "purple", "bright_blue", "cyan", "bright_cyan"]
+
 
 def _message_title(name: str, color: str, extra: str = "") -> Text:
     title = Text(f"{name} · {datetime.now().strftime('%H:%M')}", style=f"bold {color}")
@@ -131,6 +141,10 @@ class TerminalUI:
         grid.add_row("Memória", f"Second Brain conectado · {sb_notes} nota(s)")
         grid.add_row("Voz", ("ativa · " if tts_enabled else "desativada · ") + escape(voice))
         title = Text("Zora", style=f"bold {ACCENT}")
+        self._print()
+        for line, color in zip(_ASCII_ART, _ASCII_COLORS, strict=False):
+            self._print(Text(line, style=f"bold {color}"))
+        self._print(Text("assistente pessoal · OpenCode · Second Brain", style=MUTED))
         self._print()
         self._print(Panel(grid, title=title, border_style=ACCENT, padding=(0, 1)))
         self._print()
@@ -421,6 +435,7 @@ class TerminalUI:
             ("/modelo <provider/model>", "troca o modelo da sessão"),
             ("/modo [nome]", "lista ou troca o modo (academica, carreira, assistente, conversa)"),
             ("/metas", "lista as metas pessoais configuradas"),
+            ("/tarefas [sync]", "lista/sincroniza as tarefas de longo prazo"),
             ("/voz on|off|edge|say|none", "controla a voz"),
             ("/preferencia <texto>", "aprende uma preferência (taste)"),
             ("/preferencias", "mostra as preferências aprendidas"),

@@ -60,6 +60,7 @@ from zora.secondbrain.notes import NoteConflict, SecondBrain
 from zora.spotify.controller import SpotifyCommand, SpotifyError, execute as execute_spotify
 from zora.spotify.intents import parse_spotify_command
 from zora.stt.faster_whisper import STTError, WhisperTranscriber
+from zora.tasks.store import TaskStore
 from zora.tts.base import TTSBackend
 from zora.tts.manager import TTSManager, clean_for_speech
 
@@ -142,6 +143,7 @@ class Orchestrator:
         self._initiative_session_id: str | None = None
         self._agenda_pending_names: list[str] = []
         self.goals = GoalTracker()
+        self.tasks = TaskStore()
         self.agenda = AgendaClient(cfg.agenda)
         self._agenda_next_check = 0.0
         self._agenda_seen: set[str] = set()
@@ -1228,6 +1230,8 @@ class Orchestrator:
             self._switch_mode(argument)
         elif command in {"/metas", "/objetivos"}:
             self._show_goals()
+        elif command in {"/tarefas", "/tarefa"}:
+            await self._handle_tasks(argument)
         elif command == "/voz":
             self._switch_voice(argument)
         elif command == "/interromper":
@@ -1342,6 +1346,40 @@ class Orchestrator:
         for goal in goals:
             detail = f" — {goal.next_step}" if goal.next_step else ""
             self.ui.info(f"  {goal.label}{detail}")
+
+    async def _handle_tasks(self, argument: str) -> None:
+        arg = argument.strip().lower()
+        if arg in {"sync", "sincronizar", "atualizar"}:
+            try:
+                pages = await self.agenda.pages(30)
+            except AgendaError as exc:
+                self.ui.error(str(exc))
+                return
+            page = next(
+                (
+                    item
+                    for item in pages
+                    if "tarefa" in str(item.get("title") or "").lower()
+                ),
+                None,
+            )
+            if page is None:
+                self.ui.warning("não achei uma página de tarefas na Agenda")
+                return
+            synced = self.tasks.sync_text(str(page.get("content") or ""))
+            self.ui.success(
+                f"{len(synced)} tarefa(s) sincronizada(s) de '{page.get('title')}'"
+            )
+        tasks = self.tasks.all()
+        if not tasks:
+            self.ui.info("nenhuma tarefa registrada; use /tarefas sync")
+            return
+        symbols = {"done": "✓", "in_progress": "◐", "pending": "•"}
+        for task in tasks:
+            symbol = symbols.get(task.status, "•")
+            self.ui.info(f"{symbol} [{task.status}] {task.title}")
+            if task.notes:
+                self.ui.info(f"   {task.notes}")
 
     def _switch_mode(self, argument: str) -> None:
         if not argument:

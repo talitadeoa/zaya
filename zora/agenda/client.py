@@ -70,10 +70,25 @@ class AgendaClient:
             headers["Authorization"] = f"Bearer {key}"
         return headers
 
-    async def pending_today(self, date: str | None = None) -> list[dict[str, Any]]:
+    async def _query(self, table: str, params: dict[str, str]) -> list[dict[str, Any]]:
         if not self.enabled:
             return []
         base = self._get("VITE_SUPABASE_URL", "SUPABASE_URL").rstrip("/")
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.get(
+                    f"{base}/rest/v1/{table}", headers=self._headers(), params=params
+                )
+        except httpx.HTTPError as exc:
+            raise AgendaError(f"falha ao consultar a Agenda: {exc}") from exc
+        if not response.is_success:
+            raise AgendaError(f"Agenda respondeu {response.status_code}")
+        data = response.json()
+        return data if isinstance(data, list) else []
+
+    async def pending_today(self, date: str | None = None) -> list[dict[str, Any]]:
+        if not self.enabled:
+            return []
         user_id = self._get("AGENDA_USER_ID")
         params = {
             "user_id": f"eq.{user_id}",
@@ -84,14 +99,16 @@ class AgendaClient:
             "order": "order.asc",
             "limit": "200",
         }
-        try:
-            async with httpx.AsyncClient(timeout=15.0) as client:
-                response = await client.get(
-                    f"{base}/rest/v1/notes", headers=self._headers(), params=params
-                )
-        except httpx.HTTPError as exc:
-            raise AgendaError(f"falha ao consultar a Agenda: {exc}") from exc
-        if not response.is_success:
-            raise AgendaError(f"Agenda respondeu {response.status_code}")
-        data = response.json()
-        return data if isinstance(data, list) else []
+        return await self._query("notes", params)
+
+    async def pages(self, limit: int = 20) -> list[dict[str, Any]]:
+        if not self.enabled:
+            return []
+        user_id = self._get("AGENDA_USER_ID")
+        params = {
+            "user_id": f"eq.{user_id}",
+            "select": "id,title,content,updated_at",
+            "order": "updated_at.desc",
+            "limit": str(limit),
+        }
+        return await self._query("pages", params)

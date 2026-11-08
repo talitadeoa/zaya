@@ -104,6 +104,8 @@ smoke tests.
 | `/novo` | nova conversa + nova sessão OpenCode |
 | `/modelo <provider/model>` | troca o modelo |
 | `/modo [nome]` | lista ou troca o modo ativo |
+| `/metas` | lista as metas pessoais configuradas |
+| `/tarefas [sync]` | lista/sincroniza as tarefas de longo prazo |
 | `/voz on\|off\|edge\|say\|none` | controla a voz |
 | `/continuo on\|off` | escuta contínua sem Enter |
 | `/fala` | volta para a escuta contínua |
@@ -295,6 +297,18 @@ zora browser screenshot https://exemplo.com captura.png
 
 O perfil fica em `~/.local/share/zora/browser`, então o login é reaproveitado.
 Sites com proteção forte podem exigir `--no-headless` (o `login` já abre visível).
+
+### Tarefas de longo prazo
+
+A Zora lê a página **“tarefas pra zora”** na Agenda, sincroniza os itens e
+acompanha o status (`pending`, `in_progress`, `done`):
+
+```bash
+/tarefas        # lista
+/tarefas sync   # relê a página da Agenda
+```
+
+O estado fica em `~/.local/share/zora/tasks.json` (fora do repositório).
 
 ### Metas pessoais
 
