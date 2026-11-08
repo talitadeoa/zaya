@@ -1724,6 +1724,8 @@ class Orchestrator:
         now = datetime.now().astimezone()
         hora = now.strftime("%H:%M")
         pending = self.store.pending_reminders()
+        agenda = ", ".join(self._agenda_pending_names[:5]) or "nenhuma"
+        metas = ", ".join(goal.label for goal in self.goals.all()) or "nenhuma"
         last = self._last_idle_message or "(nenhuma)"
         if greeting:
             instruction = (
@@ -1739,8 +1741,11 @@ class Orchestrator:
             f"Contexto: agora são {hora} ({greeting_for(now)}). "
             f"Modo ativo: {self.persona.name}. "
             f"Lembretes pendentes: {len(pending)}. "
+            f"Tarefas pendentes na agenda: {agenda}. "
+            f"Metas: {metas}. "
             f"Última mensagem de iniciativa: {last}.\n\n"
-            "Não fale sobre tarefas, agenda ou metas; foque em presença e conversa.\n\n"
+            "Pode mencionar metas ou tarefas quando for genuinamente relevante ou "
+            "houver algo novo/urgente. Evite repetir pendências por hábito.\n\n"
             f"{instruction} Responda APENAS com a frase, em português do Brasil, "
             "com no máximo 25 palavras. Não use listas, emojis ou aspas. Não diga "
             "que é uma IA e não repita a última mensagem. Não precisa usar o nome "
