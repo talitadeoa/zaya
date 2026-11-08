@@ -33,14 +33,6 @@ _ASCII_ZORA = [
 # Os mesmos RGB que o Rich usava no terminal antigo.
 _ASCII_COLORS = ["#800080", "#ff00ff", "#af00ff", "#0000ff", "#008080", "#00ffff"]
 
-_NORMAL_SHORTCUTS = (
-    "i digitar · t texto · m mudo · v voz · f falar · c contínua · "
-    "Esc voltar · F1 paleta"
-)
-_INSERT_SHORTCUTS = (
-    "INSERT · Enter envia · Esc volta · Ctrl+T tema · Ctrl+L limpar"
-)
-
 _HELP = (
     "Modo normal: i digitar · t texto · m mudo · v voz on/off · f falar · "
     "c escuta contínua · Esc interromper. No modo insert, Esc volta ao normal. "
@@ -152,12 +144,6 @@ class ZoraTextualApp(App):
         color: #9ca3af;
         padding: 0 1;
     }
-    #shortcuts {
-        height: 1;
-        background: #0e7490;
-        color: #e0f2fe;
-        padding: 0 1;
-    }
     #input {
         dock: bottom;
         border: round #22d3ee;
@@ -189,7 +175,6 @@ class ZoraTextualApp(App):
             RichLog(id="chat", highlight=True, markup=True, wrap=True),
             Static("", id="stream"),
             Static("● pronto", id="status"),
-            Static(_NORMAL_SHORTCUTS, id="shortcuts"),
         )
         yield Input(placeholder="Digite uma mensagem ou /ajuda", id="input")
         yield Footer()
@@ -493,13 +478,11 @@ class ZoraTextualApp(App):
         except Exception:
             pass
         self._set_status("NORMAL")
-        self.query_one("#shortcuts", Static).update(_NORMAL_SHORTCUTS)
 
     def action_insert(self) -> None:
         self._insert_mode = True
         self.query_one("#input", Input).focus()
         self._set_status("INSERT")
-        self.query_one("#shortcuts", Static).update(_INSERT_SHORTCUTS)
 
     async def action_escape(self) -> None:
         if self._insert_mode:
