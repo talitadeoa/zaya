@@ -42,6 +42,12 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["terminal", "textual"],
         help="interface: terminal (padrão) ou textual",
     )
+    parser.add_argument(
+        "-tui",
+        "--tui",
+        action="store_true",
+        help="atalho para abrir a interface textual",
+    )
     parser.add_argument("--version", action="version", version=f"zora {__version__}")
     sub = parser.add_subparsers(dest="command")
 
@@ -124,6 +130,8 @@ def main() -> None:
     cfg = Config.load(args.config)
     if args.ui:
         cfg.interface.ui = args.ui
+    if args.tui:
+        cfg.interface.ui = "textual"
     ui = TerminalUI()
 
     try:

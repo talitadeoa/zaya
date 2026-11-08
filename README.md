@@ -364,7 +364,8 @@ e exibe os **diffs** das ferramentas de edição em caixas coloridas. Desative c
 
 ```bash
 zora                    # interface antiga (terminal completo)
-zora --ui textual       # interface nova (TUI)
+zora -tui               # interface nova (TUI)
+zora --ui textual       # equivalente
 ```
 
 São dois front-ends do mesmo cérebro — você escolhe um ao iniciar; o serviço do
