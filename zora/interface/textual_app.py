@@ -360,8 +360,7 @@ class ZoraTextualApp(App):
                     self._speak_and_resume(answer, listener), exclusive=False
                 )
             else:
-                self._status_base = ""
-                status.update("")
+                self._set_status("● pronto")
         finally:
             if not delegated:
                 self._turn_running = False
@@ -389,7 +388,7 @@ class ZoraTextualApp(App):
                 listener.resume()
                 self._set_status("● ouvindo…")
             else:
-                self._set_status("")
+                self._set_status("● pronto")
 
     def action_push_to_talk(self) -> None:
         self.run_worker(self._push_to_talk(), exclusive=False)
@@ -509,7 +508,8 @@ class ZoraTextualApp(App):
     def _tick_status(self) -> None:
         if not self._turn_running or not self._status_base:
             return
-        if not self._status_base.startswith(("◐", "▶", "▸", "🎙")):
+        base = self._status_base
+        if not ("ndo" in base.lower() or base.startswith(("◐", "▶", "▸", "🎙"))):
             return
         self._dot_phase = (self._dot_phase + 1) % 3
         dots = "." * (self._dot_phase + 1)
