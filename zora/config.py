@@ -95,7 +95,9 @@ class SecondBrainConfig(BaseModel):
     path: str = "~/SecondBrain"
     index_db: str = ""
     auto_context: bool = True
-    context_results: int = 5
+    context_results: int = 3
+    # Limite de caracteres por nota injetada no contexto.
+    context_chars: int = 900
     # Criar nota e aditivo: por padrao nao pergunta (mais rapido).
     confirm_create: bool = False
     # Editar/excluir sao destrutivos: por padrao continuam exigindo confirmacao.
@@ -342,6 +344,8 @@ _ENV_MAP: dict[str, tuple[str, str]] = {
     "ZORA_AUDIO_AUTO_MUTE_SECONDS": ("audio", "auto_mute_seconds"),
     "ZORA_SECOND_BRAIN_PATH": ("secondbrain", "path"),
     "ZORA_SECOND_BRAIN_INDEX": ("secondbrain", "index_db"),
+    "ZORA_SB_CONTEXT_RESULTS": ("secondbrain", "context_results"),
+    "ZORA_SB_CONTEXT_CHARS": ("secondbrain", "context_chars"),
     "ZORA_SB_PREFERENCES_FILE": ("secondbrain", "preferences_file"),
     "ZORA_PROACTIVE_IDLE_MINUTES": ("proactive", "idle_minutes"),
     "ZORA_PROACTIVE_MIN_INTERVAL_MINUTES": ("proactive", "min_interval_minutes"),
@@ -464,6 +468,8 @@ auto_mute_seconds = 30          # silencio que desliga o microfone (0 = nunca)
 
 [secondbrain]
 path = "~/SecondBrain"
+context_results = 3
+context_chars = 900
 index_db = ""
 auto_context = true
 context_results = 5

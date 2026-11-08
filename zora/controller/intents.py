@@ -135,12 +135,14 @@ def needs_second_brain_context(text: str) -> bool:
     return bool(CONTEXT_KEYWORDS.search(text))
 
 
-def format_context(hits, header: str = "## Contexto do Second Brain") -> str:
+def format_context(
+    hits, header: str = "## Contexto do Second Brain", max_chars: int = 1200
+) -> str:
     if not hits:
         return ""
     lines = [header, ""]
     for hit in hits:
-        lines.append(hit.as_context(1200))
+        lines.append(hit.as_context(max_chars))
     return "\n".join(lines)
 
 

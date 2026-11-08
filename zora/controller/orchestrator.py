@@ -807,7 +807,7 @@ class Orchestrator:
 
         prompt = text
         if hits:
-            context = format_context(hits)
+            context = format_context(hits, max_chars=self.cfg.secondbrain.context_chars)
             prompt = (
                 f"{context}\n\n---\n\n"
                 f"Pedido do usuário: {text}\n\n"
