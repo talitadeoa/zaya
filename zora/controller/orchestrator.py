@@ -1730,17 +1730,31 @@ class Orchestrator:
     async def _speak(self, text: str) -> None:
         if not self.tts.enabled:
             return
-        async with self._tts_lock:
-            self._speaking_event.clear()
-            try:
-                await self.tts.speak(text)
-            except (KeyboardInterrupt, asyncio.CancelledError):
-                self.tts.stop()
-                raise
-            except Exception as exc:  # pragma: no cover
-                self.logger.warning("falha no TTS: %s", exc)
-            finally:
-                self._speaking_event.set()
+        listener = self._listener
+        resume_after = False
+        if (
+            listener is not None
+            and not self._mic_muted
+            and not self._recording
+            and not listener.is_paused()
+        ):
+            listener.pause()
+            resume_after = True
+        try:
+            async with self._tts_lock:
+                self._speaking_event.clear()
+                try:
+                    await self.tts.speak(text)
+                except (KeyboardInterrupt, asyncio.CancelledError):
+                    self.tts.stop()
+                    raise
+                except Exception as exc:  # pragma: no cover
+                    self.logger.warning("falha no TTS: %s", exc)
+                finally:
+                    self._speaking_event.set()
+        finally:
+            if resume_after and listener is not None and not self._mic_muted:
+                listener.resume()
 
 
 def escape_user(text: str) -> str:
