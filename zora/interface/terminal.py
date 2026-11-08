@@ -42,7 +42,7 @@ class TerminalUI:
 
     # ------------------------------------------------------------------ status
     def _write_raw(self, text: str) -> None:
-        if self._quiet:
+        if self._quiet or self._live is not None:
             return
         file = getattr(self.console, "file", None)
         if file is None:
@@ -71,7 +71,7 @@ class TerminalUI:
         self._status_visible = True
 
     def set_status(self, label: str, detail: str = "") -> None:
-        if self._quiet:
+        if self._quiet or self._streaming or self._live is not None:
             return
         if self._tty and (label, detail) == (self._status_label, self._status_detail):
             if self._status_visible:
@@ -83,7 +83,7 @@ class TerminalUI:
             self._draw_status()
 
     def clear_status(self) -> None:
-        if self._quiet:
+        if self._quiet or self._streaming or self._live is not None:
             return
         self._status_label = ""
         self._status_detail = ""
@@ -104,7 +104,7 @@ class TerminalUI:
         """Imprime conteudo, preservando (ou limpando) a linha de status."""
         if self._quiet:
             return
-        manage = self._tty and not self._streaming
+        manage = self._tty and not self._streaming and self._live is None
         with self._lock:
             if manage:
                 self._erase_status()
@@ -197,7 +197,7 @@ class TerminalUI:
                 console=self.console,
                 refresh_per_second=10,
                 transient=True,
-                vertical_overflow="visible",
+                vertical_overflow="ellipsis",
             )
             self._live = live
         live.start(refresh=True)
