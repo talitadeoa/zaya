@@ -278,6 +278,22 @@ zora spotify volume 40
 Por voz: "pausa a música", "próxima música", "aumenta o volume". Se não estiver
 instalado: `brew install --cask spotify`.
 
+### Navegador (Playwright)
+
+Automação de navegador com perfil persistente (cookies/logins):
+
+```bash
+uv pip install --python .venv/bin/python -e ".[browser]"
+.venv/bin/playwright install chromium
+
+zora browser login https://www.upwork.com
+zora browser text https://exemplo.com
+zora browser screenshot https://exemplo.com captura.png
+```
+
+O perfil fica em `~/.local/share/zora/browser`, então o login é reaproveitado.
+Sites com proteção forte podem exigir `--no-headless` (o `login` já abre visível).
+
 ### Agenda proativa
 
 A Zora lê as tarefas do dia na Agenda (mesma base Supabase) e avisa quando há

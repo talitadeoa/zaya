@@ -151,6 +151,16 @@ class WhatsAppConfig(BaseModel):
     webhook_port: int = 8765
 
 
+class BrowserConfig(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    enabled: bool = True
+    # Perfil persistente: guarda cookies/logins entre execucoes.
+    profile_dir: str = ""
+    headless: bool = True
+    timeout_ms: int = 30000
+
+
 class AgendaConfig(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
@@ -188,6 +198,7 @@ class Config(BaseModel):
     whatsapp: WhatsAppConfig = Field(default_factory=WhatsAppConfig)
     telegram: TelegramConfig = Field(default_factory=TelegramConfig)
     agenda: AgendaConfig = Field(default_factory=AgendaConfig)
+    browser: BrowserConfig = Field(default_factory=BrowserConfig)
     data_dir: str = ""
 
     # Caminho de onde o config foi carregado (informativo).
@@ -232,6 +243,11 @@ class Config(BaseModel):
 
     def servers_dir(self) -> Path:
         return self.resolved_data_dir() / "servers"
+
+    def browser_profile_dir(self) -> Path:
+        if self.browser.profile_dir:
+            return Path(self.browser.profile_dir).expanduser().resolve()
+        return self.resolved_data_dir() / "browser"
 
     def second_brain_path(self) -> Path:
         return Path(self.secondbrain.path).expanduser().resolve()
@@ -339,6 +355,8 @@ _ENV_MAP: dict[str, tuple[str, str]] = {
     "ZORA_AGENDA_ENV_FILE": ("agenda", "env_file"),
     "ZORA_AGENDA_POLL_MINUTES": ("agenda", "poll_minutes"),
     "ZORA_AGENDA_MAX_ITEMS": ("agenda", "max_items"),
+    "ZORA_BROWSER_PROFILE_DIR": ("browser", "profile_dir"),
+    "ZORA_BROWSER_TIMEOUT_MS": ("browser", "timeout_ms"),
 }
 
 _BOOL_KEYS = {
@@ -360,6 +378,8 @@ _BOOL_KEYS = {
     "ZORA_TELEGRAM_ENABLED": ("telegram", "enabled"),
     "ZORA_TELEGRAM_VOICE_REPLIES": ("telegram", "voice_replies"),
     "ZORA_AGENDA_ENABLED": ("agenda", "enabled"),
+    "ZORA_BROWSER_ENABLED": ("browser", "enabled"),
+    "ZORA_BROWSER_HEADLESS": ("browser", "headless"),
 }
 
 
@@ -459,6 +479,12 @@ api_version = "v21.0"
 webhook_host = "127.0.0.1"
 webhook_port = 8765
 # access_token e verify_token vão apenas no .env/ambiente.
+
+[browser]
+enabled = true
+profile_dir = ""          # vazio => <data_dir>/browser
+headless = true
+timeout_ms = 30000
 
 [agenda]
 enabled = true

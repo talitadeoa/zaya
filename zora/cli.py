@@ -12,6 +12,7 @@ from pathlib import Path
 
 from zora import __version__
 from zora.audio.recorder import Recorder
+from zora.browser.session import BrowserError, BrowserSession, playwright_available
 from zora.config import Config, write_default_config
 from zora.controller.orchestrator import Orchestrator
 from zora.interface.terminal import TerminalUI
@@ -94,6 +95,19 @@ def build_parser() -> argparse.ArgumentParser:
     spotify_volume = spotify_sub.add_parser("volume", help="define o volume (0-100)")
     spotify_volume.add_argument("value", type=int)
 
+    browser_parser = sub.add_parser("browser", help="automação de navegador (Playwright)")
+    browser_sub = browser_parser.add_subparsers(dest="browser_command")
+    for name in ("open", "text", "html"):
+        item = browser_sub.add_parser(name)
+        item.add_argument("url")
+        item.add_argument("--headless", action="store_true")
+    browser_shot = browser_sub.add_parser("screenshot")
+    browser_shot.add_argument("url")
+    browser_shot.add_argument("path")
+    browser_shot.add_argument("--headless", action="store_true")
+    browser_login = browser_sub.add_parser("login", help="abre o navegador para login persistente")
+    browser_login.add_argument("url")
+
     return parser
 
 
@@ -122,6 +136,8 @@ def main() -> None:
             asyncio.run(_telegram_command(cfg, args, ui))
         elif args.command == "spotify":
             _spotify_command(args, ui)
+        elif args.command == "browser":
+            asyncio.run(_browser_command(cfg, args, ui))
         else:
             asyncio.run(_run_app(cfg, args.verbose))
     except KeyboardInterrupt:
@@ -318,6 +334,48 @@ def _spotify_command(args, ui: TerminalUI) -> None:
         ui.error(str(exc))
         if "nao instalado" in str(exc):
             ui.hint("instale com: brew install --cask spotify")
+
+
+async def _browser_command(cfg: Config, args, ui: TerminalUI) -> None:
+    if not playwright_available():
+        ui.error("Playwright nao instalado.")
+        ui.hint(
+            ".venv/bin/pip install playwright && .venv/bin/playwright install chromium"
+        )
+        return
+    headless = cfg.browser.headless
+    if args.browser_command == "login":
+        headless = False
+    elif getattr(args, "headless", False):
+        headless = True
+    session = BrowserSession(
+        cfg.browser_profile_dir(),
+        headless=headless,
+        timeout_ms=cfg.browser.timeout_ms,
+    )
+    try:
+        async with session:
+            if args.browser_command == "login":
+                await session.goto(args.url)
+                ui.info("Faça login na janela do navegador.")
+                ui.hint("quando terminar, volte aqui e pressione Enter para salvar a sessão")
+                await asyncio.to_thread(input)
+                ui.success("sessão salva no perfil do navegador")
+            elif args.browser_command == "open":
+                await session.goto(args.url)
+                ui.success(f"{await session.title()} — {args.url}")
+            elif args.browser_command == "text":
+                text = await session.goto(args.url)
+                ui.console.print(text)
+            elif args.browser_command == "html":
+                await session.goto(args.url)
+                ui.console.print(await session.html())
+            elif args.browser_command == "screenshot":
+                await session.goto(args.url)
+                path = await session.screenshot(args.path)
+                ui.success(f"captura salva em {path}")
+    except BrowserError as exc:
+        ui.error(str(exc))
 
 
 def _serve_whatsapp(cfg: Config, ui: TerminalUI, args) -> None:
