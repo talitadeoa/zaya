@@ -33,10 +33,10 @@ _ASCII_ZORA = [
 _ASCII_COLORS = ["magenta", "bright_magenta", "purple", "bright_blue", "cyan", "bright_cyan"]
 
 _HELP = (
-    "Comandos nesta interface: /sair, /ajuda. "
-    "Atalhos: F1 paleta, F2 falar, F3 voz on/off, F4 escuta contínua, "
-    "Ctrl+T tema, Ctrl+L limpar. "
-    "Os demais comandos (agenda, tarefas, metas, finanças) continuam no modo terminal."
+    "Modo normal: i digitar · t texto · m mudo · v voz on/off · f falar · "
+    "c escuta contínua · Esc interromper. No modo insert, Esc volta ao normal. "
+    "F1 paleta · Ctrl+T tema · Ctrl+L limpar. "
+    "Os demais comandos (agenda, tarefas, metas, finanças) continuam no terminal."
 )
 
 
@@ -111,11 +111,15 @@ class TextualSink:
 
 class ZoraTextualApp(App):
     BINDINGS = [
+        Binding("i", "insert", "Digitar"),
+        Binding("enter", "insert", "Digitar"),
+        Binding("t", "text_mode", "Texto"),
+        Binding("m", "mute", "Mudo"),
+        Binding("v", "toggle_voice", "Voz"),
+        Binding("f", "push_to_talk", "Falar"),
+        Binding("c", "toggle_listen", "Contínua"),
+        Binding("escape", "escape", "Voltar", priority=True),
         Binding("f1", "command_palette", "Comandos"),
-        Binding("f2", "push_to_talk", "Falar"),
-        Binding("f3", "toggle_voice", "Voz on/off"),
-        Binding("f4", "toggle_listen", "Escuta contínua"),
-        Binding("escape", "interrupt", "Interromper"),
         Binding("ctrl+t", "toggle_theme", "Tema"),
         Binding("ctrl+l", "clear_chat", "Limpar"),
     ]
@@ -161,6 +165,7 @@ class ZoraTextualApp(App):
         self._continuous = False
         self._listener = None
         self._listen_task: asyncio.Task | None = None
+        self._insert_mode = False
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -176,7 +181,7 @@ class ZoraTextualApp(App):
         self.title = "Zora"
         self.sub_title = self._subtitle
         await self._render_welcome()
-        self.query_one("#input", Input).focus()
+        self._normal_mode()
 
     async def _render_welcome(self) -> None:
         log = self._log()
@@ -433,6 +438,39 @@ class ZoraTextualApp(App):
 
     def _set_status(self, text: str) -> None:
         self.query_one("#status", Static).update(text)
+
+    # ------------------------------------------------------------------ modes
+    def _normal_mode(self) -> None:
+        self._insert_mode = False
+        try:
+            self.set_focus(None)
+        except Exception:
+            pass
+        self._set_status(
+            "NORMAL · i digitar · f falar · m mudo · v voz · c contínua"
+        )
+
+    def action_insert(self) -> None:
+        self._insert_mode = True
+        self.query_one("#input", Input).focus()
+        self._set_status("INSERT · Esc volta ao modo normal")
+
+    async def action_escape(self) -> None:
+        if self._insert_mode:
+            self._normal_mode()
+        else:
+            await self.action_interrupt()
+
+    def action_text_mode(self) -> None:
+        self.action_insert()
+        self._stop_listening()
+        self._set_status("TEXTO · digite e Enter envia")
+
+    def action_mute(self) -> None:
+        self._stop_listening()
+        if self._voice is not None:
+            self._voice.tts.stop()
+        self._set_status("mudo")
 
     # --------------------------------------------------------------- palette
     def palette_labels(self) -> list[str]:

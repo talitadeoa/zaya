@@ -15,6 +15,7 @@ async def test_app_textual_responde_sem_erro():
     app = ZoraTextualApp(answer)
     async with app.run_test() as pilot:
         await pilot.pause()
+        await pilot.press("i")
         field = app.query_one("#input", Input)
         field.value = "oi"
         await pilot.press("enter")
