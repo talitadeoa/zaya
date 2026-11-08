@@ -7,7 +7,6 @@ import time
 from datetime import datetime, timedelta
 from typing import Any, Awaitable, Callable
 
-from rich import box
 from rich.markup import escape
 from rich.panel import Panel
 from rich.syntax import Syntax
@@ -242,7 +241,6 @@ class ZoraTextualApp(App):
         self._log().write(
             Panel(
                 body,
-                box=box.ASCII,
                 title=Text(f"Foco {period_label(focus.period)}", style=f"bold {CYAN}"),
                 title_align="left",
                 border_style=CYAN,
@@ -267,7 +265,6 @@ class ZoraTextualApp(App):
         self._log().write(
             Panel(
                 table,
-                box=box.ASCII,
                 title=Text("Metas de longo prazo", style=f"bold {ACCENT}"),
                 title_align="left",
                 border_style=ACCENT,
@@ -300,7 +297,6 @@ class ZoraTextualApp(App):
         self._log().write(
             Panel(
                 body,
-                box=box.ASCII,
                 title=Text("Lua", style=f"bold {LILAC}"),
                 title_align="left",
                 border_style=CYAN,
@@ -598,7 +594,6 @@ class ZoraTextualApp(App):
         self._log().write(
             Panel(
                 Syntax(patch, "diff", theme="monokai", word_wrap=True),
-                box=box.ASCII,
                 title=f"diff · {filename}",
                 title_align="left",
                 border_style=MINT,
@@ -613,7 +608,6 @@ class ZoraTextualApp(App):
         self._log().write(
             Panel(
                 Text(text),
-                box=box.ASCII,
                 title=Text("Talita:", style=f"bold {CYAN}"),
                 title_align="left",
                 border_style=CYAN,
@@ -625,7 +619,6 @@ class ZoraTextualApp(App):
         self._log().write(
             Panel(
                 Text(text),
-                box=box.ASCII,
                 title=Text("Zora:", style=f"bold {ACCENT}"),
                 title_align="left",
                 border_style=ACCENT,
