@@ -127,6 +127,7 @@ class Orchestrator:
         self._busy = False
         self._recording = False
         self._listening = False
+        self._voice_mode = bool(cfg.audio.continuous)
         self._mic_muted = False
         self._continuous_hint_shown = False
         self._permission_active = False
@@ -360,7 +361,7 @@ class Orchestrator:
     # -------------------------------------------------------------------- loop
     async def _loop(self) -> None:
         while True:
-            if self.cfg.audio.continuous and self._voice_available():
+            if self._voice_mode and self._voice_available():
                 quit_app = await self._continuous_loop()
                 if quit_app:
                     return
@@ -381,9 +382,13 @@ class Orchestrator:
             text = text.strip()
             if not text:
                 if self._voice_available():
+                    self._voice_mode = True
                     self.cfg.audio.continuous = True
                     self.ui.info("voltando para a escuta contínua…")
                 continue
+
+            self._voice_mode = False
+            self.cfg.audio.continuous = False
 
             width = max(20, self.ui.console.width)
             lines = max(1, (len("Talita: ") + len(text) + width - 1) // width)
@@ -444,6 +449,7 @@ class Orchestrator:
 
         self._listener = listener
         self._listening = True
+        self._voice_mode = True
         self._mic_muted = False
         self._last_listen_at = time.monotonic()
         self._mark_activity()
@@ -478,6 +484,7 @@ class Orchestrator:
                 try:
                     utterance = await asyncio.to_thread(listener.next_utterance, 0.5)
                 except (KeyboardInterrupt, asyncio.CancelledError):
+                    self._voice_mode = False
                     self.cfg.audio.continuous = False
                     self.ui.clear_status()
                     self.ui.warning("escuta contínua pausada; use /continuo on para retomar")
@@ -515,6 +522,7 @@ class Orchestrator:
                         continue
                     control = classify_voice_control(text)
                     if control == "stop":
+                        self._voice_mode = False
                         self.cfg.audio.continuous = False
                         self.ui.info("modo contínuo encerrado; pode digitar.")
                         return False
@@ -641,6 +649,7 @@ class Orchestrator:
                 if char in {"\r", "\n"}:
                     continue
                 if char.strip():
+                    self._voice_mode = False
                     self.cfg.audio.continuous = False
                     return
         finally:
@@ -1538,6 +1547,7 @@ class Orchestrator:
             self.cfg.audio.continuous = arg == "on"
         else:
             self.cfg.audio.continuous = not self.cfg.audio.continuous
+        self._voice_mode = self.cfg.audio.continuous
         if self.cfg.audio.continuous:
             self.ui.success("modo contínuo ativado; fale à vontade")
         else:
