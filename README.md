@@ -107,6 +107,7 @@ smoke tests.
 | `/modelo <provider/model>` | troca o modelo |
 | `/modo [nome]` | lista ou troca o modo ativo |
 | `/bolsa <ticker>` | cotação rápida (ex.: PETR4, AAPL) |
+| `/rapido on\|off` | modo rápido (sem contexto, respostas curtas) |
 | `/carteira [add\|remover]` | lista/acompanha seus ativos |
 | `/metas` | painel com foco atual e metas de longo prazo |
 | `/painel` | mesmo painel de metas |
