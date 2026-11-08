@@ -388,7 +388,6 @@ class Orchestrator:
                     return
                 continue
 
-            self.ui.print_user(text)
             assert self.conversation_id is not None
             self.store.add_turn(self.conversation_id, "user", text)
 
@@ -667,7 +666,7 @@ class Orchestrator:
             pass
 
     async def _read_user_input(self) -> str | None:
-        raw = await asyncio.to_thread(self.ui.prompt, "Você")
+        raw = await asyncio.to_thread(self.ui.prompt, "Talita")
         return raw.strip()
 
     def _voice_available(self) -> bool:
