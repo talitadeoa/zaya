@@ -15,7 +15,7 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Footer, Header, Input, OptionList, RichLog, Static
+from textual.widgets import Header, Input, OptionList, RichLog, Static
 
 from zora.audio.recorder import ContinuousListener
 from zora.focus import moon_details, period_label, principal_phase_today
@@ -35,6 +35,11 @@ _ASCII_ZORA = [
     " ╚══════╝ ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝",
 ]
 _ASCII_COLORS = [LILAC, LILAC, ACCENT, CYAN, MINT, MINT]
+
+_SHORTCUTS = (
+    "i digitar · t texto · m mudo · v voz · f falar · c contínua · "
+    "Esc interromper · F1 comandos · Ctrl+T tema · Ctrl+L limpar"
+)
 
 _HELP = (
     "Modo normal: i digitar · t texto · m mudo · v voz on/off · f falar · "
@@ -155,6 +160,12 @@ class ZoraTextualApp(App):
         color: #A8EFDB;
         padding: 0 1;
     }
+    #commandbar {
+        height: 1;
+        background: #0e7490;
+        color: #e0f2fe;
+        padding: 0 1;
+    }
     #input {
         border: round #79DCFD;
         height: 5;
@@ -191,7 +202,7 @@ class ZoraTextualApp(App):
             Static("● pronto", id="status"),
             Input(id="input"),
         )
-        yield Footer()
+        yield Static(_SHORTCUTS, id="commandbar")
 
     async def on_mount(self) -> None:
         self.title = "Zora"
