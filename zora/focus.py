@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
-import math
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
+
+import astronomy
 
 PHASES = [
     "new",
@@ -37,15 +39,27 @@ _PERIOD_LABEL = {"week": "semanal", "month": "mensal", "quarter": "trimestral"}
 
 
 def moon_phase(now: datetime | None = None) -> tuple[str, str, float]:
-    """Retorna (chave, nome, iluminacao 0..1) aproximando o ciclo sinodico."""
-    now = now or datetime.now()
-    reference = datetime(2000, 1, 6, 18, 14)
-    synodic = 29.53058867
-    days = (now - reference).total_seconds() / 86400.0
-    age = days % synodic
-    index = int((age / synodic) * 8 + 0.5) % 8
+    """Retorna (chave, nome, iluminacao 0..1) usando a mesma base da Agenda."""
+    tz = ZoneInfo("America/Sao_Paulo")
+    local = (now or datetime.now(tz)).astimezone(tz)
+    noon_local = datetime(
+        local.year, local.month, local.day, 12, 0, tzinfo=tz
+    )
+    noon_utc = noon_local.astimezone(timezone.utc)
+    moment = astronomy.Time.Make(
+        noon_utc.year,
+        noon_utc.month,
+        noon_utc.day,
+        noon_utc.hour,
+        noon_utc.minute,
+        noon_utc.second + noon_utc.microsecond / 1_000_000,
+    )
+    fraction = (astronomy.MoonPhase(moment) / 360.0) % 1.0
+    index = int(round(fraction * 8)) % 8
     key = PHASES[index]
-    illumination = (1 - math.cos(2 * math.pi * age / synodic)) / 2
+    illumination = max(
+        0.0, min(1.0, astronomy.Illumination(astronomy.Body.Moon, moment).phase_fraction)
+    )
     return key, RITUALS[key][0], illumination
 
 
