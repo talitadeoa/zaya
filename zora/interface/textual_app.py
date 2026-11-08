@@ -112,11 +112,11 @@ class TextualSink:
     def reasoning(self, text: str) -> None:
         snippet = " ".join((text or "").split())[-90:]
         if snippet:
-            self.app.query_one("#status", Static).update(f"◐ {snippet}")
+            self.app._set_status(f"◐ {snippet}")
 
     def tool(self, name: str, detail: str = "") -> None:
         line = f"▸ {name} {detail}".strip()
-        self.app.query_one("#status", Static).update(line)
+        self.app._set_status(line)
 
     def diff(self, filename: str, patch: str) -> None:
         self.app.write_diff(filename, patch)
@@ -199,7 +199,7 @@ class ZoraTextualApp(App):
         yield Vertical(
             RichLog(id="chat", highlight=True, markup=True, wrap=True),
             Static("", id="stream"),
-            Static("● pronto", id="status"),
+            Static("", id="status"),
             Input(id="input"),
         )
         yield Static(_SHORTCUTS, id="commandbar")
@@ -342,7 +342,7 @@ class ZoraTextualApp(App):
             status = self.query_one("#status", Static)
             stream = self.query_one("#stream", Static)
             stream.update("")
-            status.update("◐ pensando…")
+            self._set_status("◐ pensando")
             sink = TextualSink(self)
             try:
                 answer = await self._answer(text, sink)
@@ -354,14 +354,14 @@ class ZoraTextualApp(App):
             elif sink.buffer:
                 self._write_zora(sink.buffer)
             if answer and self._voice_replies and self._voice is not None:
-                status.update("▶ falando…")
+                self._set_status("▶ falando")
                 delegated = True
                 self.run_worker(
                     self._speak_and_resume(answer, listener), exclusive=False
                 )
             else:
                 self._status_base = ""
-                status.update("...")
+                status.update("")
         finally:
             if not delegated:
                 self._turn_running = False
@@ -389,7 +389,7 @@ class ZoraTextualApp(App):
                 listener.resume()
                 self._set_status("● ouvindo…")
             else:
-                self._set_status("● pronto")
+                self._set_status("")
 
     def action_push_to_talk(self) -> None:
         self.run_worker(self._push_to_talk(), exclusive=False)
@@ -508,6 +508,8 @@ class ZoraTextualApp(App):
 
     def _tick_status(self) -> None:
         if not self._turn_running or not self._status_base:
+            return
+        if not self._status_base.startswith(("◐", "▶", "▸", "🎙")):
             return
         self._dot_phase = (self._dot_phase + 1) % 3
         dots = "." * (self._dot_phase + 1)
