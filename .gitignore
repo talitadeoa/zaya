@@ -38,5 +38,9 @@ curriculo*.md
 *.sqlite
 *.pem
 
+# Markdown pessoal (só o README do projeto entra)
+*.md
+!README.md
+
 # macOS
 .DS_Store
