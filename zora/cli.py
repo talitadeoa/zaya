@@ -49,7 +49,13 @@ def build_parser() -> argparse.ArgumentParser:
         "-tui",
         "--tui",
         action="store_true",
-        help="atalho para abrir a interface textual",
+        help="abre a interface textual (padrão)",
+    )
+    parser.add_argument(
+        "-old",
+        "--old",
+        action="store_true",
+        help="abre a interface antiga (terminal)",
     )
     parser.add_argument(
         "--watch",
@@ -143,6 +149,8 @@ def main() -> None:
         cfg.interface.ui = args.ui
     if args.tui:
         cfg.interface.ui = "textual"
+    if args.old:
+        cfg.interface.ui = "terminal"
     ui = TerminalUI()
 
     try:

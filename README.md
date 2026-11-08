@@ -365,15 +365,16 @@ e exibe os **diffs** das ferramentas de edição em caixas coloridas. Desative c
 ### Interface Textual
 
 ```bash
-zora                    # interface antiga (terminal completo)
-zora -tui               # interface nova (TUI)
-zora --ui textual       # equivalente
-zora --watch -tui       # reinicia sozinha quando o código muda
+zora                    # interface nova (TUI, padrão)
+zora -old               # interface antiga (terminal completo)
+zora -tui               # força a TUI (equivalente ao padrão)
+zora --watch            # reinicia sozinha quando o código muda
 ```
 
-São dois front-ends do mesmo cérebro — você escolhe um ao iniciar; o serviço do
-Telegram pode rodar junto. A TUI abre com o **ASCII colorido da Zora**, o
-**foco/metas** e a **fase da lua**, e tem chat com streaming, diffs e raciocínio.
+São dois front-ends do mesmo cérebro. Agora `zora` abre a **TUI** por padrão;
+`zora -old` abre o terminal antigo. O serviço do Telegram pode rodar junto. A TUI
+abre com o **ASCII colorido da Zora**, o **foco/metas** e a **fase da lua**, e
+tem chat com streaming, diffs e raciocínio.
 
 A TUI usa dois modos:
 

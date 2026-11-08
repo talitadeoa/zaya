@@ -127,7 +127,7 @@ class InterfaceConfig(BaseModel):
     # Mostrar o painel de metas ao iniciar.
     show_metas_on_start: bool = True
     # Interface: terminal (padrão) ou textual.
-    ui: str = "terminal"
+    ui: str = "textual"
     # Modo rápido: sem busca automática e respostas mais curtas.
     fast: bool = False
     # Modo inicial: academica | carreira | assistente | conversa.
@@ -515,7 +515,7 @@ concise = true
 show_reasoning = true
 show_diffs = true
 show_metas_on_start = true
-ui = "terminal"            # terminal | textual
+ui = "textual"             # textual (padrão) | terminal
 fast = false               # modo rápido: sem busca automática, respostas curtas
 default_mode = "assistente"     # academica | carreira | assistente | conversa
 
