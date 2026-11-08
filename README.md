@@ -106,6 +106,7 @@ smoke tests.
 | `/novo` | nova conversa + nova sessão OpenCode |
 | `/modelo <provider/model>` | troca o modelo |
 | `/modo [nome]` | lista ou troca o modo ativo |
+| `/bolsa <ticker>` | cotação rápida (ex.: PETR4, AAPL) |
 | `/metas` | painel com foco atual e metas de longo prazo |
 | `/painel` | mesmo painel de metas |
 | `/foco [definir\\|limpar]` | define/limpa o foco do ciclo |
@@ -126,12 +127,13 @@ smoke tests.
 
 ### Modos
 
-A Zora tem quatro modos, que mudam a diretriz enviada ao OpenCode:
+A Zora tem cinco modos, que mudam a diretriz enviada ao OpenCode:
 
 - **academica** — pesquisa, mestrado, leitura, escrita e metodologia.
 - **carreira** — emprego, currículo, vagas e entrevistas.
 - **assistente** — agenda, rotinas, compromissos e prioridades.
 - **conversa** — conversa informal, acolhedora e íntima.
+- **financas** — bolsa, ações, orçamento e investimentos.
 
 O modo ativo é persistido entre sessões e pode ser trocado com `/modo <nome>`.
 O padrão é definido em `[interface] default_mode`.

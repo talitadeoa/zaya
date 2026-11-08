@@ -11,8 +11,14 @@ from zora.controller.modes import (
 )
 
 
-def test_quatro_modos_esperados():
-    assert set(PERSONAS) == {"academica", "carreira", "assistente", "conversa"}
+def test_cinco_modos_esperados():
+    assert set(PERSONAS) == {
+        "academica",
+        "carreira",
+        "assistente",
+        "conversa",
+        "financas",
+    }
     assert DEFAULT_MODE in PERSONAS
 
 
@@ -38,5 +44,7 @@ def test_parse_mode_switch_falas_naturais():
     assert parse_mode_switch("Zora, entra no modo acadêmica") == "academica"
     assert parse_mode_switch("modo conversa") == "conversa"
     assert parse_mode_switch("vira a parceira de carreira") == "carreira"
+    assert parse_mode_switch("muda para o modo finanças") == "financas"
+    assert parse_mode_switch("modo bolsa") == "financas"
     assert parse_mode_switch("como faço para mudar de emprego?") is None
     assert parse_mode_switch("quero entender o modo como funciona") is None

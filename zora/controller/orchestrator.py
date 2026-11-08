@@ -22,6 +22,7 @@ from zora.agenda.client import AgendaClient, AgendaError
 from zora.audio.recorder import AudioError, ContinuousListener, Recorder
 from zora.config import Config
 from zora.controller.goals import GoalTracker, goal_block
+from zora.finance.quotes import FinanceError, fetch_quote, format_quote
 from zora.focus import (
     RITUALS,
     FocusStore,
@@ -1305,6 +1306,8 @@ class Orchestrator:
             self._switch_mode(argument)
         elif command in {"/metas", "/objetivos", "/painel"}:
             await self._show_dashboard()
+        elif command in {"/bolsa", "/acao", "/ações"}:
+            await self._handle_quote(argument)
         elif command in {"/foco", "/focos"}:
             await self._handle_focus(argument)
         elif command in {"/tarefas", "/tarefa"}:
@@ -1430,6 +1433,18 @@ class Orchestrator:
             if manifestation:
                 note += f" — manifestações na Agenda: {manifestation}"
         self.ui.dashboard(self.focus.current, self.goals.all(), moon, note)
+
+    async def _handle_quote(self, argument: str) -> None:
+        ticker = argument.strip().split()[0] if argument.strip() else ""
+        if not ticker:
+            self.ui.warning("uso: /bolsa <ticker> (ex.: PETR4, AAPL)")
+            return
+        try:
+            quote = await fetch_quote(ticker)
+        except FinanceError as exc:
+            self.ui.error(str(exc))
+            return
+        self.ui.info(format_quote(quote))
 
     async def _handle_focus(self, argument: str) -> None:
         parts = argument.strip().split(maxsplit=2)

@@ -72,6 +72,19 @@ PERSONAS: dict[str, Persona] = {
             "não pressione por assuntos sensíveis."
         ),
     ),
+    "financas": Persona(
+        key="financas",
+        name="Parceira Financeira",
+        summary="bolsa, ações, orçamento e investimentos",
+        directive=(
+            "Você é a Parceira Financeira da Talita. Acompanhe informações de "
+            "mercado, analise ações e indicadores, explique risco e contexto, e "
+            "ajude com orçamento e investimentos. Seja clara, objetiva e "
+            "responsável: não prometa retorno, sinalize riscos e nunca trate a "
+            "análise como recomendação definitiva de compra ou venda. Ensine o "
+            "raciocínio e ajude a Talita a decidir com consciência."
+        ),
+    ),
 }
 
 DEFAULT_MODE = "assistente"
@@ -88,6 +101,12 @@ ALIASES = {
     "conversa": "conversa",
     "conversar": "conversa",
     "informal": "conversa",
+    "financas": "financas",
+    "financeiro": "financas",
+    "financeira": "financas",
+    "bolsa": "financas",
+    "investimentos": "financas",
+    "acoes": "financas",
 }
 
 _MODE_WORD = r"(?P<mode>[a-zA-ZÀ-ÿ]+)"
