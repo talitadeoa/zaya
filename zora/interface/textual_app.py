@@ -13,9 +13,9 @@ from rich.syntax import Syntax
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Vertical
+from textual.containers import Vertical, VerticalScroll
 from textual.screen import ModalScreen
-from textual.widgets import Header, Input, OptionList, RichLog, Static
+from textual.widgets import Header, Input, OptionList, Static
 
 from zora.audio.recorder import ContinuousListener
 from zora.focus import moon_details, period_label, principal_phase_today
@@ -150,11 +150,6 @@ class ZoraTextualApp(App):
         scrollbar-color: #79DCFD;
         scrollbar-background: #140a24;
     }
-    #stream {
-        height: auto;
-        max-height: 20;
-        padding: 0 1;
-    }
     #status {
         height: 1;
         color: #A8EFDB;
@@ -193,12 +188,12 @@ class ZoraTextualApp(App):
         self._turn_running = False
         self._status_base = ""
         self._dot_phase = 0
+        self._stream_widget: Static | None = None
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=False)
         yield Vertical(
-            RichLog(id="chat", highlight=True, markup=True, wrap=True),
-            Static("", id="stream"),
+            VerticalScroll(id="chat"),
             Static("", id="status"),
             Input(id="input"),
         )
@@ -214,8 +209,8 @@ class ZoraTextualApp(App):
     async def _render_welcome(self) -> None:
         log = self._log()
         for line, color in zip(_ASCII_ZORA, _ASCII_COLORS, strict=False):
-            log.write(Text(line, style=f"bold {color}"))
-        log.write(Text("assistente pessoal · OpenCode · Second Brain", style=MUTED))
+            self._mount(Text(line, style=f"bold {color}"))
+        self._mount(Text("assistente pessoal · OpenCode · Second Brain", style=MUTED))
         if self._voice is not None:
             try:
                 self._write_focus_panel()
@@ -228,7 +223,7 @@ class ZoraTextualApp(App):
     def _write_focus_panel(self) -> None:
         focus = self._voice.focus.current
         if focus is None:
-            self._log().write(
+            self._mount(
                 Text("Nenhum foco definido; use /foco definir semanal <texto>.", style=MUTED)
             )
             return
@@ -238,7 +233,7 @@ class ZoraTextualApp(App):
         for goal in focus.goals:
             body.append(f"• {goal}\n")
         body.append(f"\n{focus.start} → {focus.end}", style=MUTED)
-        self._log().write(
+        self._mount(
             Panel(
                 body,
                 title=Text(f"Foco {period_label(focus.period)}", style=f"bold {CYAN}"),
@@ -262,7 +257,7 @@ class ZoraTextualApp(App):
         table.add_column("Próximo passo", style=MUTED)
         for goal in goals:
             table.add_row(escape(goal.label), escape(goal.next_step or "—"))
-        self._log().write(
+        self._mount(
             Panel(
                 table,
                 title=Text("Metas de longo prazo", style=f"bold {ACCENT}"),
@@ -294,7 +289,7 @@ class ZoraTextualApp(App):
             if manifestation:
                 line += f" — manifestações na Agenda: {manifestation}"
             body.append("\n" + line, style=MUTED)
-        self._log().write(
+        self._mount(
             Panel(
                 body,
                 title=Text("Lua", style=f"bold {LILAC}"),
@@ -340,19 +335,14 @@ class ZoraTextualApp(App):
         try:
             self._write_user(text)
             status = self.query_one("#status", Static)
-            stream = self.query_one("#stream", Static)
-            stream.update("")
+            self._stream_widget = None
             self._set_status("◐ pensando")
             sink = TextualSink(self)
             try:
                 answer = await self._answer(text, sink)
             except Exception as exc:  # pragma: no cover - depende do backend
                 answer = f"Erro: {exc}"
-            stream.update("")
-            if answer:
-                self._write_zora(answer)
-            elif sink.buffer:
-                self._write_zora(sink.buffer)
+            self.finish_stream(answer or sink.buffer or "")
             if answer and self._voice_replies and self._voice is not None:
                 self._set_status("▶ falando")
                 delegated = True
@@ -580,18 +570,50 @@ class ZoraTextualApp(App):
         self.theme = "textual-light" if "dark" in self.theme else "textual-dark"
 
     def action_clear_chat(self) -> None:
-        self.query_one("#chat", RichLog).clear()
+        self._log().remove_children()
+        self._stream_widget = None
 
     # ------------------------------------------------------------------ helpers
+    def _scroll_chat(self) -> None:
+        try:
+            self._log().scroll_end(animate=False)
+        except Exception:
+            pass
+
+    def _mount(self, renderable) -> None:
+        self._log().mount(Static(renderable))
+        self.call_after_refresh(self._scroll_chat)
+
     def update_stream(self, text: str) -> None:
+        if self._stream_widget is None:
+            self._stream_widget = Static()
+            self._log().mount(self._stream_widget)
         body = Text("Zora: ", style=f"bold {ACCENT}")
         body.append(text)
-        self.query_one("#stream", Static).update(body)
+        self._stream_widget.update(body)
+        self.call_after_refresh(self._scroll_chat)
+
+    def finish_stream(self, answer: str) -> None:
+        if self._stream_widget is None:
+            if answer:
+                self._write_zora(answer)
+            return
+        self._stream_widget.update(
+            Panel(
+                Text(answer),
+                title=Text("Zora:", style=f"bold {ACCENT}"),
+                title_align="left",
+                border_style=ACCENT,
+                padding=(0, 1),
+            )
+        )
+        self._stream_widget = None
+        self.call_after_refresh(self._scroll_chat)
 
     def write_diff(self, filename: str, patch: str) -> None:
         if not patch.strip():
             return
-        self._log().write(
+        self._mount(
             Panel(
                 Syntax(patch, "diff", theme="monokai", word_wrap=True),
                 title=f"diff · {filename}",
@@ -601,11 +623,11 @@ class ZoraTextualApp(App):
             )
         )
 
-    def _log(self) -> RichLog:
-        return self.query_one("#chat", RichLog)
+    def _log(self) -> VerticalScroll:
+        return self.query_one("#chat", VerticalScroll)
 
     def _write_user(self, text: str) -> None:
-        self._log().write(
+        self._mount(
             Panel(
                 Text(text),
                 title=Text("Talita:", style=f"bold {CYAN}"),
@@ -616,7 +638,7 @@ class ZoraTextualApp(App):
         )
 
     def _write_zora(self, text: str) -> None:
-        self._log().write(
+        self._mount(
             Panel(
                 Text(text),
                 title=Text("Zora:", style=f"bold {ACCENT}"),
@@ -627,4 +649,4 @@ class ZoraTextualApp(App):
         )
 
     def _write_note(self, text: str) -> None:
-        self._log().write(Text(text, style=MUTED))
+        self._mount(Text(text, style=MUTED))
