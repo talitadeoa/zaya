@@ -447,7 +447,8 @@ class Orchestrator:
         if not self._continuous_hint_shown:
             self.ui.hint(
                 "Escuta contínua: fale à vontade · [M] mudo · [Esc] interrompe · "
-                "[T] texto · o mic desliga no silêncio · 'sair' encerra"
+                "[T] ou digitar volta ao texto · o mic desliga no silêncio · "
+                "'sair' encerra"
             )
             self._continuous_hint_shown = True
         self.ui.set_status("● ouvindo…")
@@ -630,10 +631,9 @@ class Orchestrator:
                 if char in {"\r", "\n"}:
                     continue
                 if char.strip():
-                    self.ui.hint(
-                        "Para digitar, diga 'parar' e volte ao modo texto. "
-                        "M alterna o microfone."
-                    )
+                    self.cfg.audio.continuous = False
+                    self.ui.info("voltando ao modo texto; pode digitar.")
+                    return
         finally:
             disable_raw()
 
@@ -1643,7 +1643,7 @@ class Orchestrator:
         new_tasks = [task for task in synced if task.id not in before]
         for task in new_tasks:
             self.ui.info(f"nova tarefa na Agenda: {task.title}")
-            plan = await self._plan_task(task.title)
+            plan = task.notes or await self._plan_task(task.title)
             self.tasks.set_status(task.id, "in_progress", plan or "")
             await self._say_proactive(f"Nova tarefa na página de tarefas: {task.title}")
 

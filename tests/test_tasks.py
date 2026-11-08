@@ -17,6 +17,25 @@ def test_sync_e_idempotente(tmp_path):
     assert len(store.all()) == 1
 
 
+def test_edicao_pequena_reaproveita_tarefa(tmp_path):
+    store = TaskStore(tmp_path / "tasks.json")
+    task = store.upsert("vamos melhorar o terminal com ascii art")
+    store.set_status(task.id, "done", "plano salvo")
+    store.sync_text("- vamos melhorar o terminal com uma ascii art")
+    tasks = store.all()
+    assert len(tasks) == 1
+    assert tasks[0].id == task.id
+    assert tasks[0].status == "done"
+    assert tasks[0].notes == "plano salvo"
+
+
+def test_texto_diferente_cria_nova_tarefa(tmp_path):
+    store = TaskStore(tmp_path / "tasks.json")
+    store.upsert("fazer ascii art")
+    store.sync_text("- integrar com alexa")
+    assert len(store.all()) == 2
+
+
 def test_sync_nao_reseta_status(tmp_path):
     store = TaskStore(tmp_path / "tasks.json")
     task = store.upsert("tarefa")

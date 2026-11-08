@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import difflib
 import hashlib
 import json
 import re
+import unicodedata
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -21,6 +23,19 @@ class Task:
 
 def _task_id(title: str) -> str:
     return hashlib.sha1(title.strip().lower().encode("utf-8")).hexdigest()[:10]
+
+
+def _normalize(text: str) -> str:
+    text = unicodedata.normalize("NFKD", text.lower())
+    text = "".join(ch for ch in text if not unicodedata.combining(ch))
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _similar(a: str, b: str, threshold: float = 0.88) -> bool:
+    left, right = _normalize(a), _normalize(b)
+    if min(len(left), len(right)) < 15:
+        return False
+    return difflib.SequenceMatcher(None, left, right).ratio() >= threshold
 
 
 class TaskStore:
@@ -102,6 +117,20 @@ class TaskStore:
             line = raw.strip().strip("-•*\t ")
             line = " ".join(line.split())
             if not line:
+                continue
+            exact = self._tasks.get(_task_id(line))
+            if exact is not None:
+                tasks.append(exact)
+                continue
+            similar = next(
+                (task for task in self._tasks.values() if _similar(task.title, line)),
+                None,
+            )
+            if similar is not None:
+                similar.title = line
+                similar.updated_at = datetime.now().isoformat(timespec="seconds")
+                self._save()
+                tasks.append(similar)
                 continue
             tasks.append(self.upsert(line))
         return tasks
