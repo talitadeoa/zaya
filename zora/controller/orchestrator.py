@@ -21,6 +21,7 @@ from typing import Any
 from zora.agenda.client import AgendaClient, AgendaError
 from zora.audio.recorder import AudioError, ContinuousListener, Recorder
 from zora.config import Config
+from zora.controller.goals import GoalTracker, goal_block
 from zora.controller.intents import (
     RegisterIntent,
     format_context,
@@ -139,6 +140,7 @@ class Orchestrator:
         self._last_idle_message = ""
         self._initiative_session_id: str | None = None
         self._agenda_pending_names: list[str] = []
+        self.goals = GoalTracker()
         self.agenda = AgendaClient(cfg.agenda)
         self._agenda_next_check = 0.0
         self._agenda_seen: set[str] = set()
@@ -786,6 +788,14 @@ class Orchestrator:
                 "Não leia nem edite arquivos do Second Brain para esta resposta: "
                 "o contexto já foi fornecido pela Zora."
             )
+        goals = self.goals.detect(text)
+        if goals:
+            prompt = goal_block(goals) + "\n\n---\n\n" + prompt
+            self.store.add_turn(
+                self.conversation_id,
+                "context",
+                "Metas relacionadas: " + ", ".join(goal.label for goal in goals),
+            )
         prompt = persona_block(self.persona) + "\n\n---\n\n" + prompt
         preferences = self._preferences_block()
         if preferences:
@@ -1195,6 +1205,8 @@ class Orchestrator:
             await self._switch_model(argument)
         elif command in {"/modo", "/perfil", "/persona"}:
             self._switch_mode(argument)
+        elif command in {"/metas", "/objetivos"}:
+            self._show_goals()
         elif command == "/voz":
             self._switch_voice(argument)
         elif command == "/interromper":
@@ -1299,6 +1311,16 @@ class Orchestrator:
         self.cfg.opencode.model = model.slug
         self.store.set_meta("model", model.slug)
         self.ui.success(f"modelo da próxima mensagem: {model.slug}")
+
+    def _show_goals(self) -> None:
+        goals = self.goals.all()
+        if not goals:
+            self.ui.warning("nenhuma meta configurada em ~/.config/zora/goals.json")
+            return
+        self.ui.info(f"{len(goals)} meta(s) configurada(s):")
+        for goal in goals:
+            detail = f" — {goal.next_step}" if goal.next_step else ""
+            self.ui.info(f"  {goal.label}{detail}")
 
     def _switch_mode(self, argument: str) -> None:
         if not argument:
@@ -1537,6 +1559,7 @@ class Orchestrator:
         hora = now.strftime("%H:%M")
         pending = self.store.pending_reminders()
         agenda = ", ".join(self._agenda_pending_names[:5]) or "nenhuma"
+        metas = ", ".join(goal.label for goal in self.goals.all()) or "nenhuma"
         last = self._last_idle_message or "(nenhuma)"
         if greeting:
             instruction = (
@@ -1553,6 +1576,7 @@ class Orchestrator:
             f"Modo ativo: {self.persona.name}. "
             f"Lembretes pendentes: {len(pending)}. "
             f"Tarefas pendentes na agenda: {agenda}. "
+            f"Metas: {metas}. "
             f"Última mensagem de iniciativa: {last}.\n\n"
             f"{instruction} Responda APENAS com a frase, em português do Brasil, "
             "com no máximo 25 palavras. Não use listas, emojis ou aspas. Não diga "

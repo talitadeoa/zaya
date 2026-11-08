@@ -294,6 +294,12 @@ zora browser screenshot https://exemplo.com captura.png
 O perfil fica em `~/.local/share/zora/browser`, então o login é reaproveitado.
 Sites com proteção forte podem exigir `--no-headless` (o `login` já abre visível).
 
+### Metas pessoais
+
+A Zora detecta quando a conversa toca em metas configuradas em
+`~/.config/zora/goals.json` e prioriza o assunto no prompt, sugerindo o próximo
+passo. Use `/metas` para listar. O arquivo é local e não vai para o repositório.
+
 ### Agenda proativa
 
 A Zora lê as tarefas do dia na Agenda (mesma base Supabase) e avisa quando há

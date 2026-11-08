@@ -420,6 +420,7 @@ class TerminalUI:
             ("/novo", "inicia nova conversa e sessão no OpenCode"),
             ("/modelo <provider/model>", "troca o modelo da sessão"),
             ("/modo [nome]", "lista ou troca o modo (academica, carreira, assistente, conversa)"),
+            ("/metas", "lista as metas pessoais configuradas"),
             ("/voz on|off|edge|say|none", "controla a voz"),
             ("/preferencia <texto>", "aprende uma preferência (taste)"),
             ("/preferencias", "mostra as preferências aprendidas"),
