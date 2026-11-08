@@ -128,6 +128,7 @@ class Orchestrator:
         self._recording = False
         self._listening = False
         self._voice_mode = bool(cfg.audio.continuous)
+        self._pending_input = ""
         self._mic_muted = False
         self._continuous_hint_shown = False
         self._permission_active = False
@@ -649,8 +650,10 @@ class Orchestrator:
                 if char in {"\r", "\n"}:
                     continue
                 if char.strip():
+                    self.tts.stop()
                     self._voice_mode = False
                     self.cfg.audio.continuous = False
+                    self._pending_input = char
                     return
         finally:
             disable_raw()
@@ -684,7 +687,25 @@ class Orchestrator:
         # Se estamos pedindo texto, o modo voz fica desligado ate uma acao explicita.
         self._voice_mode = False
         self.cfg.audio.continuous = False
-        raw = await asyncio.to_thread(self.ui.prompt, "Talita")
+        prefix = self._pending_input
+        self._pending_input = ""
+        readline = None
+        if prefix:
+            try:
+                import readline as _readline
+
+                _readline.set_startup_hook(lambda: _readline.insert_text(prefix))
+                readline = _readline
+            except Exception:
+                readline = None
+        try:
+            raw = await asyncio.to_thread(self.ui.prompt, "Talita")
+        finally:
+            if readline is not None:
+                try:
+                    readline.set_startup_hook()
+                except Exception:
+                    pass
         return raw.strip()
 
     def _voice_available(self) -> bool:
