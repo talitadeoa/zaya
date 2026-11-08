@@ -109,6 +109,14 @@ class TaskStore:
         self._save()
         return task
 
+    def clear_done(self) -> int:
+        removed = [task for task in self._tasks.values() if task.status == "done"]
+        for task in removed:
+            del self._tasks[task.id]
+        if removed:
+            self._save()
+        return len(removed)
+
     def sync_text(self, text: str) -> list[Task]:
         cleaned = (text or "").replace("<br>", "\n")
         cleaned = re.sub(r"<[^>]+>", "", cleaned)

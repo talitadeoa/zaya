@@ -109,7 +109,7 @@ smoke tests.
 | `/metas` | painel com foco atual e metas de longo prazo |
 | `/painel` | mesmo painel de metas |
 | `/foco [definir\\|limpar]` | define/limpa o foco do ciclo |
-| `/tarefas [sync]` | lista/sincroniza as tarefas de longo prazo |
+| `/tarefas [sync\|limpar]` | lista/sincroniza/limpa tarefas concluídas |
 | `/voz on\|off\|edge\|say\|none` | controla a voz |
 | `/continuo on\|off` | escuta contínua sem Enter |
 | `/fala` | volta para a escuta contínua |
@@ -312,6 +312,7 @@ acompanha o status (`pending`, `in_progress`, `done`):
 /tarefas sync         # relê a página da Agenda
 /tarefas fazer <id>   # executa a tarefa no projeto
 /tarefas concluir <id>
+/tarefas limpar       # remove as concluídas do estado local
 ```
 
 Por padrão a Zora **não checa a página sozinha** — use `/tarefas sync` quando

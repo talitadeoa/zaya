@@ -63,6 +63,33 @@ def moon_phase(now: datetime | None = None) -> tuple[str, str, float]:
     return key, RITUALS[key][0], illumination
 
 
+def principal_phase_today(
+    now: datetime | None = None,
+) -> tuple[str, str, datetime] | None:
+    """Retorna a fase principal que acontece hoje (se houver)."""
+    tz = ZoneInfo("America/Sao_Paulo")
+    local = (now or datetime.now(tz)).astimezone(tz)
+    today = local.date()
+    start_local = datetime(today.year, today.month, today.day, tzinfo=tz)
+    start_utc = start_local.astimezone(timezone.utc)
+    start = astronomy.Time.Make(
+        start_utc.year, start_utc.month, start_utc.day, start_utc.hour, 0, 0
+    )
+    for angle, key in (
+        (0, "new"),
+        (90, "first_quarter"),
+        (180, "full"),
+        (270, "last_quarter"),
+    ):
+        event = astronomy.SearchMoonPhase(angle, start, 2.0)
+        if event is None:
+            continue
+        moment = event.Utc().replace(tzinfo=timezone.utc).astimezone(tz)
+        if moment.date() == today:
+            return key, RITUALS[key][0], moment
+    return None
+
+
 @dataclass
 class Focus:
     period: str = "week"

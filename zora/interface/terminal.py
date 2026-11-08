@@ -362,7 +362,7 @@ class TerminalUI:
         detail_text = f" [white]{escape(detail)}[/]" if detail else ""
         self._print(f"  [blue]▸ {escape(name)}[/]{detail_text}")
 
-    def dashboard(self, focus, goals: list, moon=None) -> None:
+    def dashboard(self, focus, goals: list, moon=None, moon_note: str = "") -> None:
         if not focus and not goals:
             self.warning("nenhuma meta configurada")
             return
@@ -415,6 +415,8 @@ class TerminalUI:
             self._print(
                 Text(f"Lua: {name} · {illumination * 100:.0f}% iluminada", style=MUTED)
             )
+        if moon_note:
+            self._print(Text(moon_note, style=MUTED))
 
     def reasoning(self, text: str) -> None:
         clean = " ".join((text or "").split())
@@ -559,7 +561,7 @@ class TerminalUI:
             ("/metas", "painel visual com foco atual e metas de longo prazo"),
             ("/painel", "mesmo painel de metas"),
             ("/foco [definir|limpar]", "define/limpa o foco do ciclo"),
-            ("/tarefas [sync]", "lista/sincroniza as tarefas de longo prazo"),
+            ("/tarefas [sync|limpar]", "lista/sincroniza/limpa tarefas concluídas"),
             ("/voz on|off|edge|say|none", "controla a voz"),
             ("/preferencia <texto>", "aprende uma preferência (taste)"),
             ("/preferencias", "mostra as preferências aprendidas"),

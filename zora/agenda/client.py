@@ -17,6 +17,37 @@ class AgendaError(RuntimeError):
     pass
 
 
+def _imul(a: int, b: int) -> int:
+    return (a * b) & 0xFFFFFFFF
+
+
+def _hash32(value: str) -> int:
+    result = 0x811C9DC5
+    for ch in value:
+        result ^= ord(ch)
+        result = _imul(result, 0x01000193)
+    return result & 0xFFFFFFFF
+
+
+def lunation_note_id(date: str) -> str:
+    """Mesmo id estável usado pela Agenda para a nota de manifestação."""
+    seed = f"lunation:{date}"
+    value = (
+        format(_hash32(seed), "08x")
+        + format(_hash32(seed + "#1"), "08x")
+        + format(_hash32(seed + "#2"), "08x")
+        + format(_hash32(seed + "#3"), "08x")
+    )[:32]
+    chars = list(value)
+    chars[12] = "4"
+    chars[16] = "8"
+    joined = "".join(chars)
+    return (
+        f"{joined[0:8]}-{joined[8:12]}-{joined[12:16]}-"
+        f"{joined[16:20]}-{joined[20:32]}"
+    )
+
+
 def _load_env_file(path: Path) -> dict[str, str]:
     env: dict[str, str] = {}
     if not path.is_file():
@@ -100,6 +131,27 @@ class AgendaClient:
             "limit": "200",
         }
         return await self._query("notes", params)
+
+    async def notes_on(self, date: str) -> list[dict[str, Any]]:
+        if not self.enabled:
+            return []
+        user_id = self._get("AGENDA_USER_ID")
+        params = {
+            "user_id": f"eq.{user_id}",
+            "date": f"eq.{date}",
+            "select": "id,text,is_checkbox,completed,date",
+            "order": "order.asc",
+            "limit": "200",
+        }
+        return await self._query("notes", params)
+
+    async def lunation_note(self, date: str) -> str:
+        rows = await self.notes_on(date)
+        wanted = lunation_note_id(date)
+        for row in rows:
+            if str(row.get("id")) == wanted:
+                return str(row.get("text") or "")
+        return ""
 
     async def metas(self) -> list[dict[str, Any]]:
         if not self.enabled:

@@ -14,7 +14,7 @@ import sys
 import threading
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -22,7 +22,13 @@ from zora.agenda.client import AgendaClient, AgendaError
 from zora.audio.recorder import AudioError, ContinuousListener, Recorder
 from zora.config import Config
 from zora.controller.goals import GoalTracker, goal_block
-from zora.focus import KEY_PHASES, RITUALS, FocusStore, moon_phase, period_label
+from zora.focus import (
+    RITUALS,
+    FocusStore,
+    moon_phase,
+    period_label,
+    principal_phase_today,
+)
 from zora.controller.intents import (
     RegisterIntent,
     format_context,
@@ -1409,7 +1415,21 @@ class Orchestrator:
         self.ui.success(f"modelo da próxima mensagem: {model.slug}")
 
     async def _show_dashboard(self) -> None:
-        self.ui.dashboard(self.focus.current, self.goals.all(), moon_phase())
+        moon = moon_phase()
+        note = ""
+        phase = principal_phase_today(datetime.now().astimezone() + timedelta(days=1))
+        if phase:
+            _key, name, moment = phase
+            try:
+                manifestation = await self.agenda.lunation_note(
+                    moment.date().isoformat()
+                )
+            except AgendaError:
+                manifestation = ""
+            note = f"Amanhã: {name}"
+            if manifestation:
+                note += f" — manifestações na Agenda: {manifestation}"
+        self.ui.dashboard(self.focus.current, self.goals.all(), moon, note)
 
     async def _handle_focus(self, argument: str) -> None:
         parts = argument.strip().split(maxsplit=2)
@@ -1459,16 +1479,23 @@ class Orchestrator:
     async def _check_focus(self, now: datetime) -> None:
         if not self.cfg.focus.enabled:
             return
-        key, name, _illumination = moon_phase(now)
-        if self.cfg.focus.prompt_on_moon and key in KEY_PHASES:
-            today = now.date().isoformat()
+        phase = principal_phase_today(now)
+        if self.cfg.focus.prompt_on_moon and phase is not None:
+            key, name, moment = phase
+            today = moment.date().isoformat()
             if self.focus.last_moon_prompt() != today:
                 self.focus.set_last_moon_prompt(today)
                 ritual = RITUALS[key][1]
-                await self._say_proactive(
-                    f"Hoje é {name}. Ritual do ciclo: {ritual}. "
-                    "Quer definir ou ajustar o foco?"
-                )
+                manifestation = ""
+                try:
+                    manifestation = await self.agenda.lunation_note(today)
+                except AgendaError as exc:
+                    self.logger.warning("lunacao: %s", exc)
+                message = f"Hoje é {name}. Ritual do ciclo: {ritual}."
+                if manifestation:
+                    message += f" Na Agenda, suas manifestações: {manifestation}."
+                message += " Quer definir ou ajustar o foco?"
+                await self._say_proactive(message)
                 return
         if self.focus.is_expired(now):
             await self._say_proactive(
@@ -1489,6 +1516,10 @@ class Orchestrator:
         sub = parts[0].lower() if parts else ""
         rest = parts[1].strip() if len(parts) > 1 else ""
 
+        if sub in {"limpar", "clean", "limpar-concluidas"}:
+            count = self.tasks.clear_done()
+            self.ui.success(f"{count} tarefa(s) concluída(s) removida(s)")
+            return
         if sub in {"sync", "sincronizar", "atualizar"}:
             try:
                 pages = await self.agenda.pages(30)
