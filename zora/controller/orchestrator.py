@@ -47,6 +47,7 @@ from zora.interface.terminal import TerminalUI
 from zora.memory.store import MemoryStore
 from zora.opencode.client import OpenCodeClient, OpenCodeError
 from zora.opencode.events import (
+    assistant_text,
     event_session_id,
     event_type,
     message_error,
@@ -136,6 +137,8 @@ class Orchestrator:
         self._proactive_day = datetime.now().astimezone().date()
         self._last_proactive = 0.0
         self._last_idle_message = ""
+        self._initiative_session_id: str | None = None
+        self._agenda_pending_names: list[str] = []
         self.agenda = AgendaClient(cfg.agenda)
         self._agenda_next_check = 0.0
         self._agenda_seen: set[str] = set()
@@ -1438,7 +1441,7 @@ class Orchestrator:
                 if cfg.idle_checkin:
                     idle_for = (time.monotonic() - self._last_activity) / 60.0
                     if idle_for >= cfg.idle_minutes and self._can_idle_checkin(now):
-                        await self._say_proactive(self._idle_message())
+                        await self._say_proactive(await self._generate_initiative_message())
                         self._last_activity = time.monotonic()
             except asyncio.CancelledError:
                 raise
@@ -1463,6 +1466,9 @@ class Orchestrator:
         ids = {str(task.get("id")) for task in tasks if task.get("id")}
         new_ids = ids - self._agenda_seen
         self._agenda_seen = ids
+        self._agenda_pending_names = [
+            str(task.get("text") or "tarefa") for task in tasks
+        ]
         if not new_ids:
             return
         new_tasks = [task for task in tasks if str(task.get("id")) in new_ids]
@@ -1526,23 +1532,67 @@ class Orchestrator:
         self._last_idle_message = message
         return message
 
+    async def _generate_initiative_message(self, greeting: bool = False) -> str:
+        now = datetime.now().astimezone()
+        hora = now.strftime("%H:%M")
+        pending = self.store.pending_reminders()
+        agenda = ", ".join(self._agenda_pending_names[:5]) or "nenhuma"
+        last = self._last_idle_message or "(nenhuma)"
+        if greeting:
+            instruction = (
+                "É a primeira mensagem do dia. Cumprimente a Talita de forma "
+                "carinhosa, acolhedora e espontânea."
+            )
+        else:
+            instruction = (
+                "Inicie uma conversa com a Talita de forma carinhosa, acolhedora "
+                "e espontânea, como quem está por perto."
+            )
+        prompt = (
+            f"Contexto: agora são {hora} ({greeting_for(now)}). "
+            f"Modo ativo: {self.persona.name}. "
+            f"Lembretes pendentes: {len(pending)}. "
+            f"Tarefas pendentes na agenda: {agenda}. "
+            f"Última mensagem de iniciativa: {last}.\n\n"
+            f"{instruction} Responda APENAS com a frase, em português do Brasil, "
+            "com no máximo 25 palavras. Não use listas, emojis ou aspas. Não diga "
+            "que é uma IA e não repita a última mensagem. Não precisa usar o nome "
+            "dela toda vez."
+        )
+        system = (
+            "Você é a Zora, assistente pessoal da Talita. Seja calorosa, "
+            "carinhosa e espontânea, sem exageros."
+        )
+        try:
+            if not self._initiative_session_id:
+                session = await self.client.create_session(
+                    title="Zora — iniciativa", model=self.client.model
+                )
+                self._initiative_session_id = session.id
+            response = await asyncio.wait_for(
+                self.client.prompt_sync(
+                    self._initiative_session_id, prompt, system=system
+                ),
+                timeout=20.0,
+            )
+            text = assistant_text(response) if isinstance(response, dict) else ""
+            text = " ".join(text.split()).strip().strip('"').strip("'")
+            if text:
+                self._last_idle_message = text
+                return text
+        except Exception as exc:  # pragma: no cover - depende do modelo/rede
+            self.logger.warning("iniciativa via LLM falhou: %s", exc)
+            if self._initiative_session_id:
+                with contextlib.suppress(Exception):
+                    await self.client.abort(self._initiative_session_id)
+        return self._idle_message()
+
     async def _startup_greeting(self) -> None:
         now = datetime.now().astimezone()
-        name = self._user_name()
-        greeting = greeting_for(now)
-        base = f"{greeting}, {name}" if name else greeting
-        options = [
-            f"{base}.",
-            f"{base}! Como você está hoje?",
-            f"{base}. Estou por aqui.",
-            f"{base}. Vamos ver o que o dia pede?",
-        ]
-        message = random.choice(options)
+        message = await self._generate_initiative_message(greeting=True)
         pending = self.store.pending_reminders()
         if pending:
             message += f" Você tem {len(pending)} lembrete(s) pendente(s)."
-        else:
-            message += " Estou pronta quando você quiser."
         if in_quiet_hours(now, self.cfg.proactive.quiet_hours):
             self.ui.proactive(message)
             return
