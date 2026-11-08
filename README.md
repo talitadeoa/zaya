@@ -311,9 +311,9 @@ acompanha o status (`pending`, `in_progress`, `done`):
 /tarefas concluir <id>
 ```
 
-A Zora faz uma checagem leve a cada **30s** (`ZORA_AGENDA_TASKS_POLL_SECONDS`):
-compara o `updated_at` da página e só busca o conteúdo quando ele muda. Ao
-surgir tarefa nova, avisa e gera um plano inicial. O estado fica em
+Por padrão a Zora **não checa a página sozinha** — use `/tarefas sync` quando
+quiser. Para checagem automática, defina `ZORA_AGENDA_TASKS_POLL_SECONDS=30`
+(compara o `updated_at` e só busca o conteúdo quando muda). O estado fica em
 `~/.local/share/zora/tasks.json` (fora do repositório).
 
 ### Metas pessoais

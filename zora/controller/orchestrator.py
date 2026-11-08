@@ -1612,7 +1612,7 @@ class Orchestrator:
 
     async def _check_task_page(self, now: datetime) -> None:
         cfg = self.cfg.agenda
-        if not cfg.enabled or not self.agenda.enabled:
+        if not cfg.enabled or not self.agenda.enabled or cfg.tasks_poll_seconds <= 0:
             return
         if time.monotonic() < self._tasks_next_check:
             return

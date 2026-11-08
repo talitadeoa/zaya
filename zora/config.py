@@ -173,8 +173,8 @@ class AgendaConfig(BaseModel):
     max_items: int = 5
     # Avisar proativamente sobre tarefas pendentes do dia.
     notify_pending: bool = False
-    # Checagem leve da pagina "tarefas pra zora" (detecta updated_at).
-    tasks_poll_seconds: float = 30.0
+    # Checagem automatica da pagina "tarefas pra zora" (0 = desligada).
+    tasks_poll_seconds: float = 0.0
 
 
 class TelegramConfig(BaseModel):
@@ -502,7 +502,7 @@ env_file = "~/agenda-git/agenda/.env"
 poll_minutes = 30
 max_items = 5
 notify_pending = false
-tasks_poll_seconds = 30
+tasks_poll_seconds = 0      # 0 = nao checa sozinho
 
 [telegram]
 enabled = false
