@@ -134,6 +134,7 @@ class Orchestrator:
         self._prefs_mtime: float = -1.0
         self._last_activity = time.monotonic()
         self._busy = False
+        self._restart_requested = False
         self._recording = False
         self._listening = False
         self._voice_mode = bool(cfg.audio.continuous)
@@ -251,6 +252,10 @@ class Orchestrator:
         finally:
             if close:
                 await self._shutdown()
+
+    @property
+    def restart_requested(self) -> bool:
+        return self._restart_requested
 
     async def prepare(self) -> None:
         """Sobe servidor/sessão antes do primeiro uso (aquece a TUI)."""
@@ -1305,6 +1310,10 @@ class Orchestrator:
 
         if command in {"/sair", "/quit", "/exit"}:
             self.ui.info("até logo.")
+            return True
+        if command in {"/reiniciar", "/restart"}:
+            self._restart_requested = True
+            self.ui.info("reiniciando…")
             return True
         if command in {"/", "/ajuda", "/help"}:
             self.ui.help()

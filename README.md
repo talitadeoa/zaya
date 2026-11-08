@@ -125,6 +125,7 @@ smoke tests.
 | `/sessao` | mostra o ID da sessão |
 | `/contexto on\|off` | liga/desliga contexto automático do Second Brain |
 | `/historico` | últimos turnos da conversa |
+| `/reiniciar` | reinicia com o código novo |
 | `/sair` | encerra |
 
 ### Modos
@@ -367,6 +368,7 @@ e exibe os **diffs** das ferramentas de edição em caixas coloridas. Desative c
 zora                    # interface antiga (terminal completo)
 zora -tui               # interface nova (TUI)
 zora --ui textual       # equivalente
+zora --watch -tui       # reinicia sozinha quando o código muda
 ```
 
 São dois front-ends do mesmo cérebro — você escolhe um ao iniciar; o serviço do

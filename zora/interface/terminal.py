@@ -617,6 +617,7 @@ class TerminalUI:
             ("/autoaprovar on|off", "auto-aprova ferramentas do OpenCode (perigoso)"),
             ("/interromper", "aborta a execução atual no OpenCode"),
             ("/sessao", "mostra o ID da sessão OpenCode"),
+            ("/reiniciar", "reinicia a Zora com o código novo"),
             ("/sair", "encerra a Zora"),
         ]
         for command, description in rows:

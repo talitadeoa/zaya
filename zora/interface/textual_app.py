@@ -313,6 +313,9 @@ class ZoraTextualApp(App):
         if text in {"/sair", "/quit", "/exit"}:
             self.exit()
             return
+        if text in {"/reiniciar", "/restart"}:
+            self.exit(42)
+            return
         if text in {"/", "/ajuda", "/help"}:
             self._write_note(_HELP)
             return
@@ -540,6 +543,7 @@ class ZoraTextualApp(App):
             "Alternar tema",
             "Limpar conversa",
             "Focar entrada",
+            "Reiniciar Zora",
             "Sair",
         ]
 
@@ -557,6 +561,8 @@ class ZoraTextualApp(App):
             self.action_clear_chat()
         elif label == "Focar entrada":
             self.query_one("#input", Input).focus()
+        elif label == "Reiniciar Zora":
+            self.exit(42)
         elif label == "Sair":
             self.exit()
 

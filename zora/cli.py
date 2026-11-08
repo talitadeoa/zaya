@@ -6,8 +6,11 @@ import argparse
 import asyncio
 import json
 import logging
+import os
 import shutil
+import subprocess
 import sys
+import time
 from pathlib import Path
 
 from zora import __version__
@@ -47,6 +50,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--tui",
         action="store_true",
         help="atalho para abrir a interface textual",
+    )
+    parser.add_argument(
+        "--watch",
+        action="store_true",
+        help="reinicia sozinha quando arquivos .py da Zora mudam",
     )
     parser.add_argument("--version", action="version", version=f"zora {__version__}")
     sub = parser.add_subparsers(dest="command")
@@ -127,6 +135,9 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
+    if args.watch:
+        _watch_mode()
+        return
     cfg = Config.load(args.config)
     if args.ui:
         cfg.interface.ui = args.ui
@@ -208,6 +219,8 @@ async def _run_app(cfg: Config, verbose: bool) -> None:
     finally:
         store.close()
         index.close()
+    if orchestrator.restart_requested:
+        _reexec()
 
 
 async def _run_textual(cfg: Config, verbose: bool) -> None:
@@ -225,11 +238,71 @@ async def _run_textual(cfg: Config, verbose: bool) -> None:
     app = ZoraTextualApp(
         answer, cleanup=cleanup, subtitle=cfg.opencode.model, voice=orchestrator
     )
+    result = None
     try:
-        await app.run_async()
+        result = await app.run_async()
     finally:
         store.close()
         index.close()
+    if result == 42:
+        _reexec()
+
+
+def _reexec() -> None:
+    os.execv(
+        sys.executable,
+        [sys.executable, "-m", "zora", *sys.argv[1:]],
+    )
+
+
+def _code_snapshot() -> dict[str, float]:
+    root = Path(__file__).resolve().parent
+    snapshot: dict[str, float] = {}
+    for path in root.rglob("*.py"):
+        try:
+            snapshot[str(path)] = path.stat().st_mtime
+        except OSError:
+            continue
+    return snapshot
+
+
+def _watch_mode() -> None:
+    """Roda a Zora e reinicia o processo quando o código-fonte muda."""
+    args = [arg for arg in sys.argv[1:] if arg != "--watch"]
+    cmd = [sys.executable, "-m", "zora", *args]
+    child = subprocess.Popen(cmd)
+    snapshot = _code_snapshot()
+    try:
+        while True:
+            time.sleep(1.0)
+            code = child.poll()
+            if code is not None:
+                if code == 0:
+                    return
+                print(f"[watch] processo saiu com código {code}; reiniciando…")
+                child = subprocess.Popen(cmd)
+                snapshot = _code_snapshot()
+                continue
+            current = _code_snapshot()
+            if current != snapshot:
+                time.sleep(1.0)
+                print("[watch] código alterado; reiniciando…")
+                child.terminate()
+                try:
+                    child.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    child.kill()
+                child = subprocess.Popen(cmd)
+                snapshot = _code_snapshot()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        if child.poll() is None:
+            child.terminate()
+            try:
+                child.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                child.kill()
 
 
 async def _ask_command(cfg: Config, args, verbose: bool, no_voice: bool) -> None:
