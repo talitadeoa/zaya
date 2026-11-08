@@ -1,0 +1,446 @@
+"""Interface de terminal (Rich), limpa e sem Live para nao conflitar com input."""
+
+from __future__ import annotations
+
+import threading
+from datetime import datetime
+from pathlib import Path
+
+from rich.console import Console
+from rich.live import Live
+from rich.markdown import Markdown
+from rich.markup import escape
+from rich.panel import Panel
+from rich.table import Table
+from rich.text import Text
+
+ACCENT = "magenta"
+MUTED = "grey62"
+
+
+def _message_title(name: str, color: str, extra: str = "") -> Text:
+    title = Text(f"{name} · {datetime.now().strftime('%H:%M')}", style=f"bold {color}")
+    if extra:
+        title.append(f" · {extra}", style=MUTED)
+    return title
+
+
+class TerminalUI:
+    def __init__(self, console: Console | None = None, quiet: bool = False):
+        self.console = console or Console()
+        self._quiet = quiet
+        self._tty = bool(getattr(self.console, "is_terminal", False)) and not quiet
+        self._status_visible = False
+        self._status_label = ""
+        self._status_detail = ""
+        self._status_suspended = False
+        self._streaming = False
+        self._stream_buffer: list[str] = []
+        self._stream_title: Text | None = None
+        self._live: Live | None = None
+        self._lock = threading.RLock()
+
+    # ------------------------------------------------------------------ status
+    def _write_raw(self, text: str) -> None:
+        if self._quiet:
+            return
+        file = getattr(self.console, "file", None)
+        if file is None:
+            return
+        with self._lock:
+            try:
+                file.write(text)
+                file.flush()
+            except Exception:
+                pass
+
+    def _erase_status(self) -> None:
+        if self._status_visible:
+            self._write_raw("\r\x1b[2K")
+            self._status_visible = False
+
+    def _draw_status(self) -> None:
+        if not self._tty or self._status_suspended or self._streaming:
+            return
+        label = self._status_label
+        detail = self._status_detail
+        if not label and not detail:
+            return
+        text = "  ".join(part for part in (label, detail) if part)
+        self._write_raw("\r\x1b[2K" + text)
+        self._status_visible = True
+
+    def set_status(self, label: str, detail: str = "") -> None:
+        if self._quiet:
+            return
+        if self._tty and (label, detail) == (self._status_label, self._status_detail):
+            if self._status_visible:
+                return
+        self._status_label = label
+        self._status_detail = detail
+        if self._tty:
+            self._erase_status()
+            self._draw_status()
+
+    def clear_status(self) -> None:
+        if self._quiet:
+            return
+        self._status_label = ""
+        self._status_detail = ""
+        self._erase_status()
+
+    def suspend_status(self) -> None:
+        self._status_suspended = True
+        self._erase_status()
+
+    def resume_status(self) -> None:
+        self._status_suspended = False
+        self._draw_status()
+
+    def is_streaming(self) -> bool:
+        return self._streaming
+
+    def _print(self, *args, **kwargs) -> None:
+        """Imprime conteudo, preservando (ou limpando) a linha de status."""
+        if self._quiet:
+            return
+        manage = self._tty and not self._streaming
+        with self._lock:
+            if manage:
+                self._erase_status()
+            self.console.print(*args, **kwargs)
+            if manage:
+                self._draw_status()
+
+    # ------------------------------------------------------------------ banner
+    def banner(
+        self,
+        project: Path,
+        session_id: str,
+        model: str,
+        sb_notes: int,
+        voice: str,
+        tts_enabled: bool,
+    ) -> None:
+        grid = Table.grid(padding=(0, 2))
+        grid.add_column(style=MUTED, no_wrap=True)
+        grid.add_column()
+        grid.add_row("Projeto", f"[bold]{escape(str(project))}[/bold]")
+        grid.add_row("Sessão", escape(session_id))
+        grid.add_row("Modelo", escape(model))
+        grid.add_row("Memória", f"Second Brain conectado · {sb_notes} nota(s)")
+        grid.add_row("Voz", ("ativa · " if tts_enabled else "desativada · ") + escape(voice))
+        title = Text("Zora", style=f"bold {ACCENT}")
+        self._print()
+        self._print(Panel(grid, title=title, border_style=ACCENT, padding=(0, 1)))
+        self._print()
+
+    def status(self, project: Path, session_id: str, model: str, sb_notes: int, voice: str) -> None:
+        self._print(
+            f"[{MUTED}]projeto[/] {escape(str(project))}  "
+            f"[{MUTED}]sessão[/] {escape(session_id)}  "
+            f"[{MUTED}]modelo[/] {escape(model)}  "
+            f"[{MUTED}]memória[/] {sb_notes} nota(s)  "
+            f"[{MUTED}]voz[/] {escape(voice)}"
+        )
+
+    # ------------------------------------------------------------------- msgs
+    def hint(self, text: str) -> None:
+        self._print(f"[{MUTED}]{escape(text)}[/]")
+
+    def info(self, text: str) -> None:
+        self._print(f"[cyan]•[/] {escape(text)}")
+
+    def success(self, text: str) -> None:
+        self._print(f"[green]✓[/] {escape(text)}")
+
+    def warning(self, text: str) -> None:
+        self._print(f"[yellow]![/] {escape(text)}")
+
+    def error(self, text: str) -> None:
+        self._print(f"[red]✗[/] {escape(text)}")
+
+    def print_user(self, text: str, voice: bool = False) -> None:
+        self._print(
+            Panel(
+                escape(text),
+                title=_message_title("Talita", "cyan", "voz" if voice else ""),
+                border_style="cyan",
+                padding=(0, 1),
+            )
+        )
+
+    def print_transcript(self, text: str) -> None:
+        self.print_user(text, voice=True)
+
+    def partial(self, text: str) -> None:
+        clean = " ".join((text or "").split())
+        if not clean:
+            return
+        if self._tty:
+            self.set_status("", f"\x1b[2m… {clean}\x1b[0m")
+        else:
+            self._print(f"[{MUTED}]… {escape(clean)}[/]")
+
+    # ---------------------------------------------------------------- streaming
+    def _render_stream_panel(self) -> Panel:
+        text = "".join(self._stream_buffer)
+        title = self._stream_title or _message_title("Zora", ACCENT)
+        return Panel(escape(text), title=title, border_style=ACCENT, padding=(0, 1))
+
+    def _start_live(self) -> None:
+        with self._lock:
+            if not self._tty or self._live is not None or not self._streaming:
+                return
+            live = Live(
+                self._render_stream_panel(),
+                console=self.console,
+                refresh_per_second=10,
+                transient=True,
+                vertical_overflow="visible",
+            )
+            self._live = live
+        live.start(refresh=True)
+
+    def _suspend_live(self) -> None:
+        with self._lock:
+            live = self._live
+            self._live = None
+        if live is not None:
+            live.stop()
+
+    def _resume_live(self) -> None:
+        self._start_live()
+
+    def begin_stream(self) -> None:
+        if self._quiet:
+            return
+        with self._lock:
+            self._status_label = ""
+            self._status_detail = ""
+            self._erase_status()
+            self._streaming = True
+            self._stream_buffer = []
+            self._stream_title = _message_title("Zora", ACCENT)
+            tty = self._tty
+            if not tty:
+                self._write_raw("\r\x1b[2K◐ escrevendo…")
+                self._status_visible = True
+        if tty:
+            self._start_live()
+
+    def token(self, text: str) -> None:
+        if not text or self._quiet:
+            return
+        with self._lock:
+            self._stream_buffer.append(text)
+            live = self._live
+        if live is not None:
+            live.update(self._render_stream_panel(), refresh=True)
+
+    def end_stream(self) -> None:
+        if self._quiet:
+            return
+        with self._lock:
+            self._streaming = False
+            text = "".join(self._stream_buffer)
+            self._stream_buffer = []
+            live = self._live
+            self._live = None
+            title = self._stream_title
+        if live is not None:
+            live.stop()
+        if text.strip():
+            self._print(
+                Panel(
+                    escape(text),
+                    title=title or _message_title("Zora", ACCENT),
+                    border_style=ACCENT,
+                    padding=(0, 1),
+                )
+            )
+        else:
+            self._draw_status()
+
+    def print_markdown(self, text: str, title: str | None = None) -> None:
+        header = title or _message_title("Zora", ACCENT)
+        self._print(Panel(Markdown(text or ""), title=header, border_style=ACCENT, padding=(0, 1)))
+
+    def proactive(self, text: str) -> None:
+        self._print()
+        self._print(
+            Panel(
+                escape(text),
+                title=_message_title("Zora", ACCENT, "iniciativa"),
+                border_style=ACCENT,
+                padding=(0, 1),
+            )
+        )
+
+    def reminders(self, rows) -> None:
+        if not rows:
+            self.info("nenhum lembrete pendente")
+            return
+        table = Table(title="Lembretes", border_style="cyan")
+        table.add_column("#", style="bold cyan", no_wrap=True)
+        table.add_column("quando", no_wrap=True)
+        table.add_column("lembrete")
+        for row in rows:
+            due = str(row["due_at"])
+            try:
+                from datetime import datetime
+
+                due = datetime.fromisoformat(due).strftime("%d/%m %H:%M")
+            except ValueError:
+                pass
+            table.add_row(str(row["id"]), due, str(row["text"]))
+        self._print(table)
+
+    def tool(self, name: str, detail: str = "") -> None:
+        detail_text = f" [white]{escape(detail)}[/]" if detail else ""
+        self._print(f"  [blue]▸ {escape(name)}[/]{detail_text}")
+
+    # ---------------------------------------------------------------- context
+    def context_hits(self, hits) -> None:
+        if not hits:
+            return
+        self._print(f"[{MUTED}]notas relacionadas:[/]")
+        for hit in hits:
+            label = f"{hit.title} — {hit.section}" if getattr(hit, "section", "") else hit.title
+            self._print(
+                f"  [{MUTED}]•[/] [bold]{escape(label)}[/] [{MUTED}]({escape(hit.rel_path)})[/]"
+            )
+
+    def search_results(self, hits) -> None:
+        if not hits:
+            self.warning("nenhuma nota encontrada")
+            return
+        for hit in hits:
+            label = f"{hit.title} — {hit.section}" if getattr(hit, "section", "") else hit.title
+            self._print(f"[bold]{escape(label)}[/] [{MUTED}]({escape(hit.rel_path)})[/]")
+            if hit.snippet:
+                self._print(f"  [{MUTED}]{escape(hit.snippet)}[/]")
+
+    def note_preview(
+        self,
+        title: str,
+        tags: list[str],
+        links: list[str],
+        content: str,
+        folder: str,
+    ) -> None:
+        preview = content if len(content) <= 600 else content[:600].rstrip() + "..."
+        body = Text()
+        body.append(f"pasta: {folder}\n", style=MUTED)
+        body.append(f"tags: {', '.join(tags) or '-'}\n", style=MUTED)
+        if links:
+            body.append(f"links: {', '.join('[[' + link + ']]' for link in links)}\n", style=MUTED)
+        body.append("\n")
+        body.append(preview)
+        self._print(Panel(body, title=f"Nova nota · {title}", border_style="green"))
+
+    def print_note(self, note) -> None:
+        header = f"{note.title}  ({note.rel_path})"
+        self._print(Panel(escape(note.body[:4000]), title=escape(header), border_style=MUTED))
+
+    # ------------------------------------------------------------------ input
+    def prompt(self, label: str = "Você") -> str:
+        if self._quiet:
+            return ""
+        self._suspend_live()
+        self.suspend_status()
+        try:
+            return self.console.input(f"[cyan]{escape(label)}[/]: ")
+        finally:
+            self.resume_status()
+            self._resume_live()
+
+    def confirm(self, question: str, default: bool = False) -> bool:
+        if self._quiet:
+            return default
+        suffix = " [S/n]" if default else " [s/N]"
+        self._suspend_live()
+        self.suspend_status()
+        try:
+            raw = self.console.input(f"[yellow]?[/] {escape(question)}{suffix} ").strip().lower()
+        except EOFError:
+            return False
+        finally:
+            self.resume_status()
+            self._resume_live()
+        if not raw:
+            return default
+        return raw in {"s", "sim", "y", "yes"}
+
+    def permission(self, tool: str, patterns: list[str]) -> str:
+        if self._quiet:
+            return "reject"
+        self._suspend_live()
+        self.suspend_status()
+        try:
+            self._print(
+                Panel(
+                    f"O OpenCode quer usar [bold]{escape(tool)}[/]\n"
+                    + ("padrões: " + escape(", ".join(patterns)) if patterns else ""),
+                    title="permissão necessária",
+                    border_style="yellow",
+                )
+            )
+            try:
+                raw = (
+                    self.console.input(
+                        "[yellow]?[/] o = uma vez · a = sempre · r = rejeitar (padrão: rejeitar): "
+                    )
+                    .strip()
+                    .lower()
+                )
+            except EOFError:
+                return "reject"
+        finally:
+            self.resume_status()
+            self._resume_live()
+        if raw in {"o", "once", "uma"}:
+            return "once"
+        if raw in {"a", "always", "sempre"}:
+            return "always"
+        return "reject"
+
+    # ------------------------------------------------------------------- misc
+    def help(self) -> None:
+        table = Table(title="Comandos da Zora", border_style=ACCENT, show_header=False)
+        table.add_column(style="bold cyan", no_wrap=True)
+        table.add_column()
+        rows = [
+            ("[Enter]", "gravar uma instrução por voz"),
+            ("/ajuda", "mostra esta ajuda"),
+            ("/status", "servidor, sessão, modelo, memória e voz"),
+            ("/buscar <termo>", "pesquisa no Second Brain"),
+            ("/nota <título>", "lê uma nota do Second Brain"),
+            ("/indexar", "reindexa o Second Brain"),
+            ("/novo", "inicia nova conversa e sessão no OpenCode"),
+            ("/modelo <provider/model>", "troca o modelo da sessão"),
+            ("/modo [nome]", "lista ou troca o modo (academica, carreira, assistente, conversa)"),
+            ("/voz on|off|edge|say|none", "controla a voz"),
+            ("/preferencia <texto>", "aprende uma preferência (taste)"),
+            ("/preferencias", "mostra as preferências aprendidas"),
+            ("/lembrar <texto> em <tempo>", "cria um lembrete falado"),
+            ("/lembretes", "lista lembretes pendentes"),
+            ("/cancelar <id>", "cancela um lembrete"),
+            ("/proativo on|off", "liga/desliga iniciativa da Zora"),
+            ("/continuo on|off", "escuta contínua (sem Enter a cada fala)"),
+            ("/fala", "volta para a escuta contínua por voz"),
+            ("/texto", "volta para o modo texto (digitar)"),
+            ("/confirmar on|off", "pede (ou não) confirmação ao criar nota"),
+            ("/autoaprovar on|off", "auto-aprova ferramentas do OpenCode (perigoso)"),
+            ("/interromper", "aborta a execução atual no OpenCode"),
+            ("/sessao", "mostra o ID da sessão OpenCode"),
+            ("/sair", "encerra a Zora"),
+        ]
+        for command, description in rows:
+            table.add_row(command, description)
+        self._print(table)
+
+    def check(self, ok: bool, label: str, detail: str = "") -> None:
+        mark = "[green]✓[/]" if ok else "[red]✗[/]"
+        suffix = f" [{MUTED}]{escape(detail)}[/]" if detail else ""
+        self._print(f"{mark} {escape(label)}{suffix}")
