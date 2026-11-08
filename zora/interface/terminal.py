@@ -14,7 +14,10 @@ from rich.syntax import Syntax
 from rich.table import Table
 from rich.text import Text
 
-ACCENT = "magenta"
+ACCENT = "#D644FB"
+CYAN = "#79DCFD"
+MINT = "#A8EFDB"
+LILAC = "#E6C3FD"
 MUTED = "grey62"
 
 _ASCII_ART = [
@@ -25,7 +28,7 @@ _ASCII_ART = [
     " ███████╗╚██████╔╝██║  ██║██║  ██║",
     " ╚══════╝ ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝",
 ]
-_ASCII_COLORS = ["magenta", "bright_magenta", "purple", "bright_blue", "cyan", "bright_cyan"]
+_ASCII_COLORS = [LILAC, ACCENT, CYAN, MINT, CYAN, ACCENT]
 
 _ASCII_METAS = [
     " ███╗   ███╗███████╗████████╗ █████╗ ███████╗",
@@ -178,10 +181,10 @@ class TerminalUI:
         self._print(f"[{MUTED}]{escape(text)}[/]")
 
     def info(self, text: str) -> None:
-        self._print(f"[cyan]•[/] {escape(text)}")
+        self._print(f"[{CYAN}]•[/] {escape(text)}")
 
     def success(self, text: str) -> None:
-        self._print(f"[green]✓[/] {escape(text)}")
+        self._print(f"[{MINT}]✓[/] {escape(text)}")
 
     def warning(self, text: str) -> None:
         self._print(f"[yellow]![/] {escape(text)}")
@@ -193,11 +196,11 @@ class TerminalUI:
         self._print(
             Panel(
                 escape(text),
-                title=_message_title("Talita", "cyan"),
+                title=_message_title("Talita", CYAN),
                 title_align="left",
                 subtitle=Text("voz", style=MUTED) if voice else None,
                 subtitle_align="right",
-                border_style="cyan",
+                border_style=CYAN,
                 padding=(0, 1),
             )
         )
@@ -343,8 +346,8 @@ class TerminalUI:
         if not rows:
             self.info("nenhum lembrete pendente")
             return
-        table = Table(title="Lembretes", border_style="cyan")
-        table.add_column("#", style="bold cyan", no_wrap=True)
+        table = Table(title="Lembretes", border_style=CYAN)
+        table.add_column("#", style=f"bold {CYAN}", no_wrap=True)
         table.add_column("quando", no_wrap=True)
         table.add_column("lembrete")
         for row in rows:
@@ -360,7 +363,7 @@ class TerminalUI:
 
     def tool(self, name: str, detail: str = "") -> None:
         detail_text = f" [white]{escape(detail)}[/]" if detail else ""
-        self._print(f"  [blue]▸ {escape(name)}[/]{detail_text}")
+        self._print(f"  [{CYAN}]▸ {escape(name)}[/]{detail_text}")
 
     def dashboard(self, focus, goals: list, moon=None, moon_note: str = "") -> None:
         if not focus and not goals:
@@ -382,10 +385,10 @@ class TerminalUI:
                 Panel(
                     body,
                     title=Text(
-                        f"Foco {period_label(focus.period)}", style="bold cyan"
+                        f"Foco {period_label(focus.period)}", style=f"bold {CYAN}"
                     ),
                     title_align="left",
-                    border_style="cyan",
+                    border_style=CYAN,
                     padding=(0, 1),
                 )
             )
@@ -462,7 +465,7 @@ class TerminalUI:
                 Syntax(patch, "diff", theme="monokai", word_wrap=True),
                 title=f"diff · {escape(filename)}",
                 title_align="left",
-                border_style="green",
+                border_style=MINT,
                 padding=(0, 1),
             )
         )
@@ -504,7 +507,7 @@ class TerminalUI:
             body.append(f"links: {', '.join('[[' + link + ']]' for link in links)}\n", style=MUTED)
         body.append("\n")
         body.append(preview)
-        self._print(Panel(body, title=f"Nova nota · {title}", border_style="green"))
+        self._print(Panel(body, title=f"Nova nota · {title}", border_style=MINT))
 
     def print_note(self, note) -> None:
         header = f"{note.title}  ({note.rel_path})"
@@ -614,6 +617,6 @@ class TerminalUI:
         self._print(table)
 
     def check(self, ok: bool, label: str, detail: str = "") -> None:
-        mark = "[green]✓[/]" if ok else "[red]✗[/]"
+        mark = f"[{MINT}]✓[/]" if ok else "[red]✗[/]"
         suffix = f" [{MUTED}]{escape(detail)}[/]" if detail else ""
         self._print(f"{mark} {escape(label)}{suffix}")

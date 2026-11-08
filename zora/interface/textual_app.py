@@ -19,7 +19,10 @@ from textual.widgets import Footer, Header, Input, OptionList, RichLog, Static
 from zora.audio.recorder import ContinuousListener
 from zora.focus import moon_phase, period_label, principal_phase_today
 
-ACCENT = "magenta"
+ACCENT = "#D644FB"
+CYAN = "#79DCFD"
+MINT = "#A8EFDB"
+LILAC = "#E6C3FD"
 MUTED = "grey62"
 
 _ASCII_ZORA = [
@@ -30,8 +33,7 @@ _ASCII_ZORA = [
     " ███████╗╚██████╔╝██║  ██║██║  ██║",
     " ╚══════╝ ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝",
 ]
-# Os mesmos RGB que o Rich usava no terminal antigo.
-_ASCII_COLORS = ["#800080", "#ff00ff", "#af00ff", "#0000ff", "#008080", "#00ffff"]
+_ASCII_COLORS = [LILAC, ACCENT, CYAN, MINT, CYAN, ACCENT]
 
 _HELP = (
     "Modo normal: i digitar · t texto · m mudo · v voz on/off · f falar · "
@@ -51,7 +53,7 @@ class CommandPalette(ModalScreen[str | None]):
         width: 64;
         height: auto;
         max-height: 20;
-        border: round #a855f7;
+        border: round #D644FB;
         background: #140a24;
         padding: 1;
     }
@@ -131,7 +133,7 @@ class ZoraTextualApp(App):
         color: #e5e7eb;
     }
     #chat {
-        border: round #a855f7;
+        border: round #D644FB;
         padding: 0 1;
     }
     #stream {
@@ -141,12 +143,12 @@ class ZoraTextualApp(App):
     }
     #status {
         height: 1;
-        color: #9ca3af;
+        color: #A8EFDB;
         padding: 0 1;
     }
     #input {
         dock: bottom;
-        border: round #22d3ee;
+        border: round #79DCFD;
     }
     """
 
@@ -220,9 +222,9 @@ class ZoraTextualApp(App):
         self._log().write(
             Panel(
                 body,
-                title=Text(f"Foco {period_label(focus.period)}", style="bold cyan"),
+                title=Text(f"Foco {period_label(focus.period)}", style=f"bold {CYAN}"),
                 title_align="left",
-                border_style="cyan",
+                border_style=CYAN,
                 padding=(0, 1),
             )
         )
@@ -554,7 +556,7 @@ class ZoraTextualApp(App):
                 Syntax(patch, "diff", theme="monokai", word_wrap=True),
                 title=f"diff · {filename}",
                 title_align="left",
-                border_style="green",
+                border_style=MINT,
                 padding=(0, 1),
             )
         )
@@ -566,9 +568,9 @@ class ZoraTextualApp(App):
         self._log().write(
             Panel(
                 Text(text),
-                title=Text("Talita:", style=f"bold {ACCENT}"),
+                title=Text("Talita:", style=f"bold {CYAN}"),
                 title_align="left",
-                border_style=ACCENT,
+                border_style=CYAN,
                 padding=(0, 1),
             )
         )
