@@ -360,16 +360,18 @@ Durante a execução, a Zora mostra um resumo do **raciocínio** na linha de sta
 e exibe os **diffs** das ferramentas de edição em caixas coloridas. Desative com
 `ZORA_UI_SHOW_REASONING=false` e/ou `ZORA_UI_SHOW_DIFFS=false`.
 
-### Interface Textual (fase 1)
+### Interface Textual
 
 ```bash
-zora --ui textual
+zora                    # interface antiga (terminal completo)
+zora --ui textual       # interface nova (TUI)
 ```
 
-Layout com cabeçalho, chat, entrada e barra de status. A resposta aparece em
-streaming, diffs de edição entram como caixas coloridas e o raciocínio aparece
-no status. **F2** grava por voz (push-to-talk) e **F3** liga/desliga a voz da
-resposta. Também dá para fixar com `ZORA_UI=textual` ou `ui = "textual"` em
+São dois front-ends do mesmo cérebro — você escolhe um ao iniciar; o serviço do
+Telegram pode rodar junto. A TUI tem layout com cabeçalho, chat, entrada e
+status, streaming, diffs e raciocínio. Atalhos: **F1** paleta, **F2** falar
+(push-to-talk), **F3** voz on/off, **F4** escuta contínua, **Ctrl+T** tema e
+**Ctrl+L** limpar. Para fixar: `ZORA_UI=textual` ou `ui = "textual"` em
 `[interface]`.
 
 ## Arquitetura

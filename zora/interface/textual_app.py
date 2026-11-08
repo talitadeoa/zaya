@@ -14,12 +14,15 @@ from textual.containers import Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Footer, Header, Input, OptionList, RichLog, Static
 
+from zora.audio.recorder import ContinuousListener
+
 ACCENT = "magenta"
 MUTED = "grey62"
 
 _HELP = (
     "Comandos nesta interface: /sair, /ajuda. "
-    "Atalhos: F1 paleta, F2 falar, F3 voz on/off, Ctrl+T tema, Ctrl+L limpar. "
+    "Atalhos: F1 paleta, F2 falar, F3 voz on/off, F4 escuta contínua, "
+    "Ctrl+T tema, Ctrl+L limpar. "
     "Os demais comandos (agenda, tarefas, metas, finanças) continuam no modo terminal."
 )
 
@@ -98,6 +101,7 @@ class ZoraTextualApp(App):
         Binding("f1", "command_palette", "Comandos"),
         Binding("f2", "push_to_talk", "Falar"),
         Binding("f3", "toggle_voice", "Voz on/off"),
+        Binding("f4", "toggle_listen", "Escuta contínua"),
         Binding("ctrl+t", "toggle_theme", "Tema"),
         Binding("ctrl+l", "clear_chat", "Limpar"),
     ]
@@ -140,6 +144,9 @@ class ZoraTextualApp(App):
         self._subtitle = subtitle
         self._voice = voice
         self._voice_replies = bool(voice is not None and voice.tts.enabled)
+        self._continuous = False
+        self._listener = None
+        self._listen_task: asyncio.Task | None = None
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -161,6 +168,7 @@ class ZoraTextualApp(App):
         self.query_one("#input", Input).focus()
 
     async def on_unmount(self) -> None:
+        self._stop_listening()
         if self._cleanup is not None:
             try:
                 await self._cleanup()
@@ -181,28 +189,40 @@ class ZoraTextualApp(App):
         await self.submit_text(text)
 
     async def submit_text(self, text: str) -> None:
-        self._write_user(text)
-        status = self.query_one("#status", Static)
-        stream = self.query_one("#stream", Static)
-        stream.update("")
-        status.update("◐ pensando…")
-        sink = TextualSink(self)
+        listener = self._listener
+        if listener is not None and self._continuous:
+            listener.pause()
         try:
-            answer = await self._answer(text, sink)
-        except Exception as exc:  # pragma: no cover - depende do backend
-            answer = f"Erro: {exc}"
-        stream.update("")
-        if answer:
-            self._write_zora(answer)
-        elif sink.buffer:
-            self._write_zora(sink.buffer)
-        if answer and self._voice_replies and self._voice is not None:
-            status.update("▶ falando…")
+            self._write_user(text)
+            status = self.query_one("#status", Static)
+            stream = self.query_one("#stream", Static)
+            stream.update("")
+            status.update("◐ pensando…")
+            sink = TextualSink(self)
             try:
-                await self._voice.speak_text(answer)
-            except Exception:
-                pass
-        status.update("● pronto")
+                answer = await self._answer(text, sink)
+            except Exception as exc:  # pragma: no cover - depende do backend
+                answer = f"Erro: {exc}"
+            stream.update("")
+            if answer:
+                self._write_zora(answer)
+            elif sink.buffer:
+                self._write_zora(sink.buffer)
+            if answer and self._voice_replies and self._voice is not None:
+                status.update("▶ falando…")
+                try:
+                    await self._voice.speak_text(answer)
+                except Exception:
+                    pass
+            status.update("● pronto")
+        finally:
+            if (
+                listener is not None
+                and self._continuous
+                and listener is self._listener
+            ):
+                listener.resume()
+                self._set_status("● ouvindo…")
 
     async def action_push_to_talk(self) -> None:
         if self._voice is None:
@@ -244,6 +264,63 @@ class ZoraTextualApp(App):
             return
         self._voice_replies = not self._voice_replies
         self._set_status("voz ligada" if self._voice_replies else "voz desligada")
+
+    def action_toggle_listen(self) -> None:
+        if self._voice is None:
+            self._set_status("voz indisponível")
+            return
+        if self._continuous:
+            self._stop_listening()
+            self._set_status("escuta contínua desligada")
+            return
+        try:
+            listener = ContinuousListener(self._voice.cfg.audio)
+            listener.start()
+        except Exception as exc:
+            self._set_status(f"microfone: {exc}")
+            return
+        self._listener = listener
+        self._continuous = True
+        self._listen_task = asyncio.create_task(self._listen_loop())
+        self._set_status("● ouvindo…")
+
+    def _stop_listening(self) -> None:
+        self._continuous = False
+        if self._listen_task is not None:
+            self._listen_task.cancel()
+            self._listen_task = None
+        if self._listener is not None:
+            try:
+                self._listener.stop()
+            except Exception:
+                pass
+            self._listener = None
+
+    async def _listen_loop(self) -> None:
+        listener = self._listener
+        if listener is None or self._voice is None:
+            return
+        transcriber = self._voice.transcriber
+        try:
+            while self._continuous and listener is self._listener:
+                utterance = await asyncio.to_thread(listener.next_utterance, 0.5)
+                if utterance is None:
+                    continue
+                listener.pause()
+                self._set_status("◐ transcrevendo…")
+                try:
+                    text = await asyncio.to_thread(transcriber.transcribe, utterance)
+                except Exception:
+                    text = ""
+                if text.strip():
+                    await self.submit_text(text.strip())
+                else:
+                    self._set_status("● ouvindo…")
+                if self._continuous and listener is self._listener:
+                    listener.resume()
+                    self._set_status("● ouvindo…")
+        except asyncio.CancelledError:
+            pass
 
     def _set_status(self, text: str) -> None:
         self.query_one("#status", Static).update(text)
