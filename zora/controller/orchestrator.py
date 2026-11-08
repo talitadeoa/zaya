@@ -1268,7 +1268,7 @@ class Orchestrator:
         if command in {"/sair", "/quit", "/exit"}:
             self.ui.info("até logo.")
             return True
-        if command in {"/ajuda", "/help"}:
+        if command in {"/", "/ajuda", "/help"}:
             self.ui.help()
         elif command == "/status":
             await self._show_status()
