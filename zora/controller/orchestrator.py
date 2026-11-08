@@ -296,7 +296,7 @@ class Orchestrator:
 
         if not (self.cfg.audio.continuous and self._voice_available()):
             self.ui.hint(
-                "Enter vazio volta à escuta contínua · digite para texto · /ajuda · Ctrl+C interrompe"
+                "Digite para texto · /fala para voltar à voz · /ajuda · Ctrl+C interrompe"
             )
 
         try:
@@ -381,9 +381,6 @@ class Orchestrator:
             self._mark_activity()
             text = text.strip()
             if not text:
-                if self._voice_available():
-                    self._voice_mode = True
-                    self.cfg.audio.continuous = True
                 continue
 
             self._voice_mode = False
