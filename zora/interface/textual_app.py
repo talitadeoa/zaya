@@ -17,7 +17,7 @@ from textual.screen import ModalScreen
 from textual.widgets import Footer, Header, Input, OptionList, RichLog, Static
 
 from zora.audio.recorder import ContinuousListener
-from zora.focus import moon_phase, period_label, principal_phase_today
+from zora.focus import moon_details, period_label, principal_phase_today
 
 ACCENT = "#D644FB"
 CYAN = "#79DCFD"
@@ -153,6 +153,7 @@ class ZoraTextualApp(App):
     #input {
         dock: bottom;
         border: round #79DCFD;
+        height: 5;
     }
     """
 
@@ -182,7 +183,7 @@ class ZoraTextualApp(App):
             Static("", id="stream"),
             Static("● pronto", id="status"),
         )
-        yield Input(placeholder="Digite uma mensagem ou /ajuda", id="input")
+        yield Input(id="input")
         yield Footer()
 
     async def on_mount(self) -> None:
@@ -203,12 +204,7 @@ class ZoraTextualApp(App):
                 await self._write_moon_note()
             except Exception:
                 pass
-        log.write(
-            Text(
-                "Digite uma mensagem, F2 para falar, F4 para escuta contínua, F1 para comandos.",
-                style=MUTED,
-            )
-        )
+
 
     def _write_focus_panel(self) -> None:
         focus = self._voice.focus.current
@@ -259,25 +255,36 @@ class ZoraTextualApp(App):
         )
 
     async def _write_moon_note(self) -> None:
-        _key, name, illumination = moon_phase()
-        self._log().write(
-            Text(f"Lua: {name} · {illumination * 100:.0f}% iluminada", style=MUTED)
+        detail = moon_details()
+        body = Text(
+            f"{detail.moon_emoji} {detail.phase_name} · "
+            f"{detail.sign_symbol} {detail.sign_name} · "
+            f"{detail.element_emoji} {detail.element} · {detail.phase_emoji}"
         )
+        body.append(f"\n{detail.illumination * 100:.0f}% iluminada", style=MUTED)
         phase = principal_phase_today(datetime.now().astimezone() + timedelta(days=1))
-        if phase is None:
-            return
-        _key, phase_name, moment = phase
-        manifestation = ""
-        try:
-            manifestation = await self._voice.agenda.lunation_note(
-                moment.date().isoformat()
-            )
-        except Exception:
+        if phase is not None:
+            _key, phase_name, moment = phase
             manifestation = ""
-        line = f"Amanhã: {phase_name}"
-        if manifestation:
-            line += f" — manifestações na Agenda: {manifestation}"
-        self._log().write(Text(line, style=MUTED))
+            try:
+                manifestation = await self._voice.agenda.lunation_note(
+                    moment.date().isoformat()
+                )
+            except Exception:
+                manifestation = ""
+            line = f"Amanhã: {phase_name}"
+            if manifestation:
+                line += f" — manifestações na Agenda: {manifestation}"
+            body.append("\n" + line, style=MUTED)
+        self._log().write(
+            Panel(
+                body,
+                title=Text("Lua", style=f"bold {LILAC}"),
+                title_align="left",
+                border_style=CYAN,
+                padding=(0, 1),
+            )
+        )
 
     async def on_unmount(self) -> None:
         self._stop_listening()

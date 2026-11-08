@@ -34,17 +34,52 @@ RITUALS = {
 
 KEY_PHASES = {"new", "first_quarter", "full", "last_quarter"}
 
+ZODIAC_SYMBOLS = ["♈", "♉", "♊", "♋", "♌", "♍", "♎", "♏", "♐", "♑", "♒", "♓"]
+ZODIAC_NAMES = [
+    "Áries",
+    "Touro",
+    "Gêmeos",
+    "Câncer",
+    "Leão",
+    "Virgem",
+    "Libra",
+    "Escorpião",
+    "Sagitário",
+    "Capricórnio",
+    "Aquário",
+    "Peixes",
+]
+ELEMENTS = ["Fogo", "Terra", "Ar", "Água"]
+ELEMENT_EMOJI = {"Fogo": "🔥", "Terra": "🌍", "Ar": "💨", "Água": "💧"}
+MOON_EMOJI = {
+    "new": "🌑",
+    "waxing_crescent": "🌒",
+    "first_quarter": "🌓",
+    "waxing_gibbous": "🌔",
+    "full": "🌕",
+    "waning_gibbous": "🌖",
+    "last_quarter": "🌗",
+    "waning_crescent": "🌘",
+}
+PHASE_EMOJI = {
+    "new": "🌱",
+    "waxing_crescent": "🌳",
+    "first_quarter": "🌳",
+    "waxing_gibbous": "🌳",
+    "full": "🍎",
+    "waning_gibbous": "🧹",
+    "last_quarter": "🧹",
+    "waning_crescent": "🧹",
+}
+
 _PERIOD_DAYS = {"week": 7, "month": 30, "quarter": 90}
 _PERIOD_LABEL = {"week": "semanal", "month": "mensal", "quarter": "trimestral"}
 
 
-def moon_phase(now: datetime | None = None) -> tuple[str, str, float]:
-    """Retorna (chave, nome, iluminacao 0..1) usando a mesma base da Agenda."""
+def _moon_moment(now: datetime | None = None) -> tuple[astronomy.Time, datetime]:
     tz = ZoneInfo("America/Sao_Paulo")
     local = (now or datetime.now(tz)).astimezone(tz)
-    noon_local = datetime(
-        local.year, local.month, local.day, 12, 0, tzinfo=tz
-    )
+    noon_local = datetime(local.year, local.month, local.day, 12, 0, tzinfo=tz)
     noon_utc = noon_local.astimezone(timezone.utc)
     moment = astronomy.Time.Make(
         noon_utc.year,
@@ -54,6 +89,12 @@ def moon_phase(now: datetime | None = None) -> tuple[str, str, float]:
         noon_utc.minute,
         noon_utc.second + noon_utc.microsecond / 1_000_000,
     )
+    return moment, local
+
+
+def moon_phase(now: datetime | None = None) -> tuple[str, str, float]:
+    """Retorna (chave, nome, iluminacao 0..1) usando a mesma base da Agenda."""
+    moment, _local = _moon_moment(now)
     fraction = (astronomy.MoonPhase(moment) / 360.0) % 1.0
     index = int(round(fraction * 8)) % 8
     key = PHASES[index]
@@ -61,6 +102,38 @@ def moon_phase(now: datetime | None = None) -> tuple[str, str, float]:
         0.0, min(1.0, astronomy.Illumination(astronomy.Body.Moon, moment).phase_fraction)
     )
     return key, RITUALS[key][0], illumination
+
+
+@dataclass(frozen=True)
+class MoonDetails:
+    phase_key: str
+    phase_name: str
+    illumination: float
+    moon_emoji: str
+    phase_emoji: str
+    sign_symbol: str
+    sign_name: str
+    element: str
+    element_emoji: str
+
+
+def moon_details(now: datetime | None = None) -> MoonDetails:
+    key, name, illumination = moon_phase(now)
+    moment, _local = _moon_moment(now)
+    longitude = astronomy.EclipticGeoMoon(moment).lon
+    index = int(longitude // 30.0) % 12
+    element = ELEMENTS[index % 4]
+    return MoonDetails(
+        phase_key=key,
+        phase_name=name,
+        illumination=illumination,
+        moon_emoji=MOON_EMOJI[key],
+        phase_emoji=PHASE_EMOJI[key],
+        sign_symbol=ZODIAC_SYMBOLS[index],
+        sign_name=ZODIAC_NAMES[index],
+        element=element,
+        element_emoji=ELEMENT_EMOJI[element],
+    )
 
 
 def principal_phase_today(

@@ -414,10 +414,16 @@ class TerminalUI:
                 )
             )
         if moon:
-            _key, name, illumination = moon
-            self._print(
-                Text(f"Lua: {name} · {illumination * 100:.0f}% iluminada", style=MUTED)
-            )
+            if hasattr(moon, "phase_name"):
+                line = (
+                    f"{moon.moon_emoji} {moon.phase_name} · "
+                    f"{moon.sign_symbol} {moon.sign_name} · "
+                    f"{moon.element_emoji} {moon.element} · {moon.phase_emoji}"
+                )
+            else:
+                _key, name, illumination = moon
+                line = f"Lua: {name} · {illumination * 100:.0f}% iluminada"
+            self._print(Text(line, style=MUTED))
         if moon_note:
             self._print(Text(moon_note, style=MUTED))
 

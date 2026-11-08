@@ -27,7 +27,7 @@ from zora.finance.watchlist import Watchlist
 from zora.focus import (
     RITUALS,
     FocusStore,
-    moon_phase,
+    moon_details,
     period_label,
     principal_phase_today,
 )
@@ -1444,7 +1444,7 @@ class Orchestrator:
         self.ui.success(f"modelo da próxima mensagem: {model.slug}")
 
     async def _show_dashboard(self) -> None:
-        moon = moon_phase()
+        moon = moon_details()
         note = ""
         phase = principal_phase_today(datetime.now().astimezone() + timedelta(days=1))
         if phase:
@@ -1573,8 +1573,12 @@ class Orchestrator:
             )
             for goal in focus.goals:
                 self.ui.info(f"  • {goal}")
-        _key, name, illumination = moon_phase()
-        self.ui.info(f"lua: {name} · {illumination * 100:.0f}%")
+        detail = moon_details()
+        self.ui.info(
+            f"{detail.moon_emoji} {detail.phase_name} · "
+            f"{detail.sign_symbol} {detail.sign_name} · "
+            f"{detail.element_emoji} {detail.element} · {detail.phase_emoji}"
+        )
 
     async def _check_focus(self, now: datetime) -> None:
         if not self.cfg.focus.enabled:
