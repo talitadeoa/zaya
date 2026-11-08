@@ -384,11 +384,15 @@ class Orchestrator:
                     self.ui.info("voltando para a escuta contínua…")
                 continue
 
+            width = max(20, self.ui.console.width)
+            lines = max(1, (len("Talita: ") + len(text) + width - 1) // width)
+            self.ui.erase_input_line(lines)
             if text.startswith("/"):
                 if await self._handle_command(text):
                     return
                 continue
 
+            self.ui.print_user(text)
             assert self.conversation_id is not None
             self.store.add_turn(self.conversation_id, "user", text)
 

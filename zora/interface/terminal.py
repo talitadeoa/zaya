@@ -60,6 +60,15 @@ class TerminalUI:
             except Exception:
                 pass
 
+    def erase_input_line(self, lines: int = 1) -> None:
+        """Apaga a linha digitada no prompt (inclui quebras) antes de ecoar na caixa."""
+        if not self._tty:
+            return
+        with self._lock:
+            self._write_raw("\r\x1b[2K")
+            for _ in range(max(0, lines)):
+                self._write_raw("\x1b[1A\r\x1b[2K")
+
     def _erase_status(self) -> None:
         if self._status_visible:
             self._write_raw("\r\x1b[2K")
