@@ -33,7 +33,7 @@ _ASCII_ZORA = [
     " ███████╗╚██████╔╝██║  ██║██║  ██║",
     " ╚══════╝ ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝",
 ]
-_ASCII_COLORS = [LILAC, ACCENT, CYAN, MINT, CYAN, ACCENT]
+_ASCII_COLORS = [LILAC, LILAC, ACCENT, CYAN, MINT, MINT]
 
 _HELP = (
     "Modo normal: i digitar · t texto · m mudo · v voz on/off · f falar · "

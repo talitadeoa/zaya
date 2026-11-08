@@ -28,7 +28,7 @@ _ASCII_ART = [
     " ███████╗╚██████╔╝██║  ██║██║  ██║",
     " ╚══════╝ ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝",
 ]
-_ASCII_COLORS = [LILAC, ACCENT, CYAN, MINT, CYAN, ACCENT]
+_ASCII_COLORS = [LILAC, LILAC, ACCENT, CYAN, MINT, MINT]
 
 _ASCII_METAS = [
     " ███╗   ███╗███████╗████████╗ █████╗ ███████╗",
