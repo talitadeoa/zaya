@@ -30,7 +30,8 @@ _ASCII_ZORA = [
     " ███████╗╚██████╔╝██║  ██║██║  ██║",
     " ╚══════╝ ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝",
 ]
-_ASCII_COLORS = ["magenta", "bright_magenta", "purple", "bright_blue", "cyan", "bright_cyan"]
+# Os mesmos RGB que o Rich usava no terminal antigo.
+_ASCII_COLORS = ["#800080", "#ff00ff", "#af00ff", "#0000ff", "#008080", "#00ffff"]
 
 _HELP = (
     "Modo normal: i digitar · t texto · m mudo · v voz on/off · f falar · "
