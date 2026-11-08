@@ -71,6 +71,8 @@ zora
 - **Legendas ao vivo:** a transcrição parcial aparece enquanto você fala
   (a cada ~1,5s); no fim, a Zora usa a transcrição completa.
 - **M** pausa/retoma o microfone (útil quando você não vai falar).
+- O microfone **desliga sozinho** após 30s de silêncio; **M** retoma
+  (`ZORA_AUDIO_AUTO_MUTE_SECONDS`, `0` desativa).
 - **Esc** interrompe a fala/execução na hora e volta a ouvir.
 - **T** volta ao modo texto (ou diga **"parar"**, **"para"**, **"modo texto"**).
 - Diga **"sair"** para encerrar.

@@ -128,6 +128,7 @@ class Orchestrator:
         self._mic_muted = False
         self._continuous_hint_shown = False
         self._permission_active = False
+        self._last_listen_at = time.monotonic()
         self._listener: ContinuousListener | None = None
         self._speaking_event = asyncio.Event()
         self._speaking_event.set()
@@ -429,6 +430,7 @@ class Orchestrator:
         self._listener = listener
         self._listening = True
         self._mic_muted = False
+        self._last_listen_at = time.monotonic()
         self._mark_activity()
         monitor_stop = threading.Event()
         monitor = threading.Thread(
@@ -440,7 +442,7 @@ class Orchestrator:
         if not self._continuous_hint_shown:
             self.ui.hint(
                 "Escuta contínua: fale à vontade · [M] mudo · [Esc] interrompe · "
-                "[T] texto · 'sair' encerra"
+                "[T] texto · o mic desliga no silêncio · 'sair' encerra"
             )
             self._continuous_hint_shown = True
         self.ui.set_status("● ouvindo…")
@@ -467,6 +469,7 @@ class Orchestrator:
 
                 if utterance is None:
                     self._update_idle_status(listener)
+                    self._maybe_auto_mute(listener)
                     if (
                         self.cfg.stt.partial_transcription
                         and listener.is_capturing()
@@ -486,6 +489,7 @@ class Orchestrator:
                         await partial_task
                 partial_task = None
                 self._partial_last = ""
+                self._last_listen_at = time.monotonic()
 
                 listener.pause()
                 self._recording = True
@@ -513,6 +517,7 @@ class Orchestrator:
                     self._recording = False
                     if not self._mic_muted:
                         listener.resume()
+                        self._last_listen_at = time.monotonic()
         finally:
             self.ui.clear_status()
             if partial_task is not None and not partial_task.done():
@@ -631,6 +636,7 @@ class Orchestrator:
         if self._mic_muted:
             self._mic_muted = False
             listener.resume()
+            self._last_listen_at = time.monotonic()
             self.ui.success("escuta retomada")
             self.ui.set_status("● ouvindo…")
             return
@@ -665,6 +671,21 @@ class Orchestrator:
             if not ok:
                 self.ui.warning(f"voz indisponível: {msg}")
         return bool(self._voice_ok)
+
+    def _maybe_auto_mute(self, listener: ContinuousListener) -> None:
+        seconds = self.cfg.audio.auto_mute_seconds
+        if seconds <= 0 or self._mic_muted or self._busy or self._recording:
+            return
+        if not self._speaking_event.is_set() or listener.is_capturing():
+            return
+        if time.monotonic() - self._last_listen_at < seconds:
+            return
+        self._mic_muted = True
+        listener.pause()
+        self.ui.info(
+            f"microfone desligado após {int(seconds)}s de silêncio; aperte M para retomar"
+        )
+        self.ui.set_status("⏸ microfone desligado", "M para retomar")
 
     def _update_idle_status(self, listener: ContinuousListener) -> None:
         if self._mic_muted:
@@ -1829,6 +1850,7 @@ class Orchestrator:
         finally:
             if resume_after and listener is not None and not self._mic_muted:
                 listener.resume()
+                self._last_listen_at = time.monotonic()
 
 
 def escape_user(text: str) -> str:

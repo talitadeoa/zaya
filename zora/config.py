@@ -85,6 +85,8 @@ class AudioConfig(BaseModel):
     input_device: str = ""
     # Escuta continua: microfone aberto, fala -> executa -> responde -> volta a ouvir.
     continuous: bool = True
+    # Depois desse tempo sem fala, desliga o microfone (0 = nunca).
+    auto_mute_seconds: float = 30.0
 
 
 class SecondBrainConfig(BaseModel):
@@ -333,6 +335,7 @@ _ENV_MAP: dict[str, tuple[str, str]] = {
     "ZORA_AUDIO_INPUT_DEVICE": ("audio", "input_device"),
     "ZORA_AUDIO_SILENCE_MS": ("audio", "silence_ms"),
     "ZORA_AUDIO_MAX_SECONDS": ("audio", "max_seconds"),
+    "ZORA_AUDIO_AUTO_MUTE_SECONDS": ("audio", "auto_mute_seconds"),
     "ZORA_SECOND_BRAIN_PATH": ("secondbrain", "path"),
     "ZORA_SECOND_BRAIN_INDEX": ("secondbrain", "index_db"),
     "ZORA_SB_PREFERENCES_FILE": ("secondbrain", "preferences_file"),
@@ -451,6 +454,7 @@ max_seconds = 0.0               # 0 = sem limite para uma fala
 speech_threshold_db = -42.0
 input_device = ""
 continuous = true               # microfone aberto; fala -> executa -> volta a ouvir
+auto_mute_seconds = 30          # silencio que desliga o microfone (0 = nunca)
 
 [secondbrain]
 path = "~/SecondBrain"
