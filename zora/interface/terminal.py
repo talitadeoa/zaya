@@ -396,7 +396,6 @@ class TerminalUI:
             self.info("nenhum foco definido; use /foco definir semanal <texto>")
         if goals:
             table = Table(
-                title="Metas de longo prazo",
                 border_style=ACCENT,
                 header_style=f"bold {ACCENT}",
             )

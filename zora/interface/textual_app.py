@@ -236,7 +236,6 @@ class ZoraTextualApp(App):
         if not goals:
             return
         table = Table(
-            title="Metas de longo prazo",
             border_style=ACCENT,
             header_style=f"bold {ACCENT}",
         )
@@ -259,9 +258,9 @@ class ZoraTextualApp(App):
         body = Text(
             f"{detail.moon_emoji} {detail.phase_name} · "
             f"{detail.sign_symbol} {detail.sign_name} · "
-            f"{detail.element_emoji} {detail.element} · {detail.phase_emoji}"
+            f"{detail.element_emoji} {detail.element} · {detail.phase_emoji} · "
+            f"{detail.illumination * 100:.0f}% iluminada"
         )
-        body.append(f"\n{detail.illumination * 100:.0f}% iluminada", style=MUTED)
         phase = principal_phase_today(datetime.now().astimezone() + timedelta(days=1))
         if phase is not None:
             _key, phase_name, moment = phase
@@ -490,12 +489,12 @@ class ZoraTextualApp(App):
             self.set_focus(None)
         except Exception:
             pass
-        self._set_status("NORMAL")
+        self._set_status("")
 
     def action_insert(self) -> None:
         self._insert_mode = True
         self.query_one("#input", Input).focus()
-        self._set_status("INSERT")
+        self._set_status("")
 
     async def action_escape(self) -> None:
         if self._insert_mode:
