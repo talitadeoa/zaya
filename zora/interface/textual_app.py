@@ -7,6 +7,7 @@ import time
 from datetime import datetime, timedelta
 from typing import Any, Awaitable, Callable
 
+from rich import box
 from rich.markup import escape
 from rich.panel import Panel
 from rich.syntax import Syntax
@@ -54,7 +55,7 @@ class CommandPalette(ModalScreen[str | None]):
         width: 64;
         height: auto;
         max-height: 20;
-        border: round #D644FB;
+        border: solid #D644FB;
         background: #140a24;
         padding: 1;
     }
@@ -138,7 +139,7 @@ class ZoraTextualApp(App):
         color: #e5e7eb;
     }
     #chat {
-        border: round #D644FB;
+        border: solid #D644FB;
         padding: 0 1;
         scrollbar-size-vertical: 1;
         scrollbar-size-horizontal: 0;
@@ -156,9 +157,9 @@ class ZoraTextualApp(App):
         padding: 0 1;
     }
     #input {
-        dock: bottom;
-        border: round #79DCFD;
+        border: solid #79DCFD;
         height: 5;
+        margin-bottom: 1;
     }
     """
 
@@ -180,6 +181,8 @@ class ZoraTextualApp(App):
         self._listen_task: asyncio.Task | None = None
         self._insert_mode = False
         self._turn_running = False
+        self._status_base = ""
+        self._dot_phase = 0
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=False)
@@ -187,8 +190,8 @@ class ZoraTextualApp(App):
             RichLog(id="chat", highlight=True, markup=True, wrap=True),
             Static("", id="stream"),
             Static("● pronto", id="status"),
+            Input(id="input"),
         )
-        yield Input(id="input")
         yield Footer()
 
     async def on_mount(self) -> None:
@@ -196,6 +199,7 @@ class ZoraTextualApp(App):
         self.sub_title = self._subtitle
         await self._render_welcome()
         self._normal_mode()
+        self.set_interval(0.4, self._tick_status)
 
     async def _render_welcome(self) -> None:
         log = self._log()
@@ -227,6 +231,7 @@ class ZoraTextualApp(App):
         self._log().write(
             Panel(
                 body,
+                box=box.SQUARE,
                 title=Text(f"Foco {period_label(focus.period)}", style=f"bold {CYAN}"),
                 title_align="left",
                 border_style=CYAN,
@@ -251,6 +256,7 @@ class ZoraTextualApp(App):
         self._log().write(
             Panel(
                 table,
+                box=box.SQUARE,
                 title=Text("Metas de longo prazo", style=f"bold {ACCENT}"),
                 title_align="left",
                 border_style=ACCENT,
@@ -283,6 +289,7 @@ class ZoraTextualApp(App):
         self._log().write(
             Panel(
                 body,
+                box=box.SQUARE,
                 title=Text("Lua", style=f"bold {LILAC}"),
                 title_align="left",
                 border_style=CYAN,
@@ -485,7 +492,15 @@ class ZoraTextualApp(App):
             pass
 
     def _set_status(self, text: str) -> None:
+        self._status_base = text.rstrip(".…").strip()
         self.query_one("#status", Static).update(text)
+
+    def _tick_status(self) -> None:
+        if not self._turn_running or not self._status_base:
+            return
+        self._dot_phase = (self._dot_phase + 1) % 3
+        dots = "." * (self._dot_phase + 1)
+        self.query_one("#status", Static).update(self._status_base + dots)
 
     # ------------------------------------------------------------------ modes
     def _normal_mode(self) -> None:
@@ -563,6 +578,7 @@ class ZoraTextualApp(App):
         self._log().write(
             Panel(
                 Syntax(patch, "diff", theme="monokai", word_wrap=True),
+                box=box.SQUARE,
                 title=f"diff · {filename}",
                 title_align="left",
                 border_style=MINT,
@@ -577,6 +593,7 @@ class ZoraTextualApp(App):
         self._log().write(
             Panel(
                 Text(text),
+                box=box.SQUARE,
                 title=Text("Talita:", style=f"bold {CYAN}"),
                 title_align="left",
                 border_style=CYAN,
@@ -588,6 +605,7 @@ class ZoraTextualApp(App):
         self._log().write(
             Panel(
                 Text(text),
+                box=box.SQUARE,
                 title=Text("Zora:", style=f"bold {ACCENT}"),
                 title_align="left",
                 border_style=ACCENT,
