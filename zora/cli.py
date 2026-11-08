@@ -37,6 +37,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--config", help="caminho do config TOML", default=None)
     parser.add_argument("--verbose", action="store_true", help="logs também no terminal")
+    parser.add_argument(
+        "--ui",
+        choices=["terminal", "textual"],
+        help="interface: terminal (padrão) ou textual",
+    )
     parser.add_argument("--version", action="version", version=f"zora {__version__}")
     sub = parser.add_subparsers(dest="command")
 
@@ -117,6 +122,8 @@ def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
     cfg = Config.load(args.config)
+    if args.ui:
+        cfg.interface.ui = args.ui
     ui = TerminalUI()
 
     try:
@@ -184,9 +191,31 @@ def _build_app(cfg: Config, verbose: bool, voice: bool = True, quiet: bool = Fal
 
 
 async def _run_app(cfg: Config, verbose: bool) -> None:
+    if cfg.interface.ui == "textual":
+        await _run_textual(cfg, verbose)
+        return
     orchestrator, store, index = _build_app(cfg, verbose)
     try:
         await orchestrator.start()
+    finally:
+        store.close()
+        index.close()
+
+
+async def _run_textual(cfg: Config, verbose: bool) -> None:
+    from zora.interface.textual_app import ZoraTextualApp
+
+    orchestrator, store, index = _build_app(cfg, verbose, quiet=True)
+
+    async def answer(text: str) -> str:
+        return await orchestrator.answer_once(text, speak=False, close=False)
+
+    async def cleanup() -> None:
+        await orchestrator.aclose()
+
+    app = ZoraTextualApp(answer, cleanup=cleanup, subtitle=cfg.opencode.model)
+    try:
+        await app.run_async()
     finally:
         store.close()
         index.close()

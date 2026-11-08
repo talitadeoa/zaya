@@ -360,6 +360,16 @@ Durante a execução, a Zora mostra um resumo do **raciocínio** na linha de sta
 e exibe os **diffs** das ferramentas de edição em caixas coloridas. Desative com
 `ZORA_UI_SHOW_REASONING=false` e/ou `ZORA_UI_SHOW_DIFFS=false`.
 
+### Interface Textual (fase 1)
+
+```bash
+zora --ui textual
+```
+
+Layout com cabeçalho, chat, entrada e barra de status. Nesta fase a conversa é
+por texto (sem voz/streaming); o restante continua no modo terminal. Também dá
+para fixar com `ZORA_UI=textual` ou `ui = "textual"` em `[interface]`.
+
 ## Arquitetura
 
 ```
