@@ -60,7 +60,7 @@ from zora.secondbrain.notes import NoteConflict, SecondBrain
 from zora.spotify.controller import SpotifyCommand, SpotifyError, execute as execute_spotify
 from zora.spotify.intents import parse_spotify_command
 from zora.stt.faster_whisper import STTError, WhisperTranscriber
-from zora.tasks.store import TaskStore
+from zora.tasks.store import Task, TaskStore
 from zora.tts.base import TTSBackend
 from zora.tts.manager import TTSManager, clean_for_speech
 
@@ -141,6 +141,8 @@ class Orchestrator:
         self._last_proactive = 0.0
         self._last_idle_message = ""
         self._initiative_session_id: str | None = None
+        self._task_session_id: str | None = None
+        self._tasks_next_check = 0.0
         self._agenda_pending_names: list[str] = []
         self.goals = GoalTracker()
         self.tasks = TaskStore()
@@ -1347,9 +1349,21 @@ class Orchestrator:
             detail = f" — {goal.next_step}" if goal.next_step else ""
             self.ui.info(f"  {goal.label}{detail}")
 
+    def _find_task(self, query: str) -> Task | None:
+        query = query.strip().lower()
+        if not query:
+            return None
+        for task in self.tasks.all():
+            if task.id.startswith(query) or query in task.title.lower():
+                return task
+        return None
+
     async def _handle_tasks(self, argument: str) -> None:
-        arg = argument.strip().lower()
-        if arg in {"sync", "sincronizar", "atualizar"}:
+        parts = argument.strip().split(maxsplit=1)
+        sub = parts[0].lower() if parts else ""
+        rest = parts[1].strip() if len(parts) > 1 else ""
+
+        if sub in {"sync", "sincronizar", "atualizar"}:
             try:
                 pages = await self.agenda.pages(30)
             except AgendaError as exc:
@@ -1370,6 +1384,28 @@ class Orchestrator:
             self.ui.success(
                 f"{len(synced)} tarefa(s) sincronizada(s) de '{page.get('title')}'"
             )
+        elif sub in {"fazer", "executar", "run"}:
+            task = self._find_task(rest)
+            if task is None:
+                self.ui.warning("uso: /tarefas fazer <id ou trecho do título>")
+                return
+            self.tasks.set_status(task.id, "in_progress")
+            prompt = (
+                f"Tarefa de longo prazo registrada na Agenda: {task.title}\n\n"
+                "Execute isso no repositório atual, com mudanças mínimas e testes. "
+                "Ao terminar, explique o que fez e o que ainda falta."
+            )
+            await self._handle_task_impl(prompt, speak=True)
+            return
+        elif sub in {"concluir", "done", "feito"}:
+            task = self._find_task(rest)
+            if task is None:
+                self.ui.warning("uso: /tarefas concluir <id ou trecho do título>")
+                return
+            self.tasks.set_status(task.id, "done")
+            self.ui.success(f"tarefa concluída: {task.title}")
+            return
+
         tasks = self.tasks.all()
         if not tasks:
             self.ui.info("nenhuma tarefa registrada; use /tarefas sync")
@@ -1377,7 +1413,7 @@ class Orchestrator:
         symbols = {"done": "✓", "in_progress": "◐", "pending": "•"}
         for task in tasks:
             symbol = symbols.get(task.status, "•")
-            self.ui.info(f"{symbol} [{task.status}] {task.title}")
+            self.ui.info(f"{symbol} [{task.status}] {task.id} — {task.title}")
             if task.notes:
                 self.ui.info(f"   {task.notes}")
 
@@ -1519,6 +1555,7 @@ class Orchestrator:
                 if cfg.reminders:
                     await self._fire_due_reminders()
                 await self._check_agenda(now)
+                await self._check_task_page(now)
                 if cfg.idle_checkin:
                     idle_for = (time.monotonic() - self._last_activity) / 60.0
                     if idle_for >= cfg.idle_minutes and self._can_idle_checkin(now):
@@ -1566,6 +1603,58 @@ class Orchestrator:
         else:
             message = "Novas tarefas na agenda: " + ", ".join(shown) + "."
         await self._say_proactive(message)
+
+    async def _check_task_page(self, now: datetime) -> None:
+        cfg = self.cfg.agenda
+        if not cfg.enabled or not self.agenda.enabled:
+            return
+        if time.monotonic() < self._tasks_next_check:
+            return
+        self._tasks_next_check = time.monotonic() + max(
+            5.0, cfg.tasks_poll_minutes * 60.0
+        )
+        try:
+            pages = await self.agenda.pages(30)
+        except AgendaError as exc:
+            self.logger.warning("tarefas: %s", exc)
+            return
+        page = next(
+            (item for item in pages if "tarefa" in str(item.get("title") or "").lower()),
+            None,
+        )
+        if page is None:
+            return
+        before = {task.id for task in self.tasks.all()}
+        synced = self.tasks.sync_text(str(page.get("content") or ""))
+        new_tasks = [task for task in synced if task.id not in before]
+        for task in new_tasks:
+            self.ui.info(f"nova tarefa na Agenda: {task.title}")
+            plan = await self._plan_task(task.title)
+            self.tasks.set_status(task.id, "in_progress", plan or "")
+            await self._say_proactive(f"Nova tarefa na página de tarefas: {task.title}")
+
+    async def _plan_task(self, title: str) -> str:
+        prompt = (
+            "Monte um plano curto (até 5 passos) para executar esta tarefa no "
+            f"projeto {self.directory}: {title}. Não execute nada e não use "
+            "ferramentas; responda apenas o plano, em português."
+        )
+        system = "Você é a Zora. Seja objetiva e prática."
+        try:
+            if not self._task_session_id:
+                session = await self.client.create_session(
+                    title="Zora — tarefas", model=self.client.model
+                )
+                self._task_session_id = session.id
+            response = await asyncio.wait_for(
+                self.client.prompt_sync(self._task_session_id, prompt, system=system),
+                timeout=25.0,
+            )
+            text = assistant_text(response) if isinstance(response, dict) else ""
+            return " ".join(text.split()).strip()
+        except Exception as exc:  # pragma: no cover - depende do modelo/rede
+            self.logger.warning("plano da tarefa falhou: %s", exc)
+            return ""
 
     async def _fire_due_reminders(self) -> None:
         if not self.cfg.proactive.reminders:

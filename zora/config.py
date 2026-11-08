@@ -171,6 +171,8 @@ class AgendaConfig(BaseModel):
     env_file: str = "~/agenda-git/agenda/.env"
     poll_minutes: float = 30.0
     max_items: int = 5
+    # Frequencia de checagem da pagina "tarefas pra zora".
+    tasks_poll_minutes: float = 15.0
 
 
 class TelegramConfig(BaseModel):
@@ -358,6 +360,7 @@ _ENV_MAP: dict[str, tuple[str, str]] = {
     "ZORA_AGENDA_ENV_FILE": ("agenda", "env_file"),
     "ZORA_AGENDA_POLL_MINUTES": ("agenda", "poll_minutes"),
     "ZORA_AGENDA_MAX_ITEMS": ("agenda", "max_items"),
+    "ZORA_AGENDA_TASKS_POLL_MINUTES": ("agenda", "tasks_poll_minutes"),
     "ZORA_BROWSER_PROFILE_DIR": ("browser", "profile_dir"),
     "ZORA_BROWSER_TIMEOUT_MS": ("browser", "timeout_ms"),
 }
@@ -495,6 +498,7 @@ enabled = true
 env_file = "~/agenda-git/agenda/.env"
 poll_minutes = 30
 max_items = 5
+tasks_poll_minutes = 15
 
 [telegram]
 enabled = false

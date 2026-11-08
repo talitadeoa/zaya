@@ -304,11 +304,15 @@ A Zora lê a página **“tarefas pra zora”** na Agenda, sincroniza os itens e
 acompanha o status (`pending`, `in_progress`, `done`):
 
 ```bash
-/tarefas        # lista
-/tarefas sync   # relê a página da Agenda
+/tarefas              # lista
+/tarefas sync         # relê a página da Agenda
+/tarefas fazer <id>   # executa a tarefa no projeto
+/tarefas concluir <id>
 ```
 
-O estado fica em `~/.local/share/zora/tasks.json` (fora do repositório).
+A Zora verifica a página a cada **15 min** (`ZORA_AGENDA_TASKS_POLL_MINUTES`),
+avisa quando surge tarefa nova e já gera um plano inicial. O estado fica em
+`~/.local/share/zora/tasks.json` (fora do repositório).
 
 ### Metas pessoais
 
