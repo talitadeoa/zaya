@@ -38,9 +38,13 @@ curriculo*.md
 *.sqlite
 *.pem
 
-# Markdown pessoal (só o README do projeto entra)
+# Markdown pessoal: por padrão ignora, mas docs do projeto entram
 *.md
 !README.md
+!CHANGELOG.md
+!AGENTS.md
+!docs/
+!docs/**
 
 # macOS
 .DS_Store
