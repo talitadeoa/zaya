@@ -14,9 +14,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from abc import ABC, abstractmethod
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any
+from typing import Protocol
 
 from zora.agenda.client import AgendaClient
 from zora.audio.recorder import ContinuousListener, Recorder
@@ -37,7 +38,19 @@ from zora.tasks.store import TaskStore
 from zora.tts.manager import TTSManager
 
 
-class OrchestratorContract:
+class StreamSink(Protocol):
+    """Destino de streaming consumido durante um turno."""
+
+    def token(self, text: str) -> None: ...
+
+    def reasoning(self, text: str) -> None: ...
+
+    def tool(self, name: str, detail: str = "") -> None: ...
+
+    def diff(self, filename: str, patch: str) -> None: ...
+
+
+class OrchestratorContract(ABC):
     # --- servicos e contexto ---
     cfg: Config
     logger: logging.Logger
@@ -72,7 +85,7 @@ class OrchestratorContract:
     _listening: bool
     _voice_mode: bool
     _pending_input: str
-    _stream_sink: Any
+    _stream_sink: StreamSink | None
     _mic_muted: bool
     _continuous_hint_shown: bool
     _permission_active: bool
@@ -114,89 +127,118 @@ class OrchestratorContract:
     _last_assistant_message_id: str | None
 
     # --- metodos que um mixin chama de outro (implementados nos mixins) ---
+    @abstractmethod
     async def _speak(self, text: str) -> None:
-        raise NotImplementedError
+        ...
 
+    @abstractmethod
     def _start_speech_streaming(self) -> bool:
-        raise NotImplementedError
+        ...
 
+    @abstractmethod
     def _feed_speech(self, text: str) -> None:
-        raise NotImplementedError
+        ...
 
+    @abstractmethod
     def _feed_display(self, delta: str) -> list[str]:
-        raise NotImplementedError
+        ...
 
+    @abstractmethod
     def _flush_display(self) -> list[str]:
-        raise NotImplementedError
+        ...
 
+    @abstractmethod
     async def _finish_speech_streaming(self, fallback: str) -> None:
-        raise NotImplementedError
+        ...
 
+    @abstractmethod
     async def _stop_speech_streaming(self) -> None:
-        raise NotImplementedError
+        ...
 
+    @abstractmethod
     async def _dispatch(self, text: str) -> str:
-        raise NotImplementedError
+        ...
 
+    @abstractmethod
     async def _handle_task_impl(self, text: str, speak: bool = True) -> str:
-        raise NotImplementedError
+        ...
 
+    @abstractmethod
     async def _handle_command(self, text: str) -> bool:
-        raise NotImplementedError
+        ...
 
+    @abstractmethod
     async def _new_session(self) -> None:
-        raise NotImplementedError
+        ...
 
+    @abstractmethod
     async def _show_dashboard(self) -> None:
-        raise NotImplementedError
+        ...
 
+    @abstractmethod
     async def _switch_mode(self, argument: str) -> None:
-        raise NotImplementedError
+        ...
 
+    @abstractmethod
     def _preferences_block(self) -> str:
-        raise NotImplementedError
+        ...
 
+    @abstractmethod
     async def _handle_preference(self, text: str) -> None:
-        raise NotImplementedError
+        ...
 
+    @abstractmethod
     async def _handle_register(self, intent: RegisterIntent, original: str) -> None:
-        raise NotImplementedError
+        ...
 
+    @abstractmethod
     def _mark_activity(self) -> None:
-        raise NotImplementedError
+        ...
 
+    @abstractmethod
     def _user_name(self) -> str:
-        raise NotImplementedError
+        ...
 
+    @abstractmethod
     async def _handle_reminder(self, spec: ReminderSpec) -> None:
-        raise NotImplementedError
+        ...
 
+    @abstractmethod
     def _toggle_continuous(self, argument: str) -> None:
-        raise NotImplementedError
+        ...
 
+    @abstractmethod
     def _toggle_proactive(self, argument: str) -> None:
-        raise NotImplementedError
+        ...
 
+    @abstractmethod
     async def _proactive_loop(self, greet: bool = True) -> None:
-        raise NotImplementedError
+        ...
 
+    @abstractmethod
     async def _check_focus(self, now: datetime) -> None:
-        raise NotImplementedError
+        ...
 
+    @abstractmethod
     async def _fire_due_reminders(self) -> None:
-        raise NotImplementedError
+        ...
 
+    @abstractmethod
     async def _startup_greeting(self) -> None:
-        raise NotImplementedError
+        ...
 
+    @abstractmethod
     async def _continuous_loop(self) -> bool:
-        raise NotImplementedError
+        ...
 
+    @abstractmethod
     async def _read_user_input(self) -> str | None:
-        raise NotImplementedError
+        ...
 
+    @abstractmethod
     async def _clear_stale_session(self) -> None:
-        raise NotImplementedError
+        ...
 
+    @abstractmethod
     async def select_mode(self, key: str) -> None:
-        raise NotImplementedError
+        ...

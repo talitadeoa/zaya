@@ -182,6 +182,12 @@ def test_mixins_share_the_explicit_contract():
     assert issubclass(Orchestrator, OrchestratorContract)
 
 
+def test_contract_is_abstract_and_orchestrator_concrete():
+    with pytest.raises(TypeError):
+        OrchestratorContract()
+    assert not Orchestrator.__abstractmethods__
+
+
 def test_state_is_initialized(orch):
     assert orch.conversation_id is None
     assert orch.session_id == ""

@@ -18,6 +18,7 @@ from zora.agenda.client import AgendaClient
 from zora.audio.recorder import ContinuousListener, Recorder
 from zora.config import Config
 from zora.controller.commands import CommandsMixin
+from zora.controller.contract import StreamSink
 from zora.controller.goals import GoalTracker
 from zora.controller.initiative import InitiativeMixin
 from zora.controller.modes import PERSONAS, Persona, get_persona, resolve_mode
@@ -214,7 +215,7 @@ class Orchestrator(
         if not self.session_id:
             await self._bootstrap()
 
-    async def answer_stream(self, text: str, sink) -> str:
+    async def answer_stream(self, text: str, sink: StreamSink | None) -> str:
         """Como answer_once, mas envia tokens/eventos para um sink de UI."""
         self._stream_sink = sink
         try:
