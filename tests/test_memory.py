@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 
-from zora.memory.store import MemoryStore
+from zora.memory.store import SCHEMA_VERSION, MemoryStore
 
 
 def test_conversations_and_turns(tmp_path):
@@ -141,3 +142,47 @@ def test_close_is_idempotent_and_context_manager(tmp_path):
         store.set_meta("k", "v")
     store.close()
     store.close()
+
+
+def test_schema_version_recorded(tmp_path):
+    store = MemoryStore(tmp_path / "zora.db")
+    try:
+        assert store.schema_version() == SCHEMA_VERSION
+        assert store.get_meta("schema_version") == str(SCHEMA_VERSION)
+    finally:
+        store.close()
+
+
+def test_migrates_old_database_without_mode(tmp_path):
+    db_path = tmp_path / "old.db"
+    conn = sqlite3.connect(db_path)
+    conn.executescript(
+        """
+        CREATE TABLE conversations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_path TEXT NOT NULL,
+            opencode_session_id TEXT,
+            title TEXT,
+            is_current INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE INDEX idx_conv_project ON conversations(project_path, is_current);
+        INSERT INTO conversations (project_path, is_current, created_at, updated_at)
+            VALUES ('/proj', 1, 'x', 'x');
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    with MemoryStore(db_path) as store:
+        columns = {
+            row["name"]
+            for row in store._conn.execute("PRAGMA table_info(conversations)").fetchall()
+        }
+        assert "mode" in columns
+        assert store.schema_version() == SCHEMA_VERSION
+        assert store.current_conversation("/proj")["mode"] == "assistente"
+        # o indice foi recriado cobrindo a coluna mode
+        indexes = {row["name"] for row in store._conn.execute("PRAGMA index_list(conversations)")}
+        assert "idx_conv_project" in indexes

@@ -15,6 +15,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+# Versao atual do schema. Incremente ao adicionar novas migracoes em _migrate.
+SCHEMA_VERSION = 2
+
 
 def _now() -> str:
     return datetime.now().astimezone().isoformat(timespec="seconds")
@@ -49,9 +52,6 @@ class MemoryStore:
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
-                CREATE INDEX IF NOT EXISTS idx_conv_project
-                    ON conversations(project_path, mode, is_current);
-
                 CREATE TABLE IF NOT EXISTS turns (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     conversation_id INTEGER NOT NULL,
@@ -90,16 +90,39 @@ class MemoryStore:
             self._migrate()
 
     def _migrate(self) -> None:
-        """Migracao leve para bancos antigos (sem coluna ``mode``)."""
+        """Aplica migracoes pendentes e registra a versao do schema."""
+        version = self.schema_version()
         columns = {
             row["name"]
             for row in self._conn.execute("PRAGMA table_info(conversations)").fetchall()
         }
+        # v2: conversas passaram a ser separadas por modo.
         if "mode" not in columns:
             with self._conn:
                 self._conn.execute(
                     "ALTER TABLE conversations ADD COLUMN mode TEXT NOT NULL DEFAULT 'assistente'"
                 )
+        with self._conn:
+            if version < SCHEMA_VERSION:
+                # remove o indice antigo (project_path, is_current) e recria
+                # com a coluna mode, que pode ter acabado de ser adicionada.
+                self._conn.execute("DROP INDEX IF EXISTS idx_conv_project")
+            self._conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_conv_project "
+                "ON conversations(project_path, mode, is_current)"
+            )
+        if version < SCHEMA_VERSION:
+            self.set_meta("schema_version", str(SCHEMA_VERSION))
+
+    def schema_version(self) -> int:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT value FROM meta WHERE key = 'schema_version'"
+            ).fetchone()
+        try:
+            return int(row["value"]) if row else 1
+        except (TypeError, ValueError):
+            return 1
 
     # ------------------------------------------------------------ conversations
     def current_conversation(self, project_path: str, mode: str = "assistente") -> sqlite3.Row | None:
