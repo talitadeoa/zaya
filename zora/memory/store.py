@@ -1,4 +1,11 @@
-"""Memoria operacional da Zora: conversas, turnos e registros (SQLite)."""
+"""Memoria operacional da Zora: conversas, turnos e registros (SQLite).
+
+As consultas sao locais e de microssegundos, entao o acesso continua sincrono
+(chamar ``asyncio.to_thread`` para cada SELECT custaria mais do que a query).
+Para tornar seguro o ``check_same_thread=False``, todas as operacoes -- leitura
+e escrita -- passam pelo mesmo ``RLock``, e o banco roda em WAL com
+``busy_timeout`` para tolerar acesso concorrente de outras threads.
+"""
 
 from __future__ import annotations
 
@@ -19,9 +26,13 @@ class MemoryStore:
         db_path.parent.mkdir(parents=True, exist_ok=True)
         self.db_path = db_path
         self._lock = threading.RLock()
+        self._closed = False
         self._conn = sqlite3.connect(str(db_path), check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
+        self._conn.execute("PRAGMA synchronous=NORMAL")
+        self._conn.execute("PRAGMA busy_timeout=5000")
+        self._conn.execute("PRAGMA foreign_keys=ON")
         self._init_schema()
 
     def _init_schema(self) -> None:
@@ -92,14 +103,15 @@ class MemoryStore:
 
     # ------------------------------------------------------------ conversations
     def current_conversation(self, project_path: str, mode: str = "assistente") -> sqlite3.Row | None:
-        return self._conn.execute(
-            """
-            SELECT * FROM conversations
-            WHERE project_path = ? AND mode = ? AND is_current = 1
-            ORDER BY id DESC LIMIT 1
-            """,
-            (project_path, mode),
-        ).fetchone()
+        with self._lock:
+            return self._conn.execute(
+                """
+                SELECT * FROM conversations
+                WHERE project_path = ? AND mode = ? AND is_current = 1
+                ORDER BY id DESC LIMIT 1
+                """,
+                (project_path, mode),
+            ).fetchone()
 
     def create_conversation(
         self, project_path: str, title: str | None = None, mode: str = "assistente"
@@ -122,9 +134,10 @@ class MemoryStore:
         return self.get_conversation(conv_id)
 
     def get_conversation(self, conversation_id: int) -> sqlite3.Row:
-        row = self._conn.execute(
-            "SELECT * FROM conversations WHERE id = ?", (conversation_id,)
-        ).fetchone()
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT * FROM conversations WHERE id = ?", (conversation_id,)
+            ).fetchone()
         if row is None:
             raise KeyError(f"conversa {conversation_id} nao encontrada")
         return row
@@ -138,19 +151,20 @@ class MemoryStore:
         return self.create_conversation(project_path, mode=mode)
 
     def list_conversations(self, project_path: str, mode: str) -> list[sqlite3.Row]:
-        return list(
-            self._conn.execute(
-                """
-                SELECT c.*,
-                       (SELECT COUNT(*) FROM turns t
-                        WHERE t.conversation_id = c.id) AS turn_count
-                FROM conversations c
-                WHERE c.project_path = ? AND c.mode = ?
-                ORDER BY c.updated_at DESC, c.id DESC
-                """,
-                (project_path, mode),
-            ).fetchall()
-        )
+        with self._lock:
+            return list(
+                self._conn.execute(
+                    """
+                    SELECT c.*,
+                           (SELECT COUNT(*) FROM turns t
+                            WHERE t.conversation_id = c.id) AS turn_count
+                    FROM conversations c
+                    WHERE c.project_path = ? AND c.mode = ?
+                    ORDER BY c.updated_at DESC, c.id DESC
+                    """,
+                    (project_path, mode),
+                ).fetchall()
+            )
 
     def set_current(self, conversation_id: int) -> None:
         conv = self.get_conversation(conversation_id)
@@ -191,10 +205,11 @@ class MemoryStore:
             )
 
     def turns(self, conversation_id: int, limit: int = 20) -> list[sqlite3.Row]:
-        rows = self._conn.execute(
-            "SELECT * FROM turns WHERE conversation_id = ? ORDER BY id DESC LIMIT ?",
-            (conversation_id, limit),
-        ).fetchall()
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM turns WHERE conversation_id = ? ORDER BY id DESC LIMIT ?",
+                (conversation_id, limit),
+            ).fetchall()
         return list(reversed(rows))
 
     # ------------------------------------------------------------------ records
@@ -215,9 +230,10 @@ class MemoryStore:
             )
 
     def recent_records(self, limit: int = 10) -> list[sqlite3.Row]:
-        return self._conn.execute(
-            "SELECT * FROM records ORDER BY id DESC LIMIT ?", (limit,)
-        ).fetchall()
+        with self._lock:
+            return self._conn.execute(
+                "SELECT * FROM records ORDER BY id DESC LIMIT ?", (limit,)
+            ).fetchall()
 
     # ----------------------------------------------------------------- reminders
     def add_reminder(self, text: str, due_at: str) -> int:
@@ -232,23 +248,25 @@ class MemoryStore:
             return int(cursor.lastrowid)
 
     def due_reminders(self, now_iso: str) -> list[sqlite3.Row]:
-        return self._conn.execute(
-            """
-            SELECT * FROM reminders
-            WHERE spoken = 0 AND cancelled = 0 AND due_at <= ?
-            ORDER BY due_at ASC
-            """,
-            (now_iso,),
-        ).fetchall()
+        with self._lock:
+            return self._conn.execute(
+                """
+                SELECT * FROM reminders
+                WHERE spoken = 0 AND cancelled = 0 AND due_at <= ?
+                ORDER BY due_at ASC
+                """,
+                (now_iso,),
+            ).fetchall()
 
     def pending_reminders(self) -> list[sqlite3.Row]:
-        return self._conn.execute(
-            """
-            SELECT * FROM reminders
-            WHERE spoken = 0 AND cancelled = 0
-            ORDER BY due_at ASC
-            """
-        ).fetchall()
+        with self._lock:
+            return self._conn.execute(
+                """
+                SELECT * FROM reminders
+                WHERE spoken = 0 AND cancelled = 0
+                ORDER BY due_at ASC
+                """
+            ).fetchall()
 
     def mark_reminder_spoken(self, reminder_id: int) -> None:
         with self._lock, self._conn:
@@ -263,9 +281,10 @@ class MemoryStore:
             return cursor.rowcount > 0
 
     def reminder_stats(self) -> dict[str, int]:
-        pending = self._conn.execute(
-            "SELECT COUNT(*) FROM reminders WHERE spoken = 0 AND cancelled = 0"
-        ).fetchone()[0]
+        with self._lock:
+            pending = self._conn.execute(
+                "SELECT COUNT(*) FROM reminders WHERE spoken = 0 AND cancelled = 0"
+            ).fetchone()[0]
         return {"pending": int(pending)}
 
     # --------------------------------------------------------------------- meta
@@ -278,13 +297,15 @@ class MemoryStore:
             )
 
     def get_meta(self, key: str, default: str | None = None) -> str | None:
-        row = self._conn.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
+        with self._lock:
+            row = self._conn.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
         return row["value"] if row else default
 
     def stats(self) -> dict[str, Any]:
-        conversations = self._conn.execute("SELECT COUNT(*) FROM conversations").fetchone()[0]
-        turns = self._conn.execute("SELECT COUNT(*) FROM turns").fetchone()[0]
-        records = self._conn.execute("SELECT COUNT(*) FROM records").fetchone()[0]
+        with self._lock:
+            conversations = self._conn.execute("SELECT COUNT(*) FROM conversations").fetchone()[0]
+            turns = self._conn.execute("SELECT COUNT(*) FROM turns").fetchone()[0]
+            records = self._conn.execute("SELECT COUNT(*) FROM records").fetchone()[0]
         return {
             "conversations": int(conversations),
             "turns": int(turns),
@@ -293,4 +314,13 @@ class MemoryStore:
 
     def close(self) -> None:
         with self._lock:
+            if self._closed:
+                return
+            self._closed = True
             self._conn.close()
+
+    def __enter__(self) -> MemoryStore:
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.close()

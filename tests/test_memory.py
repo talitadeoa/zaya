@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+
 from zora.memory.store import MemoryStore
 
 
@@ -101,3 +103,41 @@ def test_meta(tmp_path):
         assert store.get_meta("model") == "deepseek/deepseek-v4-pro"
     finally:
         store.close()
+
+
+def test_pragmas_configured(tmp_path):
+    store = MemoryStore(tmp_path / "zora.db")
+    try:
+        assert store._conn.execute("PRAGMA journal_mode").fetchone()[0].lower() == "wal"
+        assert store._conn.execute("PRAGMA busy_timeout").fetchone()[0] == 5000
+        assert store._conn.execute("PRAGMA synchronous").fetchone()[0] == 1  # NORMAL
+        assert store._conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1
+    finally:
+        store.close()
+
+
+def test_concurrent_writes_are_serialized(tmp_path):
+    store = MemoryStore(tmp_path / "zora.db")
+    try:
+        conv = store.get_or_create_conversation("/proj")
+        conversation_id = int(conv["id"])
+
+        def worker(index: int) -> int:
+            store.add_turn(conversation_id, "user", f"msg {index}")
+            return store.stats()["turns"]
+
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            list(pool.map(worker, range(50)))
+
+        assert store.stats()["turns"] == 50
+        texts = [row["text"] for row in store.turns(conversation_id, limit=50)]
+        assert len(texts) == 50
+    finally:
+        store.close()
+
+
+def test_close_is_idempotent_and_context_manager(tmp_path):
+    with MemoryStore(tmp_path / "zora.db") as store:
+        store.set_meta("k", "v")
+    store.close()
+    store.close()
