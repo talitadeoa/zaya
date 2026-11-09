@@ -437,6 +437,12 @@ model = "base"              # mais rápido que "small" (menos preciso)
 ```
 
 - O streaming retorna assim que o texto do assistente chega, sem espera extra.
+- Saudações e small talk ("oi", "bom dia", "tudo bem?", "obrigada") respondem
+  na hora, sem chamar o modelo (`[interface] fast_smalltalk = true`).
+- Hora e data ("que horas são?", "que dia é hoje?") também são respondidas
+  localmente, sem LLM.
+- A saudação inicial é instantânea por padrão; para personalizá-la pelo modelo,
+  use `[proactive] greeting_via_llm = true` (mais lenta).
 - O índice só é reconstruído no primeiro uso ou quando você roda `/indexar`.
 - Para respostas faladas mais rápidas e offline, use `/voz say`.
 - `opencode.auto_approve = false` por padrão. Ativar isso remove as perguntas de

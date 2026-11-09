@@ -31,6 +31,7 @@ class MemoryStore:
                 CREATE TABLE IF NOT EXISTS conversations (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     project_path TEXT NOT NULL,
+                    mode TEXT NOT NULL DEFAULT 'assistente',
                     opencode_session_id TEXT,
                     title TEXT,
                     is_current INTEGER NOT NULL DEFAULT 1,
@@ -38,7 +39,7 @@ class MemoryStore:
                     updated_at TEXT NOT NULL
                 );
                 CREATE INDEX IF NOT EXISTS idx_conv_project
-                    ON conversations(project_path, is_current);
+                    ON conversations(project_path, mode, is_current);
 
                 CREATE TABLE IF NOT EXISTS turns (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -75,31 +76,47 @@ class MemoryStore:
                     ON reminders(spoken, cancelled, due_at);
                 """
             )
+            self._migrate()
+
+    def _migrate(self) -> None:
+        """Migracao leve para bancos antigos (sem coluna ``mode``)."""
+        columns = {
+            row["name"]
+            for row in self._conn.execute("PRAGMA table_info(conversations)").fetchall()
+        }
+        if "mode" not in columns:
+            with self._conn:
+                self._conn.execute(
+                    "ALTER TABLE conversations ADD COLUMN mode TEXT NOT NULL DEFAULT 'assistente'"
+                )
 
     # ------------------------------------------------------------ conversations
-    def current_conversation(self, project_path: str) -> sqlite3.Row | None:
+    def current_conversation(self, project_path: str, mode: str = "assistente") -> sqlite3.Row | None:
         return self._conn.execute(
             """
             SELECT * FROM conversations
-            WHERE project_path = ? AND is_current = 1
+            WHERE project_path = ? AND mode = ? AND is_current = 1
             ORDER BY id DESC LIMIT 1
             """,
-            (project_path,),
+            (project_path, mode),
         ).fetchone()
 
-    def create_conversation(self, project_path: str, title: str | None = None) -> sqlite3.Row:
+    def create_conversation(
+        self, project_path: str, title: str | None = None, mode: str = "assistente"
+    ) -> sqlite3.Row:
         now = _now()
         with self._lock, self._conn:
             self._conn.execute(
-                "UPDATE conversations SET is_current = 0 WHERE project_path = ?",
-                (project_path,),
+                "UPDATE conversations SET is_current = 0 WHERE project_path = ? AND mode = ?",
+                (project_path, mode),
             )
             cursor = self._conn.execute(
                 """
-                INSERT INTO conversations (project_path, title, is_current, created_at, updated_at)
-                VALUES (?, ?, 1, ?, ?)
+                INSERT INTO conversations
+                    (project_path, mode, title, is_current, created_at, updated_at)
+                VALUES (?, ?, ?, 1, ?, ?)
                 """,
-                (project_path, title or "", now, now),
+                (project_path, mode, title or "", now, now),
             )
             conv_id = cursor.lastrowid
         return self.get_conversation(conv_id)
@@ -112,11 +129,40 @@ class MemoryStore:
             raise KeyError(f"conversa {conversation_id} nao encontrada")
         return row
 
-    def get_or_create_conversation(self, project_path: str) -> sqlite3.Row:
-        row = self.current_conversation(project_path)
+    def get_or_create_conversation(
+        self, project_path: str, mode: str = "assistente"
+    ) -> sqlite3.Row:
+        row = self.current_conversation(project_path, mode)
         if row:
             return row
-        return self.create_conversation(project_path)
+        return self.create_conversation(project_path, mode=mode)
+
+    def list_conversations(self, project_path: str, mode: str) -> list[sqlite3.Row]:
+        return list(
+            self._conn.execute(
+                """
+                SELECT c.*,
+                       (SELECT COUNT(*) FROM turns t
+                        WHERE t.conversation_id = c.id) AS turn_count
+                FROM conversations c
+                WHERE c.project_path = ? AND c.mode = ?
+                ORDER BY c.updated_at DESC, c.id DESC
+                """,
+                (project_path, mode),
+            ).fetchall()
+        )
+
+    def set_current(self, conversation_id: int) -> None:
+        conv = self.get_conversation(conversation_id)
+        with self._lock, self._conn:
+            self._conn.execute(
+                "UPDATE conversations SET is_current = 0 WHERE project_path = ? AND mode = ?",
+                (conv["project_path"], conv["mode"]),
+            )
+            self._conn.execute(
+                "UPDATE conversations SET is_current = 1, updated_at = ? WHERE id = ?",
+                (_now(), conversation_id),
+            )
 
     def set_session(self, conversation_id: int, session_id: str) -> None:
         with self._lock, self._conn:

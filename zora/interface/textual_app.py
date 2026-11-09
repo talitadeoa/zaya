@@ -9,17 +9,18 @@ from typing import Any, Awaitable, Callable
 
 from rich import box
 from rich.markup import escape
-from rich.panel import Panel
 from rich.syntax import Syntax
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Vertical, VerticalScroll
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Header, Input, OptionList, Static
 
 from zora.audio.recorder import ContinuousListener
+from zora.controller.modes import PERSONAS, get_persona
 from zora.focus import moon_details, period_label, principal_phase_today
+from zora.interface.ascii_art import DIVINE_LINES, fit_braille
 
 ACCENT = "#D644FB"
 CYAN = "#79DCFD"
@@ -27,26 +28,113 @@ MINT = "#A8EFDB"
 LILAC = "#E6C3FD"
 MUTED = "grey62"
 
-_ASCII_ZORA = [
-    " ███████╗ ██████╗ ██████╗  █████╗ ",
-    " ╚══███╔╝██╔═══██╗██╔══██╗██╔══██╗",
-    "   ███╔╝ ██║   ██║██████╔╝███████║",
-    "  ███╔╝  ██║   ██║██╔══██╗██╔══██║",
-    " ███████╗╚██████╔╝██║  ██║██║  ██║",
-    " ╚══════╝ ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝",
+# Superfícies (fundos) com contraste sobre o fundo da tela (#0b0614).
+USER_BG = "#0d3b49"
+ZORA_BG = "#33174f"
+MINT_BG = "#0e3a31"
+INPUT_BG = "#1a1230"
+INPUT_BG_FOCUS = "#241a3d"
+
+# Durante o streaming renderizamos só a cauda para o custo por frame ficar
+# limitado (o card inteiro é montado uma vez no finish_stream).
+_STREAM_PREVIEW_CHARS = 4000
+
+_ASCII_FIGURE = """
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣷⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⡇⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣾⣿⣿⠀⠀⢸⣧⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣼⣿⣿⣿⣧⡀⢸⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠰⠶⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡶⠄⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠈⠙⢿⣿⣿⣿⡿⠋⣿⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⢿⣿⡿⠀⢰⣿⣿⣷⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⠇⠀⣾⣿⣿⣿⡆⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⠀⠈⣿⢀⣼⣿⣿⣿⣿⣿⣄⡀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⣸⣀⣠⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣤⡀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠠⣴⣶⣾⣿⣿⣿⣿⣗⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣶⣦⡤
+⠀⠀⠀⠀⠀⠀⠀⠈⠉⣿⡟⠿⣿⣿⣿⣿⣿⣿⣿⣯⣿⣿⡿⠟⠋⠉⠉⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⢰⣿⣧⠀⠀⠝⣿⣿⣿⣿⣿⣿⡟⠁⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⣼⣿⣿⡄⠀⠀⠘⣿⣿⣿⣿⡟⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⣠⣿⣿⣿⣧⠀⠀⠀⢹⣿⣿⡿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⢀⣠⣼⣿⣿⣿⣿⣿⣷⣤⡀⠘⣿⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠤⣶⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡧⠄⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠉⠙⠻⢿⣿⣿⣿⣿⣿⣿⠿⠛⠉⢹⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠈⢻⣿⣿⣿⡿⠃⠀⠀⠀⢸⡏⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⣿⠃⠀⠀⠀⠀⢸⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⢹⣿⣿⠀⠀⠀⠀⠀⠈⠃⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠘⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⠃⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠹⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+""".strip("\n").splitlines()
+
+_ASCII_NAMES = [
+    "██╗      █████╗ ██████╗  █████╗ ",
+    "██║     ██╔══██╗██╔══██╗██╔══██╗",
+    "██║     ███████║██████╔╝███████║",
+    "██║     ██╔══██║██╔══██╗██╔══██║",
+    "███████╗██║  ██║██║  ██║██║  ██║",
+    "╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝",
+    "",
+    "                    · e ·                    ",
+    "",
+    "████████╗ █████╗ ██╗     ██╗████████╗ █████╗ ",
+    "╚══██╔══╝██╔══██╗██║     ██║╚══██╔══╝██╔══██╗",
+    "   ██║   ███████║██║     ██║   ██║   ███████║",
+    "   ██║   ██╔══██║██║     ██║   ██║   ██╔══██║",
+    "   ██║   ██║  ██║███████╗██║   ██║   ██║  ██║",
+    "   ╚═╝   ╚═╝  ╚═╝╚══════╝╚═╝   ╚═╝   ╚═╝  ╚═╝",
 ]
-_ASCII_COLORS = [LILAC, LILAC, ACCENT, CYAN, MINT, MINT]
+
+
+def _mix_color(start: str, end: str, ratio: float) -> str:
+    a = tuple(int(start[i : i + 2], 16) for i in (1, 3, 5))
+    b = tuple(int(end[i : i + 2], 16) for i in (1, 3, 5))
+    rgb = tuple(round(a[i] + (b[i] - a[i]) * ratio) for i in range(3))
+    return "#{:02x}{:02x}{:02x}".format(*rgb)
+
+
+def _vgradient(count: int, stops: list[str]) -> list[str]:
+    """Gradiente vertical suave ao longo de ``count`` linhas."""
+    if count <= 0:
+        return []
+    if len(stops) == 1:
+        return [stops[0]] * count
+    colors: list[str] = []
+    for index in range(count):
+        pos = (index / (count - 1)) * (len(stops) - 1) if count > 1 else 0.0
+        low = min(int(pos), len(stops) - 2)
+        colors.append(_mix_color(stops[low], stops[low + 1], pos - low))
+    return colors
+
+
+def _welcome_art(max_cols: int = 78) -> list[tuple[str, str]]:
+    art: list[tuple[str, str]] = []
+    figure_colors = _vgradient(len(_ASCII_FIGURE), [LILAC, ACCENT, CYAN, MINT])
+    art.extend(zip(_ASCII_FIGURE, figure_colors, strict=False))
+    art.append(("", MUTED))
+    name_colors = _vgradient(len(_ASCII_NAMES), [LILAC, ACCENT, CYAN, MINT])
+    art.extend(zip(_ASCII_NAMES, name_colors, strict=False))
+    divine = fit_braille(DIVINE_LINES, max_cols=max_cols, max_rows=26)
+    if divine:
+        art.append(("", MUTED))
+        divine_colors = _vgradient(len(divine), [MINT, CYAN, LILAC, ACCENT])
+        art.extend(zip(divine, divine_colors, strict=False))
+    return art
+
 
 _SHORTCUTS = (
     "i digitar · t texto · m mudo · v voz · f falar · c contínua · "
-    "Esc interromper · F1 comandos · Ctrl+T tema · Ctrl+L limpar"
+    "Esc interromper · F1 comandos · F2 sessões · F3 modo · Ctrl+T tema · Ctrl+L limpar"
 )
 
 _HELP = (
     "Modo normal: i digitar · t texto · m mudo · v voz on/off · f falar · "
     "c escuta contínua · Esc interromper. No modo insert, Esc volta ao normal. "
-    "F1 paleta · Ctrl+T tema · Ctrl+L limpar. "
-    "Os demais comandos (agenda, tarefas, metas, finanças) continuam no terminal."
+    "F1 paleta · F2 sessões · F3 trocar modo · Ctrl+T tema · Ctrl+L limpar. "
+    "Cada modo tem o próprio histórico de sessões; /novo abre uma sessão nova. "
+    "/chines on|off mostra 中文 + pinyin de cada mensagem."
 )
 
 
@@ -95,6 +183,157 @@ class CommandPalette(ModalScreen[str | None]):
         self.dismiss(str(event.option.prompt))
 
 
+class ModePicker(ModalScreen[str | None]):
+    """Escolha de um dos modos (personas) da Zora."""
+
+    CSS = """
+    ModePicker {
+        align: center middle;
+        background: #000000cc;
+    }
+    #mode-box {
+        width: 76;
+        height: auto;
+        max-height: 24;
+        border: round #D644FB;
+        background: #140a24;
+        padding: 1 2;
+    }
+    #mode-title {
+        color: #D644FB;
+        text-style: bold;
+        margin-bottom: 1;
+    }
+    #mode-hint {
+        color: #8a8a99;
+        margin-top: 1;
+    }
+    #mode-list {
+        border: none;
+        background: #140a24;
+        padding: 0;
+    }
+    #mode-list > .option-list--option-highlighted {
+        background: #D644FB;
+        color: #0b0614;
+        text-style: bold;
+    }
+    """
+
+    BINDINGS = [Binding("escape", "cancel", "Voltar")]
+
+    def __init__(self, modes: list, current: str):
+        super().__init__()
+        self._modes = list(modes)
+        self._current = current
+        self._keys: list[str] = []
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="mode-box"):
+            yield Static("Escolha um modo", id="mode-title")
+            yield OptionList(id="mode-list")
+            yield Static("↑↓ escolher · Enter confirmar · Esc manter", id="mode-hint")
+
+    def on_mount(self) -> None:
+        options = self.query_one("#mode-list", OptionList)
+        options.clear_options()
+        self._keys.clear()
+        highlighted = 0
+        for index, persona in enumerate(self._modes):
+            self._keys.append(persona.key)
+            mark = "●" if persona.key == self._current else "○"
+            options.add_option(f"{mark} {persona.name}  —  {persona.summary}")
+            if persona.key == self._current:
+                highlighted = index
+        options.highlighted = highlighted
+        options.focus()
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        self.dismiss(self._keys[event.option_index])
+
+
+class SessionPicker(ModalScreen[object]):
+    """Lista as sessões (histórico) do modo ativo, como no OpenCode."""
+
+    CSS = """
+    SessionPicker {
+        align: center middle;
+        background: #000000cc;
+    }
+    #session-box {
+        width: 84;
+        height: auto;
+        max-height: 26;
+        border: round #79DCFD;
+        background: #0b1a22;
+        padding: 1 2;
+    }
+    #session-title {
+        color: #79DCFD;
+        text-style: bold;
+        margin-bottom: 1;
+    }
+    #session-hint {
+        color: #8a8a99;
+        margin-top: 1;
+    }
+    #session-list {
+        border: none;
+        background: #0b1a22;
+        padding: 0;
+    }
+    #session-list > .option-list--option-highlighted {
+        background: #79DCFD;
+        color: #041019;
+        text-style: bold;
+    }
+    """
+
+    BINDINGS = [Binding("escape", "cancel", "Voltar")]
+
+    def __init__(self, sessions: list[dict], mode_name: str):
+        super().__init__()
+        self._sessions = list(sessions)
+        self._mode_name = mode_name
+        self._targets: list[object] = []
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="session-box"):
+            yield Static(f"Sessões · {self._mode_name}", id="session-title")
+            yield OptionList(id="session-list")
+            yield Static("↑↓ escolher · Enter abrir · Esc voltar", id="session-hint")
+
+    def on_mount(self) -> None:
+        options = self.query_one("#session-list", OptionList)
+        options.clear_options()
+        self._targets.clear()
+        options.add_option("+ Nova sessão")
+        self._targets.append("new")
+        highlighted = 0
+        for session in self._sessions:
+            when = str(session.get("updated_at", ""))[:16].replace("T", " ")
+            mark = "●" if session.get("current") else "○"
+            label = (
+                f"{mark} {session.get('title', 'Sem título')}"
+                f"  ·  {session.get('turns', 0)} msg  ·  {when}"
+            )
+            options.add_option(label)
+            self._targets.append(int(session["id"]))
+            if session.get("current"):
+                highlighted = len(self._targets) - 1
+        options.highlighted = highlighted
+        options.focus()
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        self.dismiss(self._targets[event.option_index])
+
+
 class TextualSink:
     """Recebe tokens e eventos do orquestrador e atualiza a UI."""
 
@@ -102,17 +341,22 @@ class TextualSink:
         self.app = app
         self.buffer = ""
         self._last_update = 0.0
+        self._last_reasoning = 0.0
 
     def token(self, text: str) -> None:
         self.buffer += text
         now = time.monotonic()
-        if now - self._last_update >= 0.06:
+        if now - self._last_update >= 0.15:
             self._last_update = now
             self.app.update_stream(self.buffer)
 
     def reasoning(self, text: str) -> None:
         snippet = " ".join((text or "").split())[-90:]
-        if snippet:
+        if not snippet:
+            return
+        now = time.monotonic()
+        if now - self._last_reasoning >= 0.3:
+            self._last_reasoning = now
             self.app._set_status(f"◐ {snippet}")
 
     def tool(self, name: str, detail: str = "") -> None:
@@ -134,6 +378,8 @@ class ZoraTextualApp(App):
         Binding("c", "toggle_listen", "Contínua"),
         Binding("escape", "escape", "Voltar", priority=True),
         Binding("f1", "command_palette", "Comandos"),
+        Binding("f2", "sessions", "Sessões"),
+        Binding("f3", "modes", "Modo"),
         Binding("ctrl+t", "toggle_theme", "Tema"),
         Binding("ctrl+l", "clear_chat", "Limpar"),
     ]
@@ -144,7 +390,7 @@ class ZoraTextualApp(App):
         color: #e5e7eb;
     }
     #chat {
-        border: round #D644FB;
+        border: none;
         padding: 0 1;
         scrollbar-size-vertical: 1;
         scrollbar-size-horizontal: 0;
@@ -153,6 +399,12 @@ class ZoraTextualApp(App):
     }
     .card {
         margin-bottom: 1;
+    }
+    #modebar {
+        height: 1;
+        background: #140a24;
+        color: #e6c3fd;
+        padding: 0 1;
     }
     #status {
         height: 1;
@@ -165,10 +417,24 @@ class ZoraTextualApp(App):
         color: #e0f2fe;
         padding: 0 1;
     }
-    #input {
-        border: round #79DCFD;
+    #input-frame {
         height: 5;
         margin-bottom: 1;
+        background: #1a1230;
+    }
+    #input-rail {
+        width: 1;
+        height: 1fr;
+        background: #79DCFD;
+    }
+    #input {
+        border: none;
+        background: #1a1230;
+        color: #e5e7eb;
+        height: 1fr;
+    }
+    #input:focus {
+        background: #241a3d;
     }
     """
 
@@ -193,36 +459,218 @@ class ZoraTextualApp(App):
         self._status_base = ""
         self._dot_phase = 0
         self._stream_widget: Static | None = None
+        self._modebar: Static | None = None
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=False)
         yield Vertical(
+            Static("", id="modebar"),
             VerticalScroll(id="chat"),
             Static("", id="status"),
-            Input(id="input"),
+            Horizontal(
+                Static("", id="input-rail"),
+                Input(id="input"),
+                id="input-frame",
+            ),
         )
         yield Static(_SHORTCUTS, id="commandbar")
 
     async def on_mount(self) -> None:
         self.title = "Zora"
         self.sub_title = self._subtitle
+        self._modebar = self.query_one("#modebar", Static)
         await self._render_welcome()
         self._normal_mode()
+        self._update_modebar()
         self.set_interval(0.4, self._tick_status)
+        self.call_after_refresh(self._prompt_mode)
+
+    def _render_banner(self) -> None:
+        width = 78
+        try:
+            width = max(40, min(96, self.size.width - 6))
+        except Exception:
+            pass
+        art = _welcome_art(width)
+        banner = Text()
+        for index, (line, color) in enumerate(art):
+            style = f"bold {color}" if line.strip() else ""
+            banner.append(line, style=style)
+            if index < len(art) - 1:
+                banner.append("\n")
+        self._mount(banner)
+
+    async def _render_dashboard(self) -> None:
+        if self._voice is None:
+            return
+        try:
+            self._write_focus_panel()
+            self._write_goals_table()
+            await self._write_moon_note()
+        except Exception:
+            pass
 
     async def _render_welcome(self) -> None:
-        log = self._log()
-        for line, color in zip(_ASCII_ZORA, _ASCII_COLORS, strict=False):
-            self._mount(Text(line, style=f"bold {color}"))
+        self._render_banner()
         self._mount(Text("assistente pessoal · OpenCode · Second Brain", style=MUTED))
-        if self._voice is not None:
-            try:
-                self._write_focus_panel()
-                self._write_goals_table()
-                await self._write_moon_note()
-            except Exception:
-                pass
+        await self._render_dashboard()
+        self.call_after_refresh(self._scroll_top)
 
+    # ------------------------------------------------------ modos e sessoes
+    def _mode_list(self) -> list:
+        if self._voice is not None and hasattr(self._voice, "modes"):
+            return self._voice.modes()
+        return list(PERSONAS.values())
+
+    def _mode_key(self) -> str:
+        if self._voice is not None and hasattr(self._voice, "mode_key"):
+            return self._voice.mode_key
+        return "assistente"
+
+    def _mode_name(self) -> str:
+        if self._voice is not None and hasattr(self._voice, "mode_name"):
+            return self._voice.mode_name
+        persona = get_persona(self._mode_key())
+        return persona.name if persona else "Zora"
+
+    def _update_modebar(self) -> None:
+        if self._modebar is None:
+            return
+        name = self._mode_name()
+        session = ""
+        if self._voice is not None:
+            session = getattr(self._voice, "session_id", "") or ""
+        bar = Text()
+        bar.append("▌ ", style=f"bold {ACCENT}")
+        bar.append(name, style=f"bold {ACCENT}")
+        bar.append("  ·  ", style=MUTED)
+        if session:
+            bar.append(f"sessão {session[:14]}", style=CYAN)
+        else:
+            bar.append("sem sessão", style=MUTED)
+        bar.append("  ·  ", style=MUTED)
+        bar.append("F2 sessões · F3 modo", style=MUTED)
+        self._modebar.update(bar)
+        self.sub_title = f"{self._subtitle} · {name}" if self._subtitle else name
+
+    def _prompt_mode(self) -> None:
+        if self._voice is None:
+            return
+        self.push_screen(ModePicker(self._mode_list(), self._mode_key()), self._on_mode_chosen)
+
+    def _on_mode_chosen(self, key: str | None) -> None:
+        if not key:
+            self._update_modebar()
+            return
+        self.run_worker(self._apply_mode(key), exclusive=False)
+
+    async def _apply_mode(self, key: str) -> None:
+        if self._voice is None:
+            return
+        try:
+            await self._voice.select_mode(key)
+        except Exception as exc:
+            self._set_status(f"erro ao trocar modo: {exc}")
+            return
+        self._clear_messages()
+        await self._render_history()
+        self._update_modebar()
+
+    def _clear_messages(self) -> None:
+        """Remove só as mensagens, preservando banner e painéis do topo."""
+        self._stream_widget = None
+        try:
+            for widget in list(self._log().query(".msg")):
+                widget.remove()
+        except Exception:
+            self._log().remove_children()
+
+    async def _render_history(self) -> None:
+        if self._voice is None or not hasattr(self._voice, "history"):
+            return
+        turns = self._voice.history()
+        if not turns:
+            persona = get_persona(self._mode_key())
+            label = persona.name if persona else "novo modo"
+            self._mount(Text(f"{label} · sem mensagens ainda. Pode falar.", style=MUTED))
+            return
+        for role, text in turns[-60:]:
+            if role == "user":
+                self._write_user(text)
+            else:
+                self._write_zora(text)
+
+    def action_modes(self) -> None:
+        self._prompt_mode()
+
+    def action_sessions(self) -> None:
+        if self._voice is None or not hasattr(self._voice, "sessions"):
+            self._set_status("sessões indisponíveis")
+            return
+        self.push_screen(
+            SessionPicker(self._voice.sessions(), self._mode_name()),
+            self._on_session_chosen,
+        )
+
+    def _on_session_chosen(self, target: object) -> None:
+        if target is None:
+            return
+        if target == "new":
+            self.run_worker(self._new_session_ui(), exclusive=False)
+            return
+        self.run_worker(self._apply_session(int(target)), exclusive=False)
+
+    async def _new_session_ui(self) -> None:
+        if self._voice is None:
+            return
+        try:
+            await self._voice.new_session()
+        except Exception as exc:
+            self._set_status(f"erro ao criar sessão: {exc}")
+            return
+        self._clear_messages()
+        await self._render_history()
+        self._update_modebar()
+
+    async def _apply_session(self, conversation_id: int) -> None:
+        if self._voice is None:
+            return
+        try:
+            await self._voice.select_conversation(conversation_id)
+        except Exception as exc:
+            self._set_status(f"erro ao abrir sessão: {exc}")
+            return
+        self._clear_messages()
+        await self._render_history()
+        self._update_modebar()
+
+
+    def _card(self, label: Text | str, body, accent: str, background: str):
+        """Card com rail vertical sólido à esquerda.
+
+        Usa o fundo de uma célula de 1 coluna como "linha" contínua: diferente
+        dos caracteres de borda (│), o fundo pinta a célula inteira, então a
+        linha nunca aparece tracejada, seja qual for a fonte do terminal.
+        """
+        from rich.padding import Padding
+        from rich.table import Table
+
+        table = Table(
+            box=None,
+            show_header=False,
+            show_edge=False,
+            show_footer=False,
+            pad_edge=False,
+            padding=0,
+            expand=True,
+        )
+        table.add_column("rail", width=1, no_wrap=True, style=f"on {accent}")
+        table.add_column("card", ratio=1, style=f"on {background}")
+        title = label if isinstance(label, Text) else Text(label)
+        title.stylize(f"bold {accent}")
+        table.add_row(Text(" "), Padding(title, (0, 1, 0, 1)))
+        table.add_row(Text(" "), Padding(body, (0, 1, 0, 1)))
+        return table
 
     def _write_focus_panel(self) -> None:
         focus = self._voice.focus.current
@@ -238,16 +686,8 @@ class ZoraTextualApp(App):
             body.append(f"• {goal}\n")
         body.append(f"\n{focus.start} → {focus.end}", style=MUTED)
         self._mount(
-            Panel(
-                body,
-                title=Text(
-                    f" ✨ Foco {period_label(focus.period)} ",
-                    style=f"bold {CYAN} on #08222b",
-                ),
-                title_align="left",
-                border_style=CYAN,
-                style="on #08222b",
-                padding=(0, 1),
+            self._card(
+                f"✨ Foco {period_label(focus.period)}", body, CYAN, USER_BG
             )
         )
 
@@ -261,21 +701,13 @@ class ZoraTextualApp(App):
             box=box.SIMPLE_HEAD,
             border_style=ACCENT,
             header_style=f"bold {ACCENT}",
+            expand=True,
         )
         table.add_column("Meta", style="bold")
         table.add_column("Próximo passo", style=MUTED)
         for goal in goals:
             table.add_row(escape(goal.label), escape(goal.next_step or "—"))
-        self._mount(
-            Panel(
-                table,
-                title=Text(" 🎯 Metas ", style=f"bold {ACCENT} on #160a28"),
-                title_align="left",
-                border_style=ACCENT,
-                style="on #160a28",
-                padding=(0, 1),
-            )
-        )
+        self._mount(self._card("🎯 Metas", table, ACCENT, ZORA_BG))
 
     async def _write_moon_note(self) -> None:
         detail = moon_details()
@@ -299,16 +731,14 @@ class ZoraTextualApp(App):
             if manifestation:
                 line += f" — manifestações na Agenda: {manifestation}"
             body.append("\n" + line, style=MUTED)
-        self._mount(
-            Panel(
-                body,
-                title=Text(" 🌙 Lua ", style=f"bold {LILAC} on #0b2a24"),
-                title_align="left",
-                border_style=CYAN,
-                style="on #0b2a24",
-                padding=(0, 1),
-            )
-        )
+        self._mount(self._card("🌙 Lua", body, LILAC, MINT_BG))
+
+    async def _shutdown(self) -> None:
+        # O Textual limpa o contextvar ``active_app`` antes do shutdown final.
+        # Sem ele o logger interno cai no ``print`` e vaza mensagens de debug
+        # no terminal ao sair (ex.: "focus was removed" / "Unmount() >>> ...").
+        with self._context():
+            await super()._shutdown()
 
     async def on_unmount(self) -> None:
         self._stop_listening()
@@ -341,6 +771,18 @@ class ZoraTextualApp(App):
             return
         if text in {"/", "/ajuda", "/help"}:
             self._write_note(_HELP)
+            return
+        if text.startswith(("/chines", "/chinês", "/中文")):
+            self._toggle_chinese(text)
+            return
+        if text in {"/modo", "/modos", "/perfil", "/persona"}:
+            self._prompt_mode()
+            return
+        if text in {"/sessoes", "/sessões", "/sessao", "/sessão"}:
+            self.action_sessions()
+            return
+        if text in {"/novo", "/nova"}:
+            self.run_worker(self._new_session_ui(), exclusive=False)
             return
         self.run_worker(self.submit_text(text), exclusive=False)
 
@@ -449,6 +891,7 @@ class ZoraTextualApp(App):
         if self._voice is None:
             return
         self._voice.tts.stop()
+        self._voice.mark_session_dirty()
         try:
             await self._voice.client.abort(self._voice.session_id)
         except Exception:
@@ -570,9 +1013,13 @@ class ZoraTextualApp(App):
     def palette_labels(self) -> list[str]:
         return [
             "Ajuda",
+            "Trocar modo",
+            "Sessões",
+            "Nova sessão",
             "Alternar tema",
             "Limpar conversa",
             "Focar entrada",
+            "Chinês on/off",
             "Reiniciar Zora",
             "Sair",
         ]
@@ -585,12 +1032,20 @@ class ZoraTextualApp(App):
             return
         if label == "Ajuda":
             self._write_note(_HELP)
+        elif label == "Trocar modo":
+            self._prompt_mode()
+        elif label == "Sessões":
+            self.action_sessions()
+        elif label == "Nova sessão":
+            self.run_worker(self._new_session_ui(), exclusive=False)
         elif label == "Alternar tema":
             self.action_toggle_theme()
         elif label == "Limpar conversa":
             self.action_clear_chat()
         elif label == "Focar entrada":
             self.query_one("#input", Input).focus()
+        elif label == "Chinês on/off":
+            self._toggle_chinese("")
         elif label == "Reiniciar Zora":
             self.exit(42)
         elif label == "Sair":
@@ -600,8 +1055,7 @@ class ZoraTextualApp(App):
         self.theme = "textual-light" if "dark" in self.theme else "textual-dark"
 
     def action_clear_chat(self) -> None:
-        self._log().remove_children()
-        self._stream_widget = None
+        self._clear_messages()
 
     # ------------------------------------------------------------------ helpers
     def _scroll_chat(self) -> None:
@@ -610,17 +1064,27 @@ class ZoraTextualApp(App):
         except Exception:
             pass
 
-    def _mount(self, renderable) -> None:
-        self._log().mount(Static(renderable, classes="card"))
+    def _scroll_top(self) -> None:
+        try:
+            self._log().scroll_home(animate=False)
+        except Exception:
+            pass
+
+    def _mount(self, renderable, message: bool = False) -> None:
+        classes = "card msg" if message else "card"
+        self._log().mount(Static(renderable, classes=classes))
         self.call_after_refresh(self._scroll_chat)
 
     def update_stream(self, text: str) -> None:
         if self._stream_widget is None:
-            self._stream_widget = Static(classes="card")
+            self._stream_widget = Static(classes="card msg")
             self._log().mount(self._stream_widget)
-        body = Text("Zora: ", style=f"bold {ACCENT}")
-        body.append(text)
-        self._stream_widget.update(body)
+        preview = text
+        if len(preview) > _STREAM_PREVIEW_CHARS:
+            preview = "… " + preview[-_STREAM_PREVIEW_CHARS:]
+        self._stream_widget.update(
+            self._card("✦ Zora", Text(preview), ACCENT, ZORA_BG)
+        )
         self.call_after_refresh(self._scroll_chat)
 
     def finish_stream(self, answer: str) -> None:
@@ -629,60 +1093,59 @@ class ZoraTextualApp(App):
                 self._write_zora(answer)
             return
         self._stream_widget.update(
-            Panel(
-                Text(answer),
-                title=Text(" Zora: ", style=f"bold {ACCENT} on #160a28"),
-                title_align="left",
-                border_style=ACCENT,
-                style="on #160a28",
-                padding=(0, 1),
-            )
+            self._card("✦ Zora", Text(answer), ACCENT, ZORA_BG)
         )
         self._stream_widget = None
         self.call_after_refresh(self._scroll_chat)
+        if answer and self._voice is not None and self._voice.cfg.interface.chinese_echo:
+            self.run_worker(self._echo_zh(answer), exclusive=False)
 
     def write_diff(self, filename: str, patch: str) -> None:
         if not patch.strip():
             return
         self._mount(
-            Panel(
+            self._card(
+                f"diff · {filename}",
                 Syntax(patch, "diff", theme="monokai", word_wrap=True),
-                title=Text(
-                    f" diff · {filename} ", style=f"bold {MINT} on #0b2a24"
-                ),
-                title_align="left",
-                border_style=MINT,
-                style="on #0b2a24",
-                padding=(0, 1),
-            )
+                MINT,
+                MINT_BG,
+            ),
+            message=True,
         )
 
     def _log(self) -> VerticalScroll:
         return self.query_one("#chat", VerticalScroll)
 
     def _write_user(self, text: str) -> None:
-        self._mount(
-            Panel(
-                Text(text),
-                title=Text(" Talita: ", style=f"bold {CYAN} on #08222b"),
-                title_align="left",
-                border_style=CYAN,
-                style="on #08222b",
-                padding=(0, 1),
-            )
-        )
+        self._mount(self._card("❯ Talita", Text(text), CYAN, USER_BG), message=True)
+        if self._voice is not None and self._voice.cfg.interface.chinese_echo:
+            self.run_worker(self._echo_zh(text), exclusive=False)
 
     def _write_zora(self, text: str) -> None:
-        self._mount(
-            Panel(
-                Text(text),
-                title=Text(" Zora: ", style=f"bold {ACCENT} on #160a28"),
-                title_align="left",
-                border_style=ACCENT,
-                style="on #160a28",
-                padding=(0, 1),
-            )
-        )
+        self._mount(self._card("✦ Zora", Text(text), ACCENT, ZORA_BG), message=True)
+
+    async def _echo_zh(self, text: str) -> None:
+        if self._voice is None:
+            return
+        try:
+            translated = await self._voice.translate_zh(text)
+        except Exception:
+            return
+        if translated:
+            self._mount(Text(f"中文: {translated}", style=MUTED))
+
+    def _toggle_chinese(self, argument: str) -> None:
+        if self._voice is None:
+            self._set_status("chinês indisponível")
+            return
+        parts = argument.split(maxsplit=1)
+        current = self._voice.cfg.interface.chinese_echo
+        if len(parts) > 1 and parts[1].lower() in {"on", "off"}:
+            current = parts[1].lower() == "on"
+        else:
+            current = not current
+        self._voice.cfg.interface.chinese_echo = current
+        self._set_status("chinês ligado" if current else "chinês desativado")
 
     def _write_note(self, text: str) -> None:
         self._mount(Text(text, style=MUTED))

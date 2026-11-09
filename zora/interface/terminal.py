@@ -604,6 +604,7 @@ class TerminalUI:
             ("/foco [definir|limpar]", "define/limpa o foco do ciclo"),
             ("/contexto on|off", "liga/desliga contexto automático do Second Brain"),
             ("/rapido on|off", "modo rápido (sem contexto, respostas curtas)"),
+            ("/chines on|off", "mostra chinês + pinyin de cada mensagem"),
             ("/tarefas [sync|limpar]", "lista/sincroniza/limpa tarefas concluídas"),
             ("/voz on|off|edge|say|none", "controla a voz"),
             ("/preferencia <texto>", "aprende uma preferência (taste)"),

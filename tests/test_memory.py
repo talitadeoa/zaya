@@ -31,6 +31,44 @@ def test_conversations_and_turns(tmp_path):
         store.close()
 
 
+def test_conversations_per_mode(tmp_path):
+    store = MemoryStore(tmp_path / "zora.db")
+    try:
+        assistente = store.get_or_create_conversation("/proj", "assistente")
+        carreira = store.get_or_create_conversation("/proj", "carreira")
+        assert int(assistente["id"]) != int(carreira["id"])
+
+        assert (
+            int(store.get_or_create_conversation("/proj", "assistente")["id"])
+            == int(assistente["id"])
+        )
+        assert (
+            int(store.get_or_create_conversation("/proj", "carreira")["id"])
+            == int(carreira["id"])
+        )
+
+        nova = store.create_conversation("/proj", title="nova carreira", mode="carreira")
+        assert (
+            int(store.get_or_create_conversation("/proj", "assistente")["id"])
+            == int(assistente["id"])
+        )
+        assert (
+            int(store.get_or_create_conversation("/proj", "carreira")["id"])
+            == int(nova["id"])
+        )
+
+        ids = {int(row["id"]) for row in store.list_conversations("/proj", "carreira")}
+        assert ids == {int(carreira["id"]), int(nova["id"])}
+
+        store.set_current(int(carreira["id"]))
+        assert (
+            int(store.get_or_create_conversation("/proj", "carreira")["id"])
+            == int(carreira["id"])
+        )
+    finally:
+        store.close()
+
+
 def test_reminders(tmp_path):
     store = MemoryStore(tmp_path / "zora.db")
     try:

@@ -97,7 +97,7 @@ class SecondBrainConfig(BaseModel):
     auto_context: bool = True
     context_results: int = 3
     # Limite de caracteres por nota injetada no contexto.
-    context_chars: int = 900
+    context_chars: int = 600
     # Criar nota e aditivo: por padrao nao pergunta (mais rapido).
     confirm_create: bool = False
     # Editar/excluir sao destrutivos: por padrao continuam exigindo confirmacao.
@@ -130,6 +130,10 @@ class InterfaceConfig(BaseModel):
     ui: str = "textual"
     # Modo rápido: sem busca automática e respostas mais curtas.
     fast: bool = False
+    # Saudações/small talk respondem na hora, sem chamar o OpenCode.
+    fast_smalltalk: bool = True
+    # Eco em chinês (caracteres + pinyin) para cada mensagem.
+    chinese_echo: bool = False
     # Modo inicial: academica | carreira | assistente | conversa.
     default_mode: str = "assistente"
 
@@ -139,6 +143,8 @@ class ProactiveConfig(BaseModel):
 
     enabled: bool = True
     startup_greeting: bool = True
+    # Saudacao inicial instantanea (sem LLM). Ligue para personalizar via modelo.
+    greeting_via_llm: bool = False
     idle_checkin: bool = True
     idle_minutes: float = 45.0
     min_interval_minutes: float = 60.0
@@ -405,6 +411,7 @@ _BOOL_KEYS = {
     "ZORA_SB_REINDEX_ON_START": ("secondbrain", "reindex_on_start"),
     "ZORA_PROACTIVE_ENABLED": ("proactive", "enabled"),
     "ZORA_PROACTIVE_STARTUP_GREETING": ("proactive", "startup_greeting"),
+    "ZORA_PROACTIVE_GREETING_VIA_LLM": ("proactive", "greeting_via_llm"),
     "ZORA_PROACTIVE_IDLE_CHECKIN": ("proactive", "idle_checkin"),
     "ZORA_PROACTIVE_REMINDERS": ("proactive", "reminders"),
     "ZORA_UI_SHOW_REASONING": ("interface", "show_reasoning"),
@@ -412,6 +419,8 @@ _BOOL_KEYS = {
     "ZORA_UI_SHOW_METAS_ON_START": ("interface", "show_metas_on_start"),
     "ZORA_UI": ("interface", "ui"),
     "ZORA_FAST": ("interface", "fast"),
+    "ZORA_FAST_SMALLTALK": ("interface", "fast_smalltalk"),
+    "ZORA_CHINESE": ("interface", "chinese_echo"),
     "ZORA_WHATSAPP_ENABLED": ("whatsapp", "enabled"),
     "ZORA_TELEGRAM_ENABLED": ("telegram", "enabled"),
     "ZORA_TELEGRAM_VOICE_REPLIES": ("telegram", "voice_replies"),
@@ -496,10 +505,9 @@ auto_mute_seconds = 30          # silencio que desliga o microfone (0 = nunca)
 [secondbrain]
 path = "~/SecondBrain"
 context_results = 3
-context_chars = 900
+context_chars = 600
 index_db = ""
 auto_context = true
-context_results = 5
 confirm_create = false          # criar nota nao pergunta (aditivo)
 require_confirmation = true     # editar/excluir ainda pergunta
 reindex_on_start = false        # ligue para reindexar a cada inicio
@@ -517,6 +525,8 @@ show_diffs = true
 show_metas_on_start = true
 ui = "textual"             # textual (padrão) | terminal
 fast = false               # modo rápido: sem busca automática, respostas curtas
+fast_smalltalk = true      # saudações respondem na hora, sem chamar o modelo
+chinese_echo = false       # mostra chinês + pinyin de cada mensagem
 default_mode = "assistente"     # academica | carreira | assistente | conversa
 
 [whatsapp]
@@ -558,6 +568,7 @@ voice_replies = false
 [proactive]
 enabled = true
 startup_greeting = true
+greeting_via_llm = false   # true = saudação personalizada pelo modelo (mais lenta)
 idle_checkin = true
 idle_minutes = 45.0
 min_interval_minutes = 60.0
