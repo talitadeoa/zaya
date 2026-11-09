@@ -253,13 +253,13 @@ class Orchestrator(
             try:
                 await self._show_dashboard()
             except Exception as exc:  # pragma: no cover
-                self.logger.warning("painel de metas: %s", exc)
+                self.logger.warning("painel de metas: %s", exc, exc_info=True)
 
         if self.cfg.proactive.enabled and self.cfg.proactive.startup_greeting:
             try:
                 await self._startup_greeting()
             except Exception as exc:  # pragma: no cover
-                self.logger.warning("falha na saudação inicial: %s", exc)
+                self.logger.warning("falha na saudação inicial: %s", exc, exc_info=True)
 
         if self.cfg.proactive.enabled:
             self._proactive_task = asyncio.create_task(self._proactive_loop(greet=False))
@@ -267,7 +267,7 @@ class Orchestrator(
         try:
             await self._check_focus(datetime.now().astimezone())
         except Exception as exc:  # pragma: no cover
-            self.logger.warning("falha ao checar foco: %s", exc)
+            self.logger.warning("falha ao checar foco: %s", exc, exc_info=True)
 
         if not (self.cfg.audio.continuous and self._voice_available()):
             self.ui.hint(
@@ -304,7 +304,7 @@ class Orchestrator(
                     f"{stats['removed']} removida(s), {stats['total']} no total"
                 )
         except Exception as exc:  # pragma: no cover - depende do FS
-            self.logger.warning("falha ao indexar Second Brain: %s", exc)
+            self.logger.warning("falha ao indexar Second Brain: %s", exc, exc_info=True)
             self.ui.warning(f"não foi possível indexar o Second Brain: {exc}")
 
     async def _ensure_session(self) -> str:

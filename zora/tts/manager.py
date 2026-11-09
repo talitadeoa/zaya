@@ -154,5 +154,5 @@ class TTSManager:
             if backend:
                 try:
                     backend.stop()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    self.logger.debug("falha ao parar backend TTS: %s", exc)

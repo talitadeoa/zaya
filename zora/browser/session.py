@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 class BrowserError(RuntimeError):
@@ -103,13 +106,13 @@ class BrowserSession:
         if self._context is not None:
             try:
                 await self._context.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("falha ao fechar o contexto do navegador: %s", exc)
             self._context = None
         if self._pw is not None:
             try:
                 await self._pw.stop()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("falha ao encerrar o Playwright: %s", exc)
             self._pw = None
         self._page = None

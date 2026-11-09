@@ -113,7 +113,7 @@ class InitiativeMixin:
             except asyncio.CancelledError:
                 raise
             except Exception as exc:  # pragma: no cover
-                self.logger.warning("falha na rotina proativa: %s", exc)
+                self.logger.warning("falha na rotina proativa: %s", exc, exc_info=True)
 
     async def _check_agenda(self, now: datetime) -> None:
         cfg = self.cfg.agenda

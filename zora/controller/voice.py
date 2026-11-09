@@ -173,8 +173,8 @@ class VoiceMixin:
                 import termios
 
                 termios.tcsetattr(fd, termios.TCSADRAIN, saved)
-            except Exception:
-                pass
+            except Exception as exc:
+                self.logger.debug("falha ao restaurar o terminal: %s", exc)
             saved = None
             raw_active = False
 
@@ -284,8 +284,8 @@ class VoiceMixin:
             if readline is not None:
                 try:
                     readline.set_startup_hook()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    self.logger.debug("falha ao limpar o readline: %s", exc)
         return raw.strip()
 
     def _voice_available(self) -> bool:

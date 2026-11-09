@@ -6,7 +6,7 @@ import os
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import httpx
 
@@ -68,7 +68,7 @@ def _load_env_file(path: Path) -> dict[str, str]:
 def _today_local() -> str:
     try:
         return datetime.now(ZoneInfo("America/Sao_Paulo")).date().isoformat()
-    except Exception:
+    except (ZoneInfoNotFoundError, ValueError):
         return datetime.now().date().isoformat()
 
 

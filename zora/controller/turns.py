@@ -306,7 +306,7 @@ class TurnMixin:
             except asyncio.CancelledError:
                 return
             except Exception as exc:  # pragma: no cover
-                self.logger.warning("stream de eventos caiu: %s", exc)
+                self.logger.warning("stream de eventos caiu: %s", exc, exc_info=True)
 
         pump_task = asyncio.create_task(pump())
         user_message_id = "msg_z" + uuid.uuid4().hex[:24]

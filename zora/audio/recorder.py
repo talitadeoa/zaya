@@ -6,6 +6,7 @@ fica em memoria e e entregue ao STT local.
 
 from __future__ import annotations
 
+import logging
 import queue
 import threading
 import time
@@ -15,6 +16,8 @@ from collections.abc import Callable
 import numpy as np
 
 from zora.config import AudioConfig
+
+logger = logging.getLogger(__name__)
 
 
 class AudioError(RuntimeError):
@@ -338,8 +341,8 @@ class ContinuousListener:
             try:
                 self._stream.stop()
                 self._stream.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("falha ao fechar o stream de audio: %s", exc)
             self._stream = None
         if self._thread is not None and self._thread.is_alive():
             self._thread.join(timeout=1.0)

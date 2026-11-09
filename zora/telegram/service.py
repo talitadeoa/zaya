@@ -142,5 +142,5 @@ class TelegramService:
             return
         try:
             await self.client.send_message(text, chat_id=chat_id)
-        except Exception:
-            pass
+        except Exception as exc:
+            self.logger.debug("falha ao responder no Telegram: %s", exc)
