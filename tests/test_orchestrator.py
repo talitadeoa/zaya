@@ -7,8 +7,15 @@ from pathlib import Path
 import pytest
 
 import zora.controller.orchestrator as orchestrator_module
+from zora.controller.commands import CommandsMixin
+from zora.controller.contract import OrchestratorContract
 from zora.controller.goals import GoalTracker
+from zora.controller.initiative import InitiativeMixin
 from zora.controller.orchestrator import Orchestrator
+from zora.controller.registration import RegistrationMixin
+from zora.controller.speech import SpeechMixin
+from zora.controller.turns import TurnMixin
+from zora.controller.voice import VoiceMixin
 from zora.finance.watchlist import Watchlist
 from zora.memory.store import MemoryStore
 from zora.tasks.store import TaskStore
@@ -159,6 +166,20 @@ def orch(tmp_path, cfg, monkeypatch):
     instance.goals = GoalTracker(tmp_path / "goals.json")
     yield instance
     store.close()
+
+
+def test_mixins_share_the_explicit_contract():
+    mixins = (
+        SpeechMixin,
+        TurnMixin,
+        VoiceMixin,
+        CommandsMixin,
+        RegistrationMixin,
+        InitiativeMixin,
+    )
+    for mixin in mixins:
+        assert issubclass(mixin, OrchestratorContract)
+    assert issubclass(Orchestrator, OrchestratorContract)
 
 
 def test_state_is_initialized(orch):

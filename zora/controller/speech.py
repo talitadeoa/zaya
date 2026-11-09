@@ -8,6 +8,7 @@ import re
 import time
 from pathlib import Path
 
+from zora.controller.contract import OrchestratorContract
 from zora.interface.markdown_text import strip_markdown
 from zora.tts.base import TTSBackend
 from zora.tts.manager import clean_for_speech
@@ -16,7 +17,7 @@ from zora.tts.manager import clean_for_speech
 _SENTENCE_END = re.compile(r"[.!?\n](\s+|$)")
 
 
-class SpeechMixin:
+class SpeechMixin(OrchestratorContract):
     def _start_speech_streaming(self) -> bool:
         """Fala a resposta por frases conforme o texto faz streaming."""
         if not self.tts.enabled:

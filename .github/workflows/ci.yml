@@ -17,7 +17,7 @@ jobs:
         run: pip install "ruff>=0.15,<1" "mypy>=1.10,<3"
       - name: Lint
         run: ruff check zora tests
-      - name: Tipos (nucleo tipado)
+      - name: Tipos
         run: mypy
 
   test:

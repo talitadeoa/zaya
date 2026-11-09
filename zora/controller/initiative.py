@@ -10,12 +10,13 @@ import time
 from datetime import datetime
 
 from zora.agenda.client import AgendaError
+from zora.controller.contract import OrchestratorContract
 from zora.controller.proactive import ReminderSpec, greeting_for, in_quiet_hours
 from zora.focus import RITUALS, principal_phase_today
 from zora.opencode.events import assistant_text
 
 
-class InitiativeMixin:
+class InitiativeMixin(OrchestratorContract):
     async def _check_focus(self, now: datetime) -> None:
         if not self.cfg.focus.enabled:
             return

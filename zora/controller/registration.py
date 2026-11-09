@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import asyncio
 
+from zora.controller.contract import OrchestratorContract
 from zora.controller.intents import RegisterIntent
 from zora.secondbrain.notes import NoteConflict
 
 
-class RegistrationMixin:
+class RegistrationMixin(OrchestratorContract):
     def _preferences_block(self) -> str:
         path = self.brain.preferences_path
         try:

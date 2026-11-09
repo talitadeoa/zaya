@@ -9,6 +9,7 @@ import time
 import uuid
 from typing import Any
 
+from zora.controller.contract import OrchestratorContract
 from zora.controller.goals import goal_block
 from zora.controller.intents import (
     format_context,
@@ -51,7 +52,7 @@ TOOL_LABELS = {
 }
 
 
-class TurnMixin:
+class TurnMixin(OrchestratorContract):
     async def _dispatch_silent(self, text: str) -> str:
         quick = self._quick_reply(text)
         if quick is not None:

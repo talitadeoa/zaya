@@ -54,24 +54,7 @@ branch = true
 python_version = "3.12"
 ignore_missing_imports = true
 follow_imports = "silent"
-files = [
-  "zora/opencode/events.py",
-  "zora/opencode/models.py",
-  "zora/memory/store.py",
-  "zora/tasks/store.py",
-  "zora/finance/quotes.py",
-  "zora/finance/watchlist.py",
-  "zora/focus.py",
-  "zora/secondbrain/frontmatter.py",
-  "zora/secondbrain/notes.py",
-  "zora/spotify/intents.py",
-  "zora/agenda/client.py",
-  "zora/config.py",
-  "zora/whatsapp/webhook.py",
-  "zora/controller/smalltalk.py",
-  "zora/interface/textual_app.py",
-  "zora/audio/recorder.py",
-]
+files = ["zora"]
 
 [tool.ruff]
 line-length = 100

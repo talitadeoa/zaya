@@ -7,6 +7,7 @@ import re
 from datetime import datetime, timedelta
 
 from zora.agenda.client import AgendaError
+from zora.controller.contract import OrchestratorContract
 from zora.controller.modes import PERSONAS, get_persona
 from zora.controller.proactive import parse_reminder
 from zora.finance.quotes import FinanceError, fetch_quote, format_quote
@@ -21,7 +22,7 @@ def escape_user(text: str) -> str:
     return escape(str(text))
 
 
-class CommandsMixin:
+class CommandsMixin(OrchestratorContract):
     async def _handle_command(self, text: str) -> bool:
         command, _, argument = text.partition(" ")
         command = command.lower().strip()
@@ -256,7 +257,7 @@ class CommandsMixin:
         )
         rows: list[dict[str, str]] = []
         for item, result in zip(items, results, strict=False):
-            if isinstance(result, Exception):
+            if isinstance(result, BaseException):
                 rows.append(
                     {
                         "label": item.label,
@@ -314,15 +315,15 @@ class CommandsMixin:
             self.focus.clear()
             self.ui.success("foco limpo")
             return
-        focus = self.focus.current
-        if focus is None:
+        current = self.focus.current
+        if current is None:
             self.ui.info("nenhum foco definido; use /foco definir semanal <texto>")
         else:
             self.ui.info(
-                f"foco {period_label(focus.period)}: {focus.label} "
-                f"({focus.start} → {focus.end})"
+                f"foco {period_label(current.period)}: {current.label} "
+                f"({current.start} → {current.end})"
             )
-            for goal in focus.goals:
+            for goal in current.goals:
                 self.ui.info(f"  • {goal}")
         detail = moon_details()
         self.ui.info(
@@ -406,8 +407,8 @@ class CommandsMixin:
     async def _switch_mode(self, argument: str) -> None:
         if not argument:
             self.ui.info(f"modo atual: {self.persona.name} ({self.persona.key})")
-            for persona in PERSONAS.values():
-                self.ui.info(f"  {persona.key}: {persona.name} — {persona.summary}")
+            for item in PERSONAS.values():
+                self.ui.info(f"  {item.key}: {item.name} — {item.summary}")
             return
         persona = get_persona(argument)
         if persona is None:

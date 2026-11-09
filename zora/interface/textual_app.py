@@ -6,14 +6,14 @@ import asyncio
 import time
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
-from typing import Any, ClassVar
+from typing import Any, ClassVar, cast
 
 from rich import box
 from rich.markup import escape
 from rich.syntax import Syntax
 from rich.text import Text
 from textual.app import App, ComposeResult
-from textual.binding import Binding
+from textual.binding import Binding, BindingType
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Header, Input, OptionList, Static
@@ -173,7 +173,7 @@ class CommandPalette(ModalScreen[str | None]):
         options = self.query_one("#palette-list", OptionList)
         options.clear_options()
         needle = query.lower().strip()
-        for label in self.app.palette_labels():
+        for label in cast("ZoraTextualApp", self.app).palette_labels():
             if needle in label.lower():
                 options.add_option(label)
 
@@ -221,7 +221,7 @@ class ModePicker(ModalScreen[str | None]):
     }
     """
 
-    BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "cancel", "Voltar")]
+    BINDINGS: ClassVar[list[BindingType]] = [Binding("escape", "cancel", "Voltar")]
 
     def __init__(self, modes: list, current: str):
         super().__init__()
@@ -293,7 +293,7 @@ class SessionPicker(ModalScreen[object]):
     }
     """
 
-    BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "cancel", "Voltar")]
+    BINDINGS: ClassVar[list[BindingType]] = [Binding("escape", "cancel", "Voltar")]
 
     def __init__(self, sessions: list[dict], mode_name: str):
         super().__init__()
@@ -369,7 +369,7 @@ class TextualSink:
 
 
 class ZoraTextualApp(App):
-    BINDINGS: ClassVar[list[Binding]] = [
+    BINDINGS: ClassVar[list[BindingType]] = [
         Binding("i", "insert", "Digitar"),
         Binding("enter", "insert", "Digitar"),
         Binding("t", "text_mode", "Texto"),
@@ -581,10 +581,10 @@ class ZoraTextualApp(App):
         """Remove só as mensagens, preservando banner e painéis do topo."""
         self._stream_widget = None
         try:
-            for widget in list(self._log().query(".msg")):
+            for widget in list(self._chat().query(".msg")):
                 widget.remove()
         except Exception:
-            self._log().remove_children()
+            self._chat().remove_children()
 
     async def _render_history(self) -> None:
         if self._voice is None or not hasattr(self._voice, "history"):
@@ -1072,25 +1072,25 @@ class ZoraTextualApp(App):
     # ------------------------------------------------------------------ helpers
     def _scroll_chat(self) -> None:
         try:
-            self._log().scroll_end(animate=False)
+            self._chat().scroll_end(animate=False)
         except Exception:
             pass
 
     def _scroll_top(self) -> None:
         try:
-            self._log().scroll_home(animate=False)
+            self._chat().scroll_home(animate=False)
         except Exception:
             pass
 
     def _mount(self, renderable, message: bool = False) -> None:
         classes = "card msg" if message else "card"
-        self._log().mount(Static(renderable, classes=classes))
+        self._chat().mount(Static(renderable, classes=classes))
         self.call_after_refresh(self._scroll_chat)
 
     def update_stream(self, text: str) -> None:
         if self._stream_widget is None:
             self._stream_widget = Static(classes="card msg")
-            self._log().mount(self._stream_widget)
+            self._chat().mount(self._stream_widget)
         preview = text
         if len(preview) > _STREAM_PREVIEW_CHARS:
             preview = "… " + preview[-_STREAM_PREVIEW_CHARS:]
@@ -1125,7 +1125,7 @@ class ZoraTextualApp(App):
             message=True,
         )
 
-    def _log(self) -> VerticalScroll:
+    def _chat(self) -> VerticalScroll:
         return self.query_one("#chat", VerticalScroll)
 
     def _write_user(self, text: str) -> None:

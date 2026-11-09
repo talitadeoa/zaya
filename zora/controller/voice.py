@@ -13,11 +13,12 @@ import time
 from datetime import datetime
 
 from zora.audio.recorder import AudioError, ContinuousListener, Recorder
+from zora.controller.contract import OrchestratorContract
 from zora.controller.proactive import classify_voice_control
 from zora.stt.faster_whisper import STTError
 
 
-class VoiceMixin:
+class VoiceMixin(OrchestratorContract):
     async def _continuous_loop(self) -> bool:
         """Escuta continua real: microfone aberto + segmentacao por VAD/Enter."""
         listener = ContinuousListener(self.cfg.audio)
