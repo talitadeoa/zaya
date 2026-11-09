@@ -312,11 +312,21 @@ class ZoraTextualApp(App):
 
     async def on_unmount(self) -> None:
         self._stop_listening()
+        try:
+            self.workers.cancel_all()
+            await asyncio.sleep(0)
+        except Exception:
+            pass
         if self._cleanup is not None:
             try:
                 await self._cleanup()
             except Exception:
                 pass
+
+    def on_key(self, event) -> None:
+        if not self._insert_mode and event.character == "/":
+            event.stop()
+            self.action_slash()
 
     async def on_input_submitted(self, event: Input.Submitted) -> None:
         text = event.value.strip()
@@ -524,6 +534,15 @@ class ZoraTextualApp(App):
         except Exception:
             pass
         self._set_status("")
+
+    def action_slash(self) -> None:
+        self.action_insert()
+        field = self.query_one("#input", Input)
+        field.value = "/"
+        try:
+            field.cursor_position = len(field.value)
+        except Exception:
+            pass
 
     def action_insert(self) -> None:
         self._insert_mode = True
