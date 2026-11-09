@@ -351,85 +351,91 @@ def _load_dotenv(path: Path, env: dict[str, str]) -> None:
 
 
 _ENV_MAP: dict[str, tuple[str, str]] = {
+    "ZORA_AGENDA_ENABLED": ("agenda", "enabled"),
+    "ZORA_AGENDA_ENV_FILE": ("agenda", "env_file"),
+    "ZORA_AGENDA_MAX_ITEMS": ("agenda", "max_items"),
+    "ZORA_AGENDA_NOTIFY_PENDING": ("agenda", "notify_pending"),
+    "ZORA_AGENDA_POLL_MINUTES": ("agenda", "poll_minutes"),
+    "ZORA_AGENDA_TASKS_POLL_SECONDS": ("agenda", "tasks_poll_seconds"),
+    "ZORA_AUDIO_AUTO_MUTE_SECONDS": ("audio", "auto_mute_seconds"),
+    "ZORA_AUDIO_CONTINUOUS": ("audio", "continuous"),
+    "ZORA_AUDIO_INPUT_DEVICE": ("audio", "input_device"),
+    "ZORA_AUDIO_MAX_SECONDS": ("audio", "max_seconds"),
+    "ZORA_AUDIO_SILENCE_MS": ("audio", "silence_ms"),
+    "ZORA_BROWSER_ENABLED": ("browser", "enabled"),
+    "ZORA_BROWSER_HEADLESS": ("browser", "headless"),
+    "ZORA_BROWSER_PROFILE_DIR": ("browser", "profile_dir"),
+    "ZORA_BROWSER_TIMEOUT_MS": ("browser", "timeout_ms"),
+    "ZORA_FOCUS_ENABLED": ("focus", "enabled"),
+    "ZORA_FOCUS_PATH": ("focus", "path"),
+    "ZORA_FOCUS_PROMPT_ON_MOON": ("focus", "prompt_on_moon"),
+    "ZORA_CHINESE": ("interface", "chinese_echo"),
+    "ZORA_FAST": ("interface", "fast"),
+    "ZORA_FAST_SMALLTALK": ("interface", "fast_smalltalk"),
+    "ZORA_UI_SHOW_DIFFS": ("interface", "show_diffs"),
+    "ZORA_UI_SHOW_METAS_ON_START": ("interface", "show_metas_on_start"),
+    "ZORA_UI_SHOW_REASONING": ("interface", "show_reasoning"),
+    "ZORA_UI": ("interface", "ui"),
+    "ZORA_OPENCODE_AGENT": ("opencode", "agent"),
+    "ZORA_OPENCODE_AUTO_APPROVE": ("opencode", "auto_approve"),
+    "ZORA_OPENCODE_AUTO_START": ("opencode", "auto_start"),
     "ZORA_OPENCODE_BASE_URL": ("opencode", "base_url"),
     "ZORA_OPENCODE_DIRECTORY": ("opencode", "directory"),
     "ZORA_OPENCODE_MODEL": ("opencode", "model"),
-    "ZORA_OPENCODE_AGENT": ("opencode", "agent"),
     "ZORA_OPENCODE_PASSWORD": ("opencode", "server_password"),
-    "ZORA_STT_MODEL": ("stt", "model"),
-    "ZORA_STT_LANGUAGE": ("stt", "language"),
-    "ZORA_STT_PARTIAL_INTERVAL_SECONDS": ("stt", "partial_interval_seconds"),
-    "ZORA_STT_PARTIAL_WINDOW_SECONDS": ("stt", "partial_window_seconds"),
-    "ZORA_TTS_PROVIDER": ("tts", "provider"),
-    "ZORA_TTS_VOICE": ("tts", "edge_voice"),
-    "ZORA_TTS_SENTENCE_PAUSE_MS": ("tts", "sentence_pause_ms"),
-    "ZORA_AUDIO_INPUT_DEVICE": ("audio", "input_device"),
-    "ZORA_AUDIO_SILENCE_MS": ("audio", "silence_ms"),
-    "ZORA_AUDIO_MAX_SECONDS": ("audio", "max_seconds"),
-    "ZORA_AUDIO_AUTO_MUTE_SECONDS": ("audio", "auto_mute_seconds"),
-    "ZORA_SECOND_BRAIN_PATH": ("secondbrain", "path"),
-    "ZORA_SECOND_BRAIN_INDEX": ("secondbrain", "index_db"),
-    "ZORA_SB_CONTEXT_RESULTS": ("secondbrain", "context_results"),
-    "ZORA_SB_CONTEXT_CHARS": ("secondbrain", "context_chars"),
-    "ZORA_SB_PREFERENCES_FILE": ("secondbrain", "preferences_file"),
-    "ZORA_PROACTIVE_IDLE_MINUTES": ("proactive", "idle_minutes"),
-    "ZORA_PROACTIVE_MIN_INTERVAL_MINUTES": ("proactive", "min_interval_minutes"),
-    "ZORA_PROACTIVE_DAILY_MAX": ("proactive", "daily_max"),
-    "ZORA_PROACTIVE_QUIET_HOURS": ("proactive", "quiet_hours"),
     "ZORA_PROACTIVE_CHECK_INTERVAL_SECONDS": ("proactive", "check_interval_seconds"),
-    "ZORA_WHATSAPP_PHONE_NUMBER_ID": ("whatsapp", "phone_number_id"),
-    "ZORA_WHATSAPP_ACCESS_TOKEN": ("whatsapp", "access_token"),
-    "ZORA_WHATSAPP_VERIFY_TOKEN": ("whatsapp", "verify_token"),
-    "ZORA_WHATSAPP_RECIPIENT": ("whatsapp", "recipient"),
-    "ZORA_WHATSAPP_API_VERSION": ("whatsapp", "api_version"),
-    "ZORA_WHATSAPP_WEBHOOK_HOST": ("whatsapp", "webhook_host"),
-    "ZORA_WHATSAPP_WEBHOOK_PORT": ("whatsapp", "webhook_port"),
-    "ZORA_TELEGRAM_BOT_TOKEN": ("telegram", "bot_token"),
-    "ZORA_TELEGRAM_ALLOWED_CHAT_ID": ("telegram", "allowed_chat_id"),
-    "ZORA_TELEGRAM_API_BASE_URL": ("telegram", "api_base_url"),
-    "ZORA_TELEGRAM_POLL_TIMEOUT": ("telegram", "poll_timeout"),
-    "ZORA_AGENDA_ENV_FILE": ("agenda", "env_file"),
-    "ZORA_AGENDA_POLL_MINUTES": ("agenda", "poll_minutes"),
-    "ZORA_AGENDA_MAX_ITEMS": ("agenda", "max_items"),
-    "ZORA_AGENDA_TASKS_POLL_SECONDS": ("agenda", "tasks_poll_seconds"),
-    "ZORA_AGENDA_NOTIFY_PENDING": ("agenda", "notify_pending"),
-    "ZORA_FOCUS_PATH": ("focus", "path"),
-    "ZORA_BROWSER_PROFILE_DIR": ("browser", "profile_dir"),
-    "ZORA_BROWSER_TIMEOUT_MS": ("browser", "timeout_ms"),
-}
-
-_BOOL_KEYS = {
-    "ZORA_OPENCODE_AUTO_START": ("opencode", "auto_start"),
-    "ZORA_OPENCODE_AUTO_APPROVE": ("opencode", "auto_approve"),
-    "ZORA_TTS_ENABLED": ("tts", "enabled"),
-    "ZORA_STT_CONFIRM_TRANSCRIPT": ("stt", "confirm_transcript"),
-    "ZORA_STT_PARTIAL_TRANSCRIPTION": ("stt", "partial_transcription"),
-    "ZORA_AUDIO_CONTINUOUS": ("audio", "continuous"),
-    "ZORA_SB_AUTO_CONTEXT": ("secondbrain", "auto_context"),
-    "ZORA_SB_CONFIRM_CREATE": ("secondbrain", "confirm_create"),
-    "ZORA_SB_REQUIRE_CONFIRMATION": ("secondbrain", "require_confirmation"),
-    "ZORA_SB_REINDEX_ON_START": ("secondbrain", "reindex_on_start"),
+    "ZORA_PROACTIVE_DAILY_MAX": ("proactive", "daily_max"),
     "ZORA_PROACTIVE_ENABLED": ("proactive", "enabled"),
-    "ZORA_PROACTIVE_STARTUP_GREETING": ("proactive", "startup_greeting"),
     "ZORA_PROACTIVE_GREETING_VIA_LLM": ("proactive", "greeting_via_llm"),
     "ZORA_PROACTIVE_IDLE_CHECKIN": ("proactive", "idle_checkin"),
+    "ZORA_PROACTIVE_IDLE_MINUTES": ("proactive", "idle_minutes"),
+    "ZORA_PROACTIVE_MIN_INTERVAL_MINUTES": ("proactive", "min_interval_minutes"),
+    "ZORA_PROACTIVE_QUIET_HOURS": ("proactive", "quiet_hours"),
     "ZORA_PROACTIVE_REMINDERS": ("proactive", "reminders"),
-    "ZORA_UI_SHOW_REASONING": ("interface", "show_reasoning"),
-    "ZORA_UI_SHOW_DIFFS": ("interface", "show_diffs"),
-    "ZORA_UI_SHOW_METAS_ON_START": ("interface", "show_metas_on_start"),
-    "ZORA_UI": ("interface", "ui"),
-    "ZORA_FAST": ("interface", "fast"),
-    "ZORA_FAST_SMALLTALK": ("interface", "fast_smalltalk"),
-    "ZORA_CHINESE": ("interface", "chinese_echo"),
-    "ZORA_WHATSAPP_ENABLED": ("whatsapp", "enabled"),
+    "ZORA_PROACTIVE_STARTUP_GREETING": ("proactive", "startup_greeting"),
+    "ZORA_SB_AUTO_CONTEXT": ("secondbrain", "auto_context"),
+    "ZORA_SB_CONFIRM_CREATE": ("secondbrain", "confirm_create"),
+    "ZORA_SB_CONTEXT_CHARS": ("secondbrain", "context_chars"),
+    "ZORA_SB_CONTEXT_RESULTS": ("secondbrain", "context_results"),
+    "ZORA_SECOND_BRAIN_INDEX": ("secondbrain", "index_db"),
+    "ZORA_SECOND_BRAIN_PATH": ("secondbrain", "path"),
+    "ZORA_SB_PREFERENCES_FILE": ("secondbrain", "preferences_file"),
+    "ZORA_SB_REINDEX_ON_START": ("secondbrain", "reindex_on_start"),
+    "ZORA_SB_REQUIRE_CONFIRMATION": ("secondbrain", "require_confirmation"),
+    "ZORA_STT_CONFIRM_TRANSCRIPT": ("stt", "confirm_transcript"),
+    "ZORA_STT_LANGUAGE": ("stt", "language"),
+    "ZORA_STT_MODEL": ("stt", "model"),
+    "ZORA_STT_PARTIAL_INTERVAL_SECONDS": ("stt", "partial_interval_seconds"),
+    "ZORA_STT_PARTIAL_TRANSCRIPTION": ("stt", "partial_transcription"),
+    "ZORA_STT_PARTIAL_WINDOW_SECONDS": ("stt", "partial_window_seconds"),
+    "ZORA_TELEGRAM_ALLOWED_CHAT_ID": ("telegram", "allowed_chat_id"),
+    "ZORA_TELEGRAM_API_BASE_URL": ("telegram", "api_base_url"),
+    "ZORA_TELEGRAM_BOT_TOKEN": ("telegram", "bot_token"),
     "ZORA_TELEGRAM_ENABLED": ("telegram", "enabled"),
+    "ZORA_TELEGRAM_POLL_TIMEOUT": ("telegram", "poll_timeout"),
     "ZORA_TELEGRAM_VOICE_REPLIES": ("telegram", "voice_replies"),
-    "ZORA_AGENDA_ENABLED": ("agenda", "enabled"),
-    "ZORA_BROWSER_ENABLED": ("browser", "enabled"),
-    "ZORA_BROWSER_HEADLESS": ("browser", "headless"),
-    "ZORA_FOCUS_ENABLED": ("focus", "enabled"),
-    "ZORA_FOCUS_PROMPT_ON_MOON": ("focus", "prompt_on_moon"),
+    "ZORA_TTS_VOICE": ("tts", "edge_voice"),
+    "ZORA_TTS_ENABLED": ("tts", "enabled"),
+    "ZORA_TTS_PROVIDER": ("tts", "provider"),
+    "ZORA_TTS_SENTENCE_PAUSE_MS": ("tts", "sentence_pause_ms"),
+    "ZORA_WHATSAPP_ACCESS_TOKEN": ("whatsapp", "access_token"),
+    "ZORA_WHATSAPP_API_VERSION": ("whatsapp", "api_version"),
+    "ZORA_WHATSAPP_ENABLED": ("whatsapp", "enabled"),
+    "ZORA_WHATSAPP_PHONE_NUMBER_ID": ("whatsapp", "phone_number_id"),
+    "ZORA_WHATSAPP_RECIPIENT": ("whatsapp", "recipient"),
+    "ZORA_WHATSAPP_VERIFY_TOKEN": ("whatsapp", "verify_token"),
+    "ZORA_WHATSAPP_WEBHOOK_HOST": ("whatsapp", "webhook_host"),
+    "ZORA_WHATSAPP_WEBHOOK_PORT": ("whatsapp", "webhook_port"),
 }
+
+
+def _field_is_bool(section: str, field: str) -> bool:
+    """True se o campo do modelo e booleano (parse dedicado de env)."""
+    section_field = Config.model_fields.get(section)
+    if section_field is None:
+        return False
+    field_info = getattr(section_field.annotation, "model_fields", {}).get(field)
+    return field_info is not None and field_info.annotation is bool
 
 
 def _parse_bool(value: str) -> bool:
@@ -441,13 +447,10 @@ def _apply_env(raw: dict[str, Any], env: dict[str, str]) -> None:
         value = env.get(key)
         if value is None or value == "":
             continue
-        raw.setdefault(section, {})[field] = value
-
-    for key, (section, field) in _BOOL_KEYS.items():
-        value = env.get(key)
-        if value is None or value == "":
-            continue
-        raw.setdefault(section, {})[field] = _parse_bool(value)
+        if _field_is_bool(section, field):
+            raw.setdefault(section, {})[field] = _parse_bool(value)
+        else:
+            raw.setdefault(section, {})[field] = value
 
     if env.get("ZORA_DATA_DIR"):
         raw["data_dir"] = env["ZORA_DATA_DIR"]

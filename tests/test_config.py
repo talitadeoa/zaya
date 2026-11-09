@@ -56,6 +56,21 @@ provider = "say"
     assert cfg.public_dict()["opencode"]["server_password"] == "***"
 
 
+def test_env_types_are_inferred_from_model(isolated_env):
+    env = {
+        "ZORA_UI": "terminal",  # string, antes era tratado como bool
+        "ZORA_AUDIO_SILENCE_MS": "1500",
+        "ZORA_SB_AUTO_CONTEXT": "yes",
+        "ZORA_FAST": "off",
+        "ZORA_DATA_DIR": str(isolated_env / "data"),
+    }
+    cfg = Config.load(config_path=isolated_env / "missing.toml", env=env)
+    assert cfg.interface.ui == "terminal"
+    assert cfg.audio.silence_ms == 1500
+    assert cfg.secondbrain.auto_context is True
+    assert cfg.interface.fast is False
+
+
 def test_write_default_config(tmp_path):
     target = tmp_path / "cfg" / "config.toml"
     written = write_default_config(target)
