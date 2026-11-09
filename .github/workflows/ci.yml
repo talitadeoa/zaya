@@ -19,12 +19,12 @@ jobs:
         run: ruff check zora tests
 
   test:
-    runs-on: macos-14
+    # Audio (sounddevice/PortAudio) e STT sao importados de forma tardia;
+    # a suite nao toca o hardware, entao roda em Linux.
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
-      - name: Instalar PortAudio
-        run: brew install portaudio
       - name: Criar ambiente e instalar dependencias
         run: |
           uv venv --python 3.12
