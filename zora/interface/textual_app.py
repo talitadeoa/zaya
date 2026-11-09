@@ -7,7 +7,6 @@ import time
 from datetime import datetime, timedelta
 from typing import Any, Awaitable, Callable
 
-from rich import box
 from rich.markup import escape
 from rich.panel import Panel
 from rich.syntax import Syntax
@@ -240,7 +239,6 @@ class ZoraTextualApp(App):
         self._mount(
             Panel(
                 body,
-                box=box.HEAVY,
                 title=Text(
                     f" ✨ Foco {period_label(focus.period)} ",
                     style=f"bold {CYAN} on #08222b",
@@ -269,7 +267,6 @@ class ZoraTextualApp(App):
         self._mount(
             Panel(
                 table,
-                box=box.HEAVY,
                 title=Text(" 🎯 Metas ", style=f"bold {ACCENT} on #160a28"),
                 title_align="left",
                 border_style=ACCENT,
@@ -303,7 +300,6 @@ class ZoraTextualApp(App):
         self._mount(
             Panel(
                 body,
-                box=box.HEAVY,
                 title=Text(" 🌙 Lua ", style=f"bold {LILAC} on #0b2a24"),
                 title_align="left",
                 border_style=CYAN,
@@ -614,7 +610,6 @@ class ZoraTextualApp(App):
         self._stream_widget.update(
             Panel(
                 Text(answer),
-                box=box.HEAVY,
                 title=Text(" Zora: ", style=f"bold {ACCENT} on #160a28"),
                 title_align="left",
                 border_style=ACCENT,
@@ -631,7 +626,6 @@ class ZoraTextualApp(App):
         self._mount(
             Panel(
                 Syntax(patch, "diff", theme="monokai", word_wrap=True),
-                box=box.HEAVY,
                 title=Text(
                     f" diff · {filename} ", style=f"bold {MINT} on #0b2a24"
                 ),
@@ -649,7 +643,6 @@ class ZoraTextualApp(App):
         self._mount(
             Panel(
                 Text(text),
-                box=box.HEAVY,
                 title=Text(" Talita: ", style=f"bold {CYAN} on #08222b"),
                 title_align="left",
                 border_style=CYAN,
@@ -662,7 +655,6 @@ class ZoraTextualApp(App):
         self._mount(
             Panel(
                 Text(text),
-                box=box.HEAVY,
                 title=Text(" Zora: ", style=f"bold {ACCENT} on #160a28"),
                 title_align="left",
                 border_style=ACCENT,
