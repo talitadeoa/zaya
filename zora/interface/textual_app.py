@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-import time
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
-from typing import Any, ClassVar, cast
+from typing import Any, ClassVar
 
 from rich import box
 from rich.markup import escape
@@ -15,357 +14,28 @@ from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.binding import Binding, BindingType
 from textual.containers import Horizontal, Vertical, VerticalScroll
-from textual.screen import ModalScreen
-from textual.widgets import Header, Input, OptionList, Static
+from textual.widgets import Header, Input, Static
 
 from zora.audio.recorder import ContinuousListener
 from zora.controller.modes import PERSONAS, get_persona
 from zora.focus import moon_details, period_label, principal_phase_today
-from zora.interface.ascii_art import DIVINE_LINES, fit_braille
-
-ACCENT = "#D644FB"
-CYAN = "#79DCFD"
-MINT = "#A8EFDB"
-LILAC = "#E6C3FD"
-MUTED = "grey62"
-
-# Superfícies (fundos) com contraste sobre o fundo da tela (#0b0614).
-USER_BG = "#0d3b49"
-ZORA_BG = "#33174f"
-MINT_BG = "#0e3a31"
-INPUT_BG = "#1a1230"
-INPUT_BG_FOCUS = "#241a3d"
-
-# Durante o streaming renderizamos só a cauda para o custo por frame ficar
-# limitado (o card inteiro é montado uma vez no finish_stream).
-_STREAM_PREVIEW_CHARS = 4000
-
-_ASCII_FIGURE = """
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣷⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⡇⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣾⣿⣿⠀⠀⢸⣧⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣼⣿⣿⣿⣧⡀⢸⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠰⠶⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡶⠄⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠈⠙⢿⣿⣿⣿⡿⠋⣿⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⢿⣿⡿⠀⢰⣿⣿⣷⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⠇⠀⣾⣿⣿⣿⡆⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⠀⠈⣿⢀⣼⣿⣿⣿⣿⣿⣄⡀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⣸⣀⣠⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣤⡀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠠⣴⣶⣾⣿⣿⣿⣿⣗⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣶⣦⡤
-⠀⠀⠀⠀⠀⠀⠀⠈⠉⣿⡟⠿⣿⣿⣿⣿⣿⣿⣿⣯⣿⣿⡿⠟⠋⠉⠉⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⢰⣿⣧⠀⠀⠝⣿⣿⣿⣿⣿⣿⡟⠁⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⣼⣿⣿⡄⠀⠀⠘⣿⣿⣿⣿⡟⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⣠⣿⣿⣿⣧⠀⠀⠀⢹⣿⣿⡿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⢀⣠⣼⣿⣿⣿⣿⣿⣷⣤⡀⠘⣿⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠤⣶⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡧⠄⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠉⠙⠻⢿⣿⣿⣿⣿⣿⣿⠿⠛⠉⢹⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠈⢻⣿⣿⣿⡿⠃⠀⠀⠀⢸⡏⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⣿⠃⠀⠀⠀⠀⢸⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⢹⣿⣿⠀⠀⠀⠀⠀⠈⠃⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠘⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⠃⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀⠀⠀⠀⠹⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
-""".strip("\n").splitlines()
-
-_ASCII_NAMES = [
-    "██╗      █████╗ ██████╗  █████╗ ",
-    "██║     ██╔══██╗██╔══██╗██╔══██╗",
-    "██║     ███████║██████╔╝███████║",
-    "██║     ██╔══██║██╔══██╗██╔══██║",
-    "███████╗██║  ██║██║  ██║██║  ██║",
-    "╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝",
-    "",
-    "                    · e ·                    ",
-    "",
-    "████████╗ █████╗ ██╗     ██╗████████╗ █████╗ ",
-    "╚══██╔══╝██╔══██╗██║     ██║╚══██╔══╝██╔══██╗",
-    "   ██║   ███████║██║     ██║   ██║   ███████║",
-    "   ██║   ██╔══██║██║     ██║   ██║   ██╔══██║",
-    "   ██║   ██║  ██║███████╗██║   ██║   ██║  ██║",
-    "   ╚═╝   ╚═╝  ╚═╝╚══════╝╚═╝   ╚═╝   ╚═╝  ╚═╝",
-]
-
-
-def _mix_color(start: str, end: str, ratio: float) -> str:
-    a = tuple(int(start[i : i + 2], 16) for i in (1, 3, 5))
-    b = tuple(int(end[i : i + 2], 16) for i in (1, 3, 5))
-    rgb = tuple(round(a[i] + (b[i] - a[i]) * ratio) for i in range(3))
-    return "#{:02x}{:02x}{:02x}".format(*rgb)
-
-
-def _vgradient(count: int, stops: list[str]) -> list[str]:
-    """Gradiente vertical suave ao longo de ``count`` linhas."""
-    if count <= 0:
-        return []
-    if len(stops) == 1:
-        return [stops[0]] * count
-    colors: list[str] = []
-    for index in range(count):
-        pos = (index / (count - 1)) * (len(stops) - 1) if count > 1 else 0.0
-        low = min(int(pos), len(stops) - 2)
-        colors.append(_mix_color(stops[low], stops[low + 1], pos - low))
-    return colors
-
-
-def _welcome_art(max_cols: int = 78) -> list[tuple[str, str]]:
-    art: list[tuple[str, str]] = []
-    figure_colors = _vgradient(len(_ASCII_FIGURE), [LILAC, ACCENT, CYAN, MINT])
-    art.extend(zip(_ASCII_FIGURE, figure_colors, strict=False))
-    art.append(("", MUTED))
-    name_colors = _vgradient(len(_ASCII_NAMES), [LILAC, ACCENT, CYAN, MINT])
-    art.extend(zip(_ASCII_NAMES, name_colors, strict=False))
-    divine = fit_braille(DIVINE_LINES, max_cols=max_cols, max_rows=26)
-    if divine:
-        art.append(("", MUTED))
-        divine_colors = _vgradient(len(divine), [MINT, CYAN, LILAC, ACCENT])
-        art.extend(zip(divine, divine_colors, strict=False))
-    return art
-
-
-_SHORTCUTS = (
-    "i digitar · t texto · m mudo · v voz · f falar · c contínua · "
-    "Esc interromper · F1 comandos · F2 sessões · F3 modo · Ctrl+T tema · Ctrl+L limpar"
+from zora.interface.textual_render import (
+    _HELP,
+    _SHORTCUTS,
+    _STREAM_PREVIEW_CHARS,
+    ACCENT,
+    CYAN,
+    LILAC,
+    MINT,
+    MINT_BG,
+    MUTED,
+    USER_BG,
+    ZORA_BG,
+    _welcome_art,
+    card,
 )
-
-_HELP = (
-    "Modo normal: i digitar · t texto · m mudo · v voz on/off · f falar · "
-    "c escuta contínua · Esc interromper. No modo insert, Esc volta ao normal. "
-    "F1 paleta · F2 sessões · F3 trocar modo · Ctrl+T tema · Ctrl+L limpar. "
-    "Cada modo tem o próprio histórico de sessões; /novo abre uma sessão nova. "
-    "/chines on|off mostra 中文 + pinyin de cada mensagem."
-)
-
-
-class CommandPalette(ModalScreen[str | None]):
-    CSS = """
-    CommandPalette {
-        align: center middle;
-        background: #000000aa;
-    }
-    #palette {
-        width: 64;
-        height: auto;
-        max-height: 20;
-        border: round #D644FB;
-        background: #140a24;
-        padding: 1;
-    }
-    #palette-input {
-        margin-bottom: 1;
-    }
-    """
-
-    def compose(self) -> ComposeResult:
-        yield Vertical(
-            Input(placeholder="Buscar comando…", id="palette-input"),
-            OptionList(id="palette-list"),
-            id="palette",
-        )
-
-    def on_mount(self) -> None:
-        self._refresh("")
-        self.query_one("#palette-input", Input).focus()
-
-    def _refresh(self, query: str) -> None:
-        options = self.query_one("#palette-list", OptionList)
-        options.clear_options()
-        needle = query.lower().strip()
-        for label in cast("ZoraTextualApp", self.app).palette_labels():
-            if needle in label.lower():
-                options.add_option(label)
-
-    def on_input_changed(self, event: Input.Changed) -> None:
-        self._refresh(event.value)
-
-    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
-        self.dismiss(str(event.option.prompt))
-
-
-class ModePicker(ModalScreen[str | None]):
-    """Escolha de um dos modos (personas) da Zora."""
-
-    CSS = """
-    ModePicker {
-        align: center middle;
-        background: #000000cc;
-    }
-    #mode-box {
-        width: 76;
-        height: auto;
-        max-height: 24;
-        border: round #D644FB;
-        background: #140a24;
-        padding: 1 2;
-    }
-    #mode-title {
-        color: #D644FB;
-        text-style: bold;
-        margin-bottom: 1;
-    }
-    #mode-hint {
-        color: #8a8a99;
-        margin-top: 1;
-    }
-    #mode-list {
-        border: none;
-        background: #140a24;
-        padding: 0;
-    }
-    #mode-list > .option-list--option-highlighted {
-        background: #D644FB;
-        color: #0b0614;
-        text-style: bold;
-    }
-    """
-
-    BINDINGS: ClassVar[list[BindingType]] = [Binding("escape", "cancel", "Voltar")]
-
-    def __init__(self, modes: list, current: str):
-        super().__init__()
-        self._modes = list(modes)
-        self._current = current
-        self._keys: list[str] = []
-
-    def compose(self) -> ComposeResult:
-        with Vertical(id="mode-box"):
-            yield Static("Escolha um modo", id="mode-title")
-            yield OptionList(id="mode-list")
-            yield Static("↑↓ escolher · Enter confirmar · Esc manter", id="mode-hint")
-
-    def on_mount(self) -> None:
-        options = self.query_one("#mode-list", OptionList)
-        options.clear_options()
-        self._keys.clear()
-        highlighted = 0
-        for index, persona in enumerate(self._modes):
-            self._keys.append(persona.key)
-            mark = "●" if persona.key == self._current else "○"
-            options.add_option(f"{mark} {persona.name}  —  {persona.summary}")
-            if persona.key == self._current:
-                highlighted = index
-        options.highlighted = highlighted
-        options.focus()
-
-    def action_cancel(self) -> None:
-        self.dismiss(None)
-
-    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
-        self.dismiss(self._keys[event.option_index])
-
-
-class SessionPicker(ModalScreen[object]):
-    """Lista as sessões (histórico) do modo ativo, como no OpenCode."""
-
-    CSS = """
-    SessionPicker {
-        align: center middle;
-        background: #000000cc;
-    }
-    #session-box {
-        width: 84;
-        height: auto;
-        max-height: 26;
-        border: round #79DCFD;
-        background: #0b1a22;
-        padding: 1 2;
-    }
-    #session-title {
-        color: #79DCFD;
-        text-style: bold;
-        margin-bottom: 1;
-    }
-    #session-hint {
-        color: #8a8a99;
-        margin-top: 1;
-    }
-    #session-list {
-        border: none;
-        background: #0b1a22;
-        padding: 0;
-    }
-    #session-list > .option-list--option-highlighted {
-        background: #79DCFD;
-        color: #041019;
-        text-style: bold;
-    }
-    """
-
-    BINDINGS: ClassVar[list[BindingType]] = [Binding("escape", "cancel", "Voltar")]
-
-    def __init__(self, sessions: list[dict], mode_name: str):
-        super().__init__()
-        self._sessions = list(sessions)
-        self._mode_name = mode_name
-        self._targets: list[object] = []
-
-    def compose(self) -> ComposeResult:
-        with Vertical(id="session-box"):
-            yield Static(f"Sessões · {self._mode_name}", id="session-title")
-            yield OptionList(id="session-list")
-            yield Static("↑↓ escolher · Enter abrir · Esc voltar", id="session-hint")
-
-    def on_mount(self) -> None:
-        options = self.query_one("#session-list", OptionList)
-        options.clear_options()
-        self._targets.clear()
-        options.add_option("+ Nova sessão")
-        self._targets.append("new")
-        highlighted = 0
-        for session in self._sessions:
-            when = str(session.get("updated_at", ""))[:16].replace("T", " ")
-            mark = "●" if session.get("current") else "○"
-            label = (
-                f"{mark} {session.get('title', 'Sem título')}"
-                f"  ·  {session.get('turns', 0)} msg  ·  {when}"
-            )
-            options.add_option(label)
-            self._targets.append(int(session["id"]))
-            if session.get("current"):
-                highlighted = len(self._targets) - 1
-        options.highlighted = highlighted
-        options.focus()
-
-    def action_cancel(self) -> None:
-        self.dismiss(None)
-
-    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
-        self.dismiss(self._targets[event.option_index])
-
-
-class TextualSink:
-    """Recebe tokens e eventos do orquestrador e atualiza a UI."""
-
-    def __init__(self, app: ZoraTextualApp):
-        self.app = app
-        self.buffer = ""
-        self._last_update = 0.0
-        self._last_reasoning = 0.0
-
-    def token(self, text: str) -> None:
-        self.buffer += text
-        now = time.monotonic()
-        if now - self._last_update >= 0.15:
-            self._last_update = now
-            self.app.update_stream(self.buffer)
-
-    def reasoning(self, text: str) -> None:
-        snippet = " ".join((text or "").split())[-90:]
-        if not snippet:
-            return
-        now = time.monotonic()
-        if now - self._last_reasoning >= 0.3:
-            self._last_reasoning = now
-            self.app._set_status(f"◐ {snippet}")
-
-    def tool(self, name: str, detail: str = "") -> None:
-        line = f"▸ {name} {detail}".strip()
-        self.app._set_status(line)
-
-    def diff(self, filename: str, patch: str) -> None:
-        self.app.write_diff(filename, patch)
+from zora.interface.textual_screens import CommandPalette, ModePicker, SessionPicker
+from zora.interface.textual_sink import TextualSink
 
 
 class ZoraTextualApp(App):
@@ -648,32 +318,6 @@ class ZoraTextualApp(App):
         self._update_modebar()
 
 
-    def _card(self, label: Text | str, body, accent: str, background: str):
-        """Card com rail vertical sólido à esquerda.
-
-        Usa o fundo de uma célula de 1 coluna como "linha" contínua: diferente
-        dos caracteres de borda (│), o fundo pinta a célula inteira, então a
-        linha nunca aparece tracejada, seja qual for a fonte do terminal.
-        """
-        from rich.padding import Padding
-        from rich.table import Table
-
-        table = Table(
-            box=None,
-            show_header=False,
-            show_edge=False,
-            show_footer=False,
-            pad_edge=False,
-            padding=0,
-            expand=True,
-        )
-        table.add_column("rail", width=1, no_wrap=True, style=f"on {accent}")
-        table.add_column("card", ratio=1, style=f"on {background}")
-        title = label if isinstance(label, Text) else Text(label)
-        title.stylize(f"bold {accent}")
-        table.add_row(Text(" "), Padding(title, (0, 1, 0, 1)))
-        table.add_row(Text(" "), Padding(body, (0, 1, 0, 1)))
-        return table
 
     def _write_focus_panel(self) -> None:
         if self._voice is None:
@@ -691,7 +335,7 @@ class ZoraTextualApp(App):
             body.append(f"• {goal}\n")
         body.append(f"\n{focus.start} → {focus.end}", style=MUTED)
         self._mount(
-            self._card(
+            card(
                 f"✨ Foco {period_label(focus.period)}", body, CYAN, USER_BG
             )
         )
@@ -714,7 +358,7 @@ class ZoraTextualApp(App):
         table.add_column("Próximo passo", style=MUTED)
         for goal in goals:
             table.add_row(escape(goal.label), escape(goal.next_step or "—"))
-        self._mount(self._card("🎯 Metas", table, ACCENT, ZORA_BG))
+        self._mount(card("🎯 Metas", table, ACCENT, ZORA_BG))
 
     async def _write_moon_note(self) -> None:
         detail = moon_details()
@@ -739,7 +383,7 @@ class ZoraTextualApp(App):
             if manifestation:
                 line += f" — manifestações na Agenda: {manifestation}"
             body.append("\n" + line, style=MUTED)
-        self._mount(self._card("🌙 Lua", body, LILAC, MINT_BG))
+        self._mount(card("🌙 Lua", body, LILAC, MINT_BG))
 
     async def _shutdown(self) -> None:
         # O Textual limpa o contextvar ``active_app`` antes do shutdown final.
@@ -1095,7 +739,7 @@ class ZoraTextualApp(App):
         if len(preview) > _STREAM_PREVIEW_CHARS:
             preview = "… " + preview[-_STREAM_PREVIEW_CHARS:]
         self._stream_widget.update(
-            self._card("✦ Zora", Text(preview), ACCENT, ZORA_BG)
+            card("✦ Zora", Text(preview), ACCENT, ZORA_BG)
         )
         self.call_after_refresh(self._scroll_chat)
 
@@ -1105,7 +749,7 @@ class ZoraTextualApp(App):
                 self._write_zora(answer)
             return
         self._stream_widget.update(
-            self._card("✦ Zora", Text(answer), ACCENT, ZORA_BG)
+            card("✦ Zora", Text(answer), ACCENT, ZORA_BG)
         )
         self._stream_widget = None
         self.call_after_refresh(self._scroll_chat)
@@ -1116,7 +760,7 @@ class ZoraTextualApp(App):
         if not patch.strip():
             return
         self._mount(
-            self._card(
+            card(
                 f"diff · {filename}",
                 Syntax(patch, "diff", theme="monokai", word_wrap=True),
                 MINT,
@@ -1129,12 +773,12 @@ class ZoraTextualApp(App):
         return self.query_one("#chat", VerticalScroll)
 
     def _write_user(self, text: str) -> None:
-        self._mount(self._card("❯ Talita", Text(text), CYAN, USER_BG), message=True)  # noqa: RUF001
+        self._mount(card("❯ Talita", Text(text), CYAN, USER_BG), message=True)  # noqa: RUF001
         if self._voice is not None and self._voice.cfg.interface.chinese_echo:
             self.run_worker(self._echo_zh(text), exclusive=False)
 
     def _write_zora(self, text: str) -> None:
-        self._mount(self._card("✦ Zora", Text(text), ACCENT, ZORA_BG), message=True)
+        self._mount(card("✦ Zora", Text(text), ACCENT, ZORA_BG), message=True)
 
     async def _echo_zh(self, text: str) -> None:
         if self._voice is None:
