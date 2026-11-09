@@ -257,7 +257,7 @@ class ContinuousListener:
             self._frames.put(indata.copy().reshape(-1))
 
         try:
-            self._stream = sd.InputStream(
+            stream = sd.InputStream(
                 samplerate=cfg.sample_rate,
                 channels=cfg.channels,
                 dtype="float32",
@@ -265,7 +265,8 @@ class ContinuousListener:
                 device=device,
                 callback=callback,
             )
-            self._stream.start()
+            stream.start()
+            self._stream = stream
         except Exception as exc:
             raise AudioError(f"nao foi possivel abrir o microfone: {exc}") from exc
 

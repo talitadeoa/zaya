@@ -69,6 +69,8 @@ files = [
   "zora/config.py",
   "zora/whatsapp/webhook.py",
   "zora/controller/smalltalk.py",
+  "zora/interface/textual_app.py",
+  "zora/audio/recorder.py",
 ]
 
 [tool.ruff]

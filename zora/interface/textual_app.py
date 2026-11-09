@@ -453,7 +453,7 @@ class ZoraTextualApp(App):
         self._voice = voice
         self._voice_replies = False
         self._continuous = False
-        self._listener = None
+        self._listener: ContinuousListener | None = None
         self._listen_task: asyncio.Task | None = None
         self._insert_mode = False
         self._turn_running = False
@@ -619,7 +619,9 @@ class ZoraTextualApp(App):
         if target == "new":
             self.run_worker(self._new_session_ui(), exclusive=False)
             return
-        self.run_worker(self._apply_session(int(target)), exclusive=False)
+        if not isinstance(target, int):
+            return
+        self.run_worker(self._apply_session(target), exclusive=False)
 
     async def _new_session_ui(self) -> None:
         if self._voice is None:
@@ -674,6 +676,8 @@ class ZoraTextualApp(App):
         return table
 
     def _write_focus_panel(self) -> None:
+        if self._voice is None:
+            return
         focus = self._voice.focus.current
         if focus is None:
             self._mount(
@@ -695,6 +699,8 @@ class ZoraTextualApp(App):
     def _write_goals_table(self) -> None:
         from rich.table import Table
 
+        if self._voice is None:
+            return
         goals = self._voice.goals.all()
         if not goals:
             return
@@ -722,12 +728,13 @@ class ZoraTextualApp(App):
         if phase is not None:
             _key, phase_name, moment = phase
             manifestation = ""
-            try:
-                manifestation = await self._voice.agenda.lunation_note(
-                    moment.date().isoformat()
-                )
-            except Exception:
-                manifestation = ""
+            if self._voice is not None:
+                try:
+                    manifestation = await self._voice.agenda.lunation_note(
+                        moment.date().isoformat()
+                    )
+                except Exception:
+                    manifestation = ""
             line = f"Amanhã: {phase_name}"
             if manifestation:
                 line += f" — manifestações na Agenda: {manifestation}"
@@ -826,7 +833,11 @@ class ZoraTextualApp(App):
                 listener.resume()
                 self._set_status("● ouvindo…")
 
-    async def _speak_and_resume(self, answer: str, listener) -> None:
+    async def _speak_and_resume(
+        self, answer: str, listener: ContinuousListener | None
+    ) -> None:
+        if self._voice is None:
+            return
         try:
             await self._voice.speak_text(answer)
         except Exception:
@@ -1052,7 +1063,8 @@ class ZoraTextualApp(App):
             self.exit()
 
     def action_toggle_theme(self) -> None:
-        self.theme = "textual-light" if "dark" in self.theme else "textual-dark"
+        current = str(getattr(self, "theme", ""))
+        self.theme = "textual-light" if "dark" in current else "textual-dark"
 
     def action_clear_chat(self) -> None:
         self._clear_messages()
