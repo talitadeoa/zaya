@@ -23,7 +23,9 @@ dependencies = [
 dev = [
   "pytest>=8,<9",
   "pytest-asyncio>=0.23,<1",
+  "pytest-cov>=5,<8",
   "ruff>=0.15,<1",
+  "mypy>=1.10,<3",
 ]
 browser = [
   "playwright>=1.40,<2",
@@ -43,6 +45,31 @@ packages = ["zora"]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 addopts = "-q"
+
+[tool.coverage.run]
+source = ["zora"]
+branch = true
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+follow_imports = "silent"
+files = [
+  "zora/opencode/events.py",
+  "zora/opencode/models.py",
+  "zora/memory/store.py",
+  "zora/tasks/store.py",
+  "zora/finance/quotes.py",
+  "zora/finance/watchlist.py",
+  "zora/focus.py",
+  "zora/secondbrain/frontmatter.py",
+  "zora/secondbrain/notes.py",
+  "zora/spotify/intents.py",
+  "zora/agenda/client.py",
+  "zora/config.py",
+  "zora/whatsapp/webhook.py",
+  "zora/controller/smalltalk.py",
+]
 
 [tool.ruff]
 line-length = 100

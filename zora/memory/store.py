@@ -154,6 +154,8 @@ class MemoryStore:
                 (project_path, mode, title or "", now, now),
             )
             conv_id = cursor.lastrowid
+        if conv_id is None:
+            raise RuntimeError("nao foi possivel criar a conversa")
         return self.get_conversation(conv_id)
 
     def get_conversation(self, conversation_id: int) -> sqlite3.Row:
@@ -268,6 +270,8 @@ class MemoryStore:
                 """,
                 (text, due_at, _now()),
             )
+            if cursor.lastrowid is None:
+                raise RuntimeError("nao foi possivel criar o lembrete")
             return int(cursor.lastrowid)
 
     def due_reminders(self, now_iso: str) -> list[sqlite3.Row]:

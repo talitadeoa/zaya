@@ -13,10 +13,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Instalar ruff
-        run: pip install "ruff>=0.15,<1"
+      - name: Instalar ferramentas
+        run: pip install "ruff>=0.15,<1" "mypy>=1.10,<3"
       - name: Lint
         run: ruff check zora tests
+      - name: Tipos (nucleo tipado)
+        run: mypy
 
   test:
     # Audio (sounddevice/PortAudio) e STT sao importados de forma tardia;
