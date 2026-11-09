@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any, Callable
+from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 
@@ -72,10 +73,10 @@ class _WebhookHTTPServer(ThreadingHTTPServer):
 class _Handler(BaseHTTPRequestHandler):
     server: _WebhookHTTPServer
 
-    def log_message(self, fmt: str, *args: Any) -> None:  # noqa: A003
+    def log_message(self, fmt: str, *args: Any) -> None:
         return
 
-    def do_GET(self) -> None:  # noqa: N802
+    def do_GET(self) -> None:
         parsed = urlparse(self.path)
         if parsed.path != "/webhook":
             self.send_error(404)
@@ -89,7 +90,7 @@ class _Handler(BaseHTTPRequestHandler):
         else:
             self.send_error(403)
 
-    def do_POST(self) -> None:  # noqa: N802
+    def do_POST(self) -> None:
         if urlparse(self.path).path != "/webhook":
             self.send_error(404)
             return

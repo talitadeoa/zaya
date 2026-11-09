@@ -24,7 +24,8 @@ from zora.memory.store import MemoryStore
 from zora.opencode.client import OpenCodeClient, OpenCodeError, load_provider_models
 from zora.secondbrain.index import SecondBrainIndex
 from zora.secondbrain.notes import SecondBrain
-from zora.spotify.controller import SpotifyCommand, SpotifyError, execute as execute_spotify
+from zora.spotify.controller import SpotifyCommand, SpotifyError
+from zora.spotify.controller import execute as execute_spotify
 from zora.stt.faster_whisper import WhisperTranscriber
 from zora.telegram.client import TelegramClient
 from zora.telegram.service import TelegramService

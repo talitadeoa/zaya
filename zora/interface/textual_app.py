@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
-from typing import Any, Awaitable, Callable
+from typing import Any, ClassVar
 
 from rich import box
 from rich.markup import escape
@@ -220,7 +221,7 @@ class ModePicker(ModalScreen[str | None]):
     }
     """
 
-    BINDINGS = [Binding("escape", "cancel", "Voltar")]
+    BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "cancel", "Voltar")]
 
     def __init__(self, modes: list, current: str):
         super().__init__()
@@ -292,7 +293,7 @@ class SessionPicker(ModalScreen[object]):
     }
     """
 
-    BINDINGS = [Binding("escape", "cancel", "Voltar")]
+    BINDINGS: ClassVar[list[Binding]] = [Binding("escape", "cancel", "Voltar")]
 
     def __init__(self, sessions: list[dict], mode_name: str):
         super().__init__()
@@ -337,7 +338,7 @@ class SessionPicker(ModalScreen[object]):
 class TextualSink:
     """Recebe tokens e eventos do orquestrador e atualiza a UI."""
 
-    def __init__(self, app: "ZoraTextualApp"):
+    def __init__(self, app: ZoraTextualApp):
         self.app = app
         self.buffer = ""
         self._last_update = 0.0
@@ -368,7 +369,7 @@ class TextualSink:
 
 
 class ZoraTextualApp(App):
-    BINDINGS = [
+    BINDINGS: ClassVar[list[Binding]] = [
         Binding("i", "insert", "Digitar"),
         Binding("enter", "insert", "Digitar"),
         Binding("t", "text_mode", "Texto"),
@@ -797,7 +798,6 @@ class ZoraTextualApp(App):
         delegated = False
         try:
             self._write_user(text)
-            status = self.query_one("#status", Static)
             self._stream_widget = None
             self._set_status("◐ pensando")
             sink = TextualSink(self)
@@ -1117,7 +1117,7 @@ class ZoraTextualApp(App):
         return self.query_one("#chat", VerticalScroll)
 
     def _write_user(self, text: str) -> None:
-        self._mount(self._card("❯ Talita", Text(text), CYAN, USER_BG), message=True)
+        self._mount(self._card("❯ Talita", Text(text), CYAN, USER_BG), message=True)  # noqa: RUF001
         if self._voice is not None and self._voice.cfg.interface.chinese_echo:
             self.run_worker(self._echo_zh(text), exclusive=False)
 

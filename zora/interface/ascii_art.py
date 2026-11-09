@@ -119,8 +119,8 @@ def fit_braille(lines: list[str], max_cols: int = 78, max_rows: int = 30) -> lis
     target_w = max(2, max_cols) * 2
     target_h = max(4, max_rows) * 4
     scale = min(target_w / width, target_h / height, 1.0)
-    new_w = max(2, int(round(width * scale)) // 2 * 2)
-    new_h = max(4, int(round(height * scale)) // 4 * 4)
+    new_w = max(2, round(width * scale) // 2 * 2)
+    new_h = max(4, round(height * scale) // 4 * 4)
     scaled = [[False] * new_w for _ in range(new_h)]
     for y in range(new_h):
         source_y = min(height - 1, int(y * height / new_h))

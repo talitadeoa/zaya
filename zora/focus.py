@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -80,7 +80,7 @@ def _moon_moment(now: datetime | None = None) -> tuple[astronomy.Time, datetime]
     tz = ZoneInfo("America/Sao_Paulo")
     local = (now or datetime.now(tz)).astimezone(tz)
     noon_local = datetime(local.year, local.month, local.day, 12, 0, tzinfo=tz)
-    noon_utc = noon_local.astimezone(timezone.utc)
+    noon_utc = noon_local.astimezone(UTC)
     moment = astronomy.Time.Make(
         noon_utc.year,
         noon_utc.month,
@@ -96,7 +96,7 @@ def moon_phase(now: datetime | None = None) -> tuple[str, str, float]:
     """Retorna (chave, nome, iluminacao 0..1) usando a mesma base da Agenda."""
     moment, _local = _moon_moment(now)
     fraction = (astronomy.MoonPhase(moment) / 360.0) % 1.0
-    index = int(round(fraction * 8)) % 8
+    index = round(fraction * 8) % 8
     key = PHASES[index]
     illumination = max(
         0.0, min(1.0, astronomy.Illumination(astronomy.Body.Moon, moment).phase_fraction)
@@ -144,7 +144,7 @@ def principal_phase_today(
     local = (now or datetime.now(tz)).astimezone(tz)
     today = local.date()
     start_local = datetime(today.year, today.month, today.day, tzinfo=tz)
-    start_utc = start_local.astimezone(timezone.utc)
+    start_utc = start_local.astimezone(UTC)
     start = astronomy.Time.Make(
         start_utc.year, start_utc.month, start_utc.day, start_utc.hour, 0, 0
     )
@@ -157,7 +157,7 @@ def principal_phase_today(
         event = astronomy.SearchMoonPhase(angle, start, 2.0)
         if event is None:
             continue
-        moment = event.Utc().replace(tzinfo=timezone.utc).astimezone(tz)
+        moment = event.Utc().replace(tzinfo=UTC).astimezone(tz)
         if moment.date() == today:
             return key, RITUALS[key][0], moment
     return None
