@@ -53,25 +53,6 @@ _ASCII_FIGURE = """
 ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠹⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
 """.strip("\n").splitlines()
 
-_ASCII_NAMES = [
-    "██╗      █████╗ ██████╗  █████╗ ",
-    "██║     ██╔══██╗██╔══██╗██╔══██╗",
-    "██║     ███████║██████╔╝███████║",
-    "██║     ██╔══██║██╔══██╗██╔══██║",
-    "███████╗██║  ██║██║  ██║██║  ██║",
-    "╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝",
-    "",
-    "                    · e ·                    ",
-    "",
-    "████████╗ █████╗ ██╗     ██╗████████╗ █████╗ ",
-    "╚══██╔══╝██╔══██╗██║     ██║╚══██╔══╝██╔══██╗",
-    "   ██║   ███████║██║     ██║   ██║   ███████║",
-    "   ██║   ██╔══██║██║     ██║   ██║   ██╔══██║",
-    "   ██║   ██║  ██║███████╗██║   ██║   ██║  ██║",
-    "   ╚═╝   ╚═╝  ╚═╝╚══════╝╚═╝   ╚═╝   ╚═╝  ╚═╝",
-]
-
-
 def _mix_color(start: str, end: str, ratio: float) -> str:
     a = tuple(int(start[i : i + 2], 16) for i in (1, 3, 5))
     b = tuple(int(end[i : i + 2], 16) for i in (1, 3, 5))
@@ -97,9 +78,6 @@ def _welcome_art(max_cols: int = 78) -> list[tuple[str, str]]:
     art: list[tuple[str, str]] = []
     figure_colors = _vgradient(len(_ASCII_FIGURE), [LILAC, ACCENT, CYAN, MINT])
     art.extend(zip(_ASCII_FIGURE, figure_colors, strict=False))
-    art.append(("", MUTED))
-    name_colors = _vgradient(len(_ASCII_NAMES), [LILAC, ACCENT, CYAN, MINT])
-    art.extend(zip(_ASCII_NAMES, name_colors, strict=False))
     divine = fit_braille(DIVINE_LINES, max_cols=max_cols, max_rows=26)
     if divine:
         art.append(("", MUTED))
