@@ -5,6 +5,7 @@ from __future__ import annotations
 import threading
 from pathlib import Path
 
+from rich import box
 from rich.console import Console
 from rich.live import Live
 from rich.markdown import Markdown
@@ -396,6 +397,7 @@ class TerminalUI:
             self.info("nenhum foco definido; use /foco definir semanal <texto>")
         if goals:
             table = Table(
+                box=box.SIMPLE_HEAD,
                 border_style=ACCENT,
                 header_style=f"bold {ACCENT}",
             )

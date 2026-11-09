@@ -7,6 +7,7 @@ import time
 from datetime import datetime, timedelta
 from typing import Any, Awaitable, Callable
 
+from rich import box
 from rich.markup import escape
 from rich.panel import Panel
 from rich.syntax import Syntax
@@ -257,6 +258,7 @@ class ZoraTextualApp(App):
         if not goals:
             return
         table = Table(
+            box=box.SIMPLE_HEAD,
             border_style=ACCENT,
             header_style=f"bold {ACCENT}",
         )
