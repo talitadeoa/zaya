@@ -139,11 +139,25 @@ class AgendaClient:
         params = {
             "user_id": f"eq.{user_id}",
             "date": f"eq.{date}",
-            "select": "id,text,is_checkbox,completed,date",
+            "select": (
+                "id,text,is_checkbox,completed,parent_id,routine_id,"
+                "order,date,created_at"
+            ),
             "order": "order.asc",
             "limit": "200",
         }
         return await self._query("notes", params)
+
+    async def routines(self) -> list[dict[str, Any]]:
+        if not self.enabled:
+            return []
+        user_id = self._get("AGENDA_USER_ID")
+        params = {
+            "user_id": f"eq.{user_id}",
+            "select": "id,text,type,frequency_config,subtasks,start_date",
+            "limit": "200",
+        }
+        return await self._query("routines", params)
 
     async def lunation_note(self, date: str) -> str:
         rows = await self.notes_on(date)

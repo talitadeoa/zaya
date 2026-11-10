@@ -17,6 +17,7 @@ from typing import Any
 from zora.agenda.client import AgendaClient
 from zora.audio.recorder import ContinuousListener, Recorder
 from zora.config import Config
+from zora.controller.briefing import BriefingMixin
 from zora.controller.commands import CommandsMixin
 from zora.controller.contract import StreamSink
 from zora.controller.goals import GoalTracker
@@ -37,6 +38,7 @@ from zora.secondbrain.index import SecondBrainIndex
 from zora.secondbrain.notes import SecondBrain
 from zora.stt.faster_whisper import WhisperTranscriber
 from zora.tasks.store import TaskStore
+from zora.telegram.client import TelegramClient
 from zora.tts.manager import TTSManager
 
 
@@ -46,6 +48,7 @@ class Orchestrator(
     VoiceMixin,
     CommandsMixin,
     MemoryMixin,
+    BriefingMixin,
     RegistrationMixin,
     InitiativeMixin,
 ):
@@ -73,6 +76,7 @@ class Orchestrator(
         self.transcriber = transcriber
         self.recorder = recorder
         self.client = client
+        self.telegram = TelegramClient(cfg.telegram)
         self.directory = cfg.project_directory()
         self.persona = resolve_mode(
             store.get_meta("mode") or cfg.interface.default_mode
@@ -103,6 +107,8 @@ class Orchestrator(
         self._partial_last = ""
         self._proactive_task: asyncio.Task | None = None
         self._memory_task: asyncio.Task[None] | None = None
+        self._briefing_task: asyncio.Task[None] | None = None
+        self._briefing_last_attempt = 0.0
         self._proactive_count = 0
         self._proactive_day = datetime.now().astimezone().date()
         self._last_proactive = 0.0
@@ -156,6 +162,14 @@ class Orchestrator(
         if self._voice_available():
             self._warmup_task = asyncio.create_task(self._warmup_stt())
 
+    def _start_background_workers(self) -> None:
+        self._start_memory_worker()
+        self._start_briefing_worker()
+
+    def start_briefing(self) -> None:
+        """Liga o briefing sem depender do bootstrap do OpenCode."""
+        self._start_briefing_worker()
+
     async def _warmup_stt(self) -> None:
         try:
             await asyncio.to_thread(self.transcriber.warmup)
@@ -174,6 +188,11 @@ class Orchestrator(
                     with contextlib.suppress(asyncio.CancelledError, Exception):
                         await self._memory_task
             self._memory_task = None
+        if self._briefing_task is not None:
+            self._briefing_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await self._briefing_task
+            self._briefing_task = None
         if (
             self.cfg.memory.enabled
             and self.cfg.memory.on_exit
@@ -204,6 +223,7 @@ class Orchestrator(
             self._proactive_task = None
         self.tts.stop()
         self.ui.close()
+        await self.telegram.aclose()
         await self.client.aclose()
 
     async def run_once(self, text: str) -> None:
@@ -227,7 +247,7 @@ class Orchestrator(
     ) -> str:
         """Responde uma instrução externa (ex.: Telegram) e devolve o texto."""
         if not close:
-            self._start_memory_worker()
+            self._start_background_workers()
         if not self.session_id:
             await self._bootstrap()
         try:
@@ -252,7 +272,7 @@ class Orchestrator(
         """Sobe servidor/sessão antes do primeiro uso (aquece a TUI)."""
         if not self.session_id:
             await self._bootstrap()
-        self._start_memory_worker()
+        self._start_background_workers()
 
     async def answer_stream(self, text: str, sink: StreamSink | None) -> str:
         """Como answer_once, mas envia tokens/eventos para um sink de UI."""
@@ -304,7 +324,7 @@ class Orchestrator(
         if self.cfg.proactive.enabled:
             self._proactive_task = asyncio.create_task(self._proactive_loop(greet=False))
 
-        self._start_memory_worker()
+        self._start_background_workers()
 
         try:
             await self._check_focus(datetime.now().astimezone())

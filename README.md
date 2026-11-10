@@ -248,6 +248,33 @@ Os lembretes ficam no SQLite local; se ela estiver fechada na hora, você recebe
 na próxima abertura. Ajustes em `[proactive]` (intervalo, limite diário,
 `quiet_hours`).
 
+### Briefing diário no Telegram
+
+Automação determinística, sem gastar token: lê a Agenda e envia duas mensagens
+por dia para o seu chat do Telegram.
+
+- **08:00** — bom dia com as tarefas do dia e os hábitos da rotina matinal
+  (marcando o que já foi feito), perguntando se você cumpriu a rotina.
+- **12:00** — o que foi concluído, o que falta e como está a rotina matinal.
+
+Funciona na TUI, no terminal e no serviço do Telegram; roda com qualquer um
+deles aberto. O slot do dia fica marcado no SQLite, então TUI e serviço abertos
+ao mesmo tempo não duplicam a mensagem. Se a Agenda falhar, tenta de novo depois.
+
+```toml
+[briefing]
+enabled = true
+morning_at = "08:00"
+noon_at = "12:00"
+noon_until = "18:00"      # depois disso o resumo do meio-dia não sai
+morning_routine = "matinal"  # trecho do nome da rotina na Agenda
+max_tasks = 15
+```
+
+A rotina matinal é encontrada pelo nome (padrão: qualquer rotina que contenha
+"matinal"), usando as subtarefas geradas pela Agenda no dia. Se as notas da
+rotina ainda não existirem, ela usa o cadastro de rotinas como fallback.
+
 ## Privacidade e segurança
 
 - **Áudio nunca sai da máquina**: o STT é local. Só o texto da resposta vai para

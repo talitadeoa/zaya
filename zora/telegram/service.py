@@ -38,6 +38,8 @@ class TelegramService:
         username = me.get("username", "?") if isinstance(me, dict) else "?"
         self.ui.info(f"Telegram conectado: @{username}")
         self.ui.hint("enviando mensagens; Ctrl+C encerra")
+        # Briefings diarios rodam mesmo sem mensagem recebida.
+        self.orchestrator.start_briefing()
         offset: int | None = None
         while True:
             try:

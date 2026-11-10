@@ -35,6 +35,7 @@ from zora.secondbrain.index import SecondBrainIndex
 from zora.secondbrain.notes import SecondBrain
 from zora.stt.faster_whisper import WhisperTranscriber
 from zora.tasks.store import TaskStore
+from zora.telegram.client import TelegramClient
 from zora.tts.manager import TTSManager
 
 
@@ -62,6 +63,7 @@ class OrchestratorContract(ABC):
     transcriber: WhisperTranscriber
     recorder: Recorder
     client: OpenCodeClient
+    telegram: TelegramClient
     directory: Path
     persona: Persona
     conversation_id: int | None
@@ -98,6 +100,8 @@ class OrchestratorContract(ABC):
     # --- iniciativa/agenda ---
     _proactive_task: asyncio.Task[None] | None
     _memory_task: asyncio.Task[None] | None
+    _briefing_task: asyncio.Task[None] | None
+    _briefing_last_attempt: float
     _proactive_count: int
     _proactive_day: date
     _last_proactive: float

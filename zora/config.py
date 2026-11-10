@@ -155,6 +155,22 @@ class MemoryConfig(BaseModel):
     llm_timeout_seconds: float = 90.0
 
 
+class BriefingConfig(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    # Bom dia com tarefas/habitos e resumo do meio-dia, sem usar o modelo.
+    enabled: bool = True
+    morning_at: str = "08:00"
+    noon_at: str = "12:00"
+    # Depois desse horario o resumo do meio-dia nao e mais enviado.
+    noon_until: str = "18:00"
+    # Trecho do nome da rotina da Agenda (sem acento, case-insensitive).
+    morning_routine: str = "matinal"
+    max_tasks: int = 15
+    check_interval_seconds: float = 30.0
+    retry_minutes: float = 10.0
+
+
 class ProactiveConfig(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
@@ -245,6 +261,7 @@ class Config(BaseModel):
     interface: InterfaceConfig = Field(default_factory=InterfaceConfig)
     proactive: ProactiveConfig = Field(default_factory=ProactiveConfig)
     memory: MemoryConfig = Field(default_factory=MemoryConfig)
+    briefing: BriefingConfig = Field(default_factory=BriefingConfig)
     whatsapp: WhatsAppConfig = Field(default_factory=WhatsAppConfig)
     telegram: TelegramConfig = Field(default_factory=TelegramConfig)
     agenda: AgendaConfig = Field(default_factory=AgendaConfig)
@@ -406,6 +423,12 @@ _ENV_MAP: dict[str, tuple[str, str]] = {
     "ZORA_MEMORY_FOLDER": ("memory", "folder"),
     "ZORA_MEMORY_ON_EXIT": ("memory", "on_exit"),
     "ZORA_MEMORY_USE_LLM": ("memory", "use_llm"),
+    "ZORA_BRIEFING_ENABLED": ("briefing", "enabled"),
+    "ZORA_BRIEFING_MORNING_AT": ("briefing", "morning_at"),
+    "ZORA_BRIEFING_NOON_AT": ("briefing", "noon_at"),
+    "ZORA_BRIEFING_NOON_UNTIL": ("briefing", "noon_until"),
+    "ZORA_BRIEFING_MORNING_ROUTINE": ("briefing", "morning_routine"),
+    "ZORA_BRIEFING_MAX_TASKS": ("briefing", "max_tasks"),
     "ZORA_PROACTIVE_CHECK_INTERVAL_SECONDS": ("proactive", "check_interval_seconds"),
     "ZORA_PROACTIVE_DAILY_MAX": ("proactive", "daily_max"),
     "ZORA_PROACTIVE_ENABLED": ("proactive", "enabled"),
@@ -598,6 +621,15 @@ at = "23:00"
 on_exit = true
 use_llm = true
 folder = "Memoria"
+
+[briefing]
+# Bom dia e resumo do meio-dia no Telegram, direto da Agenda (sem LLM).
+enabled = true
+morning_at = "08:00"
+noon_at = "12:00"
+noon_until = "18:00"
+morning_routine = "matinal"
+max_tasks = 15
 
 [proactive]
 enabled = true

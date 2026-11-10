@@ -353,6 +353,18 @@ class MemoryStore:
                 (key, value),
             )
 
+    def claim_meta(self, key: str, value: str) -> bool:
+        """Reserva uma chave de forma atomica; False se ja existia."""
+        with self._lock, self._conn:
+            cursor = self._conn.execute(
+                "INSERT OR IGNORE INTO meta (key, value) VALUES (?, ?)", (key, value)
+            )
+            return cursor.rowcount > 0
+
+    def delete_meta(self, key: str) -> None:
+        with self._lock, self._conn:
+            self._conn.execute("DELETE FROM meta WHERE key = ?", (key,))
+
     def get_meta(self, key: str, default: str | None = None) -> str | None:
         with self._lock:
             row = self._conn.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()

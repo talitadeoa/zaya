@@ -410,3 +410,101 @@ async def test_sessao_ausente_reinjeta_o_historico_local(orch):
     assert "Zaia: vamos revisar seu curriculo" in contexto
     assert orch._take_resume_context() == ""
 
+
+class FakeAgendaBriefing:
+    enabled = True
+
+    def __init__(self, notes: list[dict], routines: list[dict] | None = None) -> None:
+        self.notes = notes
+        self.rotinas = routines or []
+
+    async def notes_on(self, date: str) -> list[dict]:
+        return self.notes
+
+    async def routines(self) -> list[dict]:
+        return self.rotinas
+
+
+class FakeTelegram:
+    enabled = True
+
+    def __init__(self) -> None:
+        self.sent: list[str] = []
+
+    async def send_message(self, text: str) -> None:
+        self.sent.append(text)
+
+
+def _notas_briefing() -> list[dict]:
+    return [
+        {
+            "id": "t1",
+            "text": "Responder a Stefanini",
+            "is_checkbox": True,
+            "completed": False,
+            "parent_id": None,
+            "routine_id": None,
+            "order": 1,
+        },
+        {
+            "id": "r",
+            "text": "Rotina matinal",
+            "is_checkbox": True,
+            "completed": False,
+            "parent_id": None,
+            "routine_id": "rot1",
+            "order": 2,
+        },
+        {
+            "id": "r1",
+            "text": "alongar",
+            "is_checkbox": True,
+            "completed": True,
+            "parent_id": "r",
+            "routine_id": "rot1",
+            "order": 1,
+        },
+        {
+            "id": "r2",
+            "text": "meditar",
+            "is_checkbox": True,
+            "completed": False,
+            "parent_id": "r",
+            "routine_id": "rot1",
+            "order": 2,
+        },
+    ]
+
+
+@pytest.mark.asyncio
+async def test_briefing_envia_uma_vez_por_dia(orch):
+    orch.agenda = FakeAgendaBriefing(_notas_briefing())
+    orch.telegram = FakeTelegram()
+    orch.cfg.briefing.morning_routine = "matinal"
+    dia = datetime.now().astimezone().date()
+
+    assert await orch._send_briefing("morning", dia) is True
+    assert len(orch.telegram.sent) == 1
+    mensagem = orch.telegram.sent[0]
+    assert "Bom dia" in mensagem
+    assert "Responder a Stefanini" in mensagem
+    assert "alongar" in mensagem
+
+    assert await orch._send_briefing("morning", dia) is False
+    assert len(orch.telegram.sent) == 1
+
+
+@pytest.mark.asyncio
+async def test_briefing_do_meio_dia_mostra_pendentes(orch):
+    orch.agenda = FakeAgendaBriefing(_notas_briefing())
+    orch.telegram = FakeTelegram()
+    dia = datetime.now().astimezone().date()
+
+    assert await orch._send_briefing("noon", dia) is True
+    mensagem = orch.telegram.sent[0]
+    assert "Feito até agora" in mensagem
+    assert "Ainda falta" in mensagem
+    assert "☐ Responder a Stefanini" in mensagem
+    assert "Rotina matinal: 1/2" in mensagem
+
+
