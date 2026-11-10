@@ -1,4 +1,9 @@
-"""Interpretacao de eventos SSE e de payloads de mensagem do OpenCode."""
+"""Interpretacao de eventos SSE e de payloads de mensagem do OpenCode.
+
+Suporta tanto o formato antigo (1.18.x: `properties`/`parts`) quanto o novo
+(2.x: `data`/`content`). O servidor v2 e o alvo principal, mas manter os dois
+formatos evita que uma sessao antiga retomada quebre a conversa.
+"""
 
 from __future__ import annotations
 
@@ -51,22 +56,33 @@ def event_type(event: dict[str, Any]) -> str:
     return str(event.get("type", ""))
 
 
+def event_payload(event: dict[str, Any]) -> dict[str, Any]:
+    """Payload do evento: `data` (v2) ou `properties` (v1)."""
+    data = event.get("data")
+    if isinstance(data, dict):
+        return data
+    props = event.get("properties")
+    if isinstance(props, dict):
+        return props
+    return {}
+
+
 def event_session_id(event: dict[str, Any]) -> str | None:
-    props = event.get("properties") or {}
-    sid = props.get("sessionID")
+    payload = event_payload(event)
+    sid = payload.get("sessionID")
     if sid:
         return str(sid)
-    info = props.get("info") or {}
+    info = payload.get("info") or {}
     if isinstance(info, dict) and info.get("sessionID"):
         return str(info["sessionID"])
-    part = props.get("part") or {}
+    part = payload.get("part") or {}
     if isinstance(part, dict) and part.get("sessionID"):
         return str(part["sessionID"])
     return None
 
 
 def text_delta(part: dict[str, Any], previous: str) -> tuple[str, str]:
-    """Retorna (delta, texto_atual) para um `text` part.
+    """Retorna (delta, texto_atual) para um `text` part cumulativo (v1).
 
     O servidor pode emitir o texto acumulado ou apenas um fragmento. Tratamos
     os dois casos sem duplicar conteudo.
@@ -79,20 +95,45 @@ def text_delta(part: dict[str, Any], previous: str) -> tuple[str, str]:
     return current, current
 
 
+def tool_detail(payload: Any) -> str:
+    """Descricao curta de uma chamada de ferramenta a partir do input."""
+    if not isinstance(payload, dict):
+        return ""
+    for key in (
+        "command",
+        "description",
+        "filePath",
+        "path",
+        "file",
+        "filename",
+        "pattern",
+        "query",
+        "url",
+    ):
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
+
+
 def tool_activity(part: dict[str, Any]) -> tuple[str, str, str] | None:
     """Retorna (callID, tool, descricao) quando o part e uma ferramenta em execucao."""
     if part.get("type") != TOOL_PART:
         return None
     state = part.get("state") or {}
     status = state.get("status")
-    tool = part.get("tool", "tool")
-    title = state.get("title") or ""
+    tool = part.get("tool") or part.get("name") or "tool"
+    call_id = part.get("callID") or part.get("id") or ""
+    title = state.get("title") or tool_detail(state.get("input"))
     if status in {"running", "pending"}:
-        return part.get("callID", ""), tool, title
+        return call_id, tool, title
     if status == "completed":
-        return part.get("callID", ""), tool, title or "concluido"
+        return call_id, tool, title or "concluido"
     if status == "error":
-        return part.get("callID", ""), tool, f"erro: {state.get('error', '')}"
+        error = state.get("error")
+        if isinstance(error, dict):
+            error = error.get("message") or error.get("type") or error
+        return call_id, tool, f"erro: {error}"
     return None
 
 
@@ -103,9 +144,11 @@ def tool_diff(part: dict[str, Any]) -> tuple[str, str] | None:
     state = part.get("state") or {}
     if state.get("status") not in {"completed", "error"}:
         return None
-    tool = str(part.get("tool") or "")
+    tool = str(part.get("tool") or part.get("name") or "")
     payload = state.get("input") or {}
     metadata = state.get("metadata") or {}
+    if not isinstance(payload, dict):
+        payload = {}
     filename = str(
         payload.get("filePath")
         or payload.get("path")
@@ -143,9 +186,23 @@ def tool_diff(part: dict[str, Any]) -> tuple[str, str] | None:
 
 
 def assistant_text(message: dict[str, Any]) -> str:
-    """Extrai o texto final de um payload {info, parts} do OpenCode."""
+    """Extrai o texto final de uma mensagem do OpenCode.
+
+    v2: `content: [{type: "text", text: ...}]`; v1: `parts`.
+    """
+    content = message.get("content")
+    if isinstance(content, list):
+        chunks = [
+            str(part.get("text") or "").strip()
+            for part in content
+            if isinstance(part, dict)
+            and part.get("type") == TEXT_PART
+            and str(part.get("text") or "").strip()
+        ]
+        return "\n".join(chunks).strip()
+
     parts = message.get("parts") or []
-    chunks: list[str] = []
+    chunks = []
     for part in parts:
         if part.get("type") != TEXT_PART:
             continue
@@ -154,20 +211,54 @@ def assistant_text(message: dict[str, Any]) -> str:
         text = (part.get("text") or "").strip()
         if text:
             chunks.append(text)
-    return "\n".join(chunks).strip()
+    if chunks:
+        return "\n".join(chunks).strip()
+    text = message.get("text")
+    return str(text).strip() if isinstance(text, str) else ""
 
 
 def message_error(message: dict[str, Any]) -> str | None:
-    info = message.get("info") or {}
-    err = info.get("error")
+    err = message.get("error")
+    if err is None:
+        info = message.get("info") or {}
+        err = info.get("error")
     if not err:
         return None
     if isinstance(err, dict):
-        name = err.get("name") or err.get("type") or "erro"
-        data = err.get("data") or {}
-        detail = data.get("message") if isinstance(data, dict) else None
+        name = err.get("type") or err.get("name") or "erro"
+        detail = err.get("message")
+        if not detail:
+            data = err.get("data") or {}
+            detail = data.get("message") if isinstance(data, dict) else None
         return f"{name}: {detail}" if detail else str(name)
     return str(err)
+
+
+def message_id(message: dict[str, Any]) -> str | None:
+    mid = message.get("id")
+    if mid:
+        return str(mid)
+    info = message.get("info") or {}
+    mid = info.get("id")
+    return str(mid) if mid else None
+
+
+def message_role(message: dict[str, Any]) -> str | None:
+    role = message.get("type")
+    if role in {"user", "assistant"}:
+        return str(role)
+    info = message.get("info") or {}
+    role = info.get("role")
+    return str(role) if role else None
+
+
+def structured_error_text(error: Any) -> str:
+    """Formata um `Session.StructuredError` (v2) para exibicao."""
+    if isinstance(error, dict):
+        name = error.get("type") or error.get("name") or "erro"
+        detail = error.get("message")
+        return f"{name}: {detail}" if detail else str(name)
+    return str(error or "erro desconhecido")
 
 
 def session_status_is_idle(status: Any) -> bool:

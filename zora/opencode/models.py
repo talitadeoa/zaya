@@ -45,9 +45,13 @@ class SessionInfo:
 
     @classmethod
     def from_api(cls, data: dict[str, Any]) -> SessionInfo:
+        location = data.get("location") or {}
+        directory = data.get("directory") or (
+            location.get("directory") if isinstance(location, dict) else ""
+        )
         return cls(
             id=data.get("id", ""),
             title=data.get("title", "") or "",
-            directory=data.get("directory", "") or "",
+            directory=str(directory or ""),
             raw=data,
         )

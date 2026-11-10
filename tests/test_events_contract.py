@@ -14,11 +14,15 @@ import pytest
 
 from zora.opencode.events import (
     assistant_text,
+    event_payload,
     event_session_id,
     event_type,
     iter_sse_json,
     message_error,
+    message_id,
+    message_role,
     session_status_is_idle,
+    structured_error_text,
     text_delta,
     tool_activity,
     tool_diff,
@@ -149,3 +153,70 @@ def test_text_delta_shrinking_text_keeps_previous():
     delta, current = text_delta({"text": "Olá"}, "Olá mundo")
     assert delta == ""
     assert current == "Olá mundo"
+
+
+async def _parse_v2_stream() -> list[dict]:
+    return [
+        event async for event in iter_sse_json(_lines(FIXTURES / "stream.v2.sse.txt"))
+    ]
+
+
+@pytest.mark.asyncio
+async def test_sse_v2_fixture_parses_expected_events():
+    events = await _parse_v2_stream()
+    types = [event_type(event) for event in events]
+
+    assert types == [
+        "server.connected",
+        "session.text.started",
+        "session.text.delta",
+        "session.text.delta",
+        "session.text.ended",
+        "session.tool.input.started",
+        "session.tool.called",
+        "session.tool.success",
+        "permission.asked",
+        "session.execution.succeeded",
+    ]
+    assert {
+        event_session_id(event) for event in events if event_session_id(event) is not None
+    } == {"ses_abc"}
+    assert event_payload(events[2])["delta"] == "Olá"
+
+
+@pytest.mark.asyncio
+async def test_v2_text_deltas_reconstruct_full_message():
+    events = await _parse_v2_stream()
+    deltas = [
+        event_payload(event)["delta"]
+        for event in events
+        if event_type(event) == "session.text.delta"
+    ]
+    assert "".join(deltas) == "Olá, mundo"
+
+
+@pytest.mark.asyncio
+async def test_v2_tool_and_permission_payloads():
+    events = await _parse_v2_stream()
+    success = next(e for e in events if event_type(e) == "session.tool.success")
+    payload = event_payload(success)
+    assert payload["id"] == "call_1"
+    assert payload["metadata"]["diff"].startswith("--- a/a.py")
+
+    permission = next(e for e in events if event_type(e) == "permission.asked")
+    assert event_payload(permission)["id"] == "per_1"
+    assert event_payload(permission)["action"] == "edit"
+    assert event_payload(permission)["resources"] == ["a.py"]
+
+
+def test_messages_v2_fixture_contract():
+    messages = json.loads((FIXTURES / "messages.v2.json").read_text(encoding="utf-8"))
+
+    assert assistant_text(messages[0]) == "revise o arquivo"
+    assert assistant_text(messages[1]) == "Pronto.\nArquivo revisado."
+    assert message_id(messages[1]) == "msg_2"
+    assert message_role(messages[1]) == "assistant"
+    assert message_error(messages[2]) == "provider.no-route: Model unavailable"
+    assert structured_error_text(messages[2]["error"]) == (
+        "provider.no-route: Model unavailable"
+    )
