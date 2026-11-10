@@ -8,20 +8,20 @@ from pathlib import Path
 
 import pytest
 
-import zora.controller.orchestrator as orchestrator_module
-from zora.controller.commands import CommandsMixin
-from zora.controller.contract import OrchestratorContract
-from zora.controller.goals import GoalTracker
-from zora.controller.initiative import InitiativeMixin
-from zora.controller.memory import MemoryMixin
-from zora.controller.orchestrator import Orchestrator
-from zora.controller.registration import RegistrationMixin
-from zora.controller.speech import SpeechMixin
-from zora.controller.turns import TurnMixin
-from zora.controller.voice import VoiceMixin
-from zora.finance.watchlist import Watchlist
-from zora.memory.store import MemoryStore
-from zora.tasks.store import TaskStore
+import zaya.controller.orchestrator as orchestrator_module
+from zaya.controller.commands import CommandsMixin
+from zaya.controller.contract import OrchestratorContract
+from zaya.controller.goals import GoalTracker
+from zaya.controller.initiative import InitiativeMixin
+from zaya.controller.memory import MemoryMixin
+from zaya.controller.orchestrator import Orchestrator
+from zaya.controller.registration import RegistrationMixin
+from zaya.controller.speech import SpeechMixin
+from zaya.controller.turns import TurnMixin
+from zaya.controller.voice import VoiceMixin
+from zaya.finance.watchlist import Watchlist
+from zaya.memory.store import MemoryStore
+from zaya.tasks.store import TaskStore
 
 
 class FakeUI:
@@ -141,21 +141,21 @@ class FakeTranscriber:
 
 @pytest.fixture
 def orch(tmp_path, cfg, monkeypatch):
-    monkeypatch.setenv("ZORA_WATCHLIST_PATH", str(tmp_path / "watchlist.json"))
-    monkeypatch.setenv("ZORA_GOALS_FILE", str(tmp_path / "goals.json"))
+    monkeypatch.setenv("ZAYA_WATCHLIST_PATH", str(tmp_path / "watchlist.json"))
+    monkeypatch.setenv("ZAYA_GOALS_FILE", str(tmp_path / "goals.json"))
     cfg.focus.path = str(tmp_path / "focus.json")
     monkeypatch.setattr(
         orchestrator_module, "TaskStore", lambda: TaskStore(tmp_path / "tasks.json")
     )
 
-    store = MemoryStore(tmp_path / "zora.db")
+    store = MemoryStore(tmp_path / "zaya.db")
     brain = FakeBrain(tmp_path / "brain")
     ui = FakeUI()
     tts = FakeTTS()
     client = FakeClient()
     instance = Orchestrator(
         cfg=cfg,
-        logger=logging.getLogger("test.zora"),
+        logger=logging.getLogger("test.zaya"),
         ui=ui,
         store=store,
         index=FakeIndex(),
@@ -407,7 +407,7 @@ async def test_sessao_ausente_reinjeta_o_historico_local(orch):
     assert conversa["opencode_session_id"] != "ses_sumiu"
     contexto = orch._take_resume_context()
     assert "Talita: quero vaga de suporte" in contexto
-    assert "Zaia: vamos revisar seu curriculo" in contexto
+    assert "Zaya: vamos revisar seu curriculo" in contexto
     assert orch._take_resume_context() == ""
 
 

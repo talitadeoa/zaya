@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from zora.agenda.client import AgendaClient, _load_env_file
-from zora.config import AgendaConfig
+from zaya.agenda.client import AgendaClient, _load_env_file
+from zaya.config import AgendaConfig
 
 
 def test_env_file_e_cliente_habilitado(tmp_path):

@@ -3,11 +3,11 @@ from __future__ import annotations
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 
-from zora.memory.store import SCHEMA_VERSION, MemoryStore
+from zaya.memory.store import SCHEMA_VERSION, MemoryStore
 
 
 def test_conversations_and_turns(tmp_path):
-    store = MemoryStore(tmp_path / "zora.db")
+    store = MemoryStore(tmp_path / "zaya.db")
     try:
         conv = store.get_or_create_conversation("/proj")
         assert conv["project_path"] == "/proj"
@@ -35,7 +35,7 @@ def test_conversations_and_turns(tmp_path):
 
 
 def test_conversations_per_mode(tmp_path):
-    store = MemoryStore(tmp_path / "zora.db")
+    store = MemoryStore(tmp_path / "zaya.db")
     try:
         assistente = store.get_or_create_conversation("/proj", "assistente")
         carreira = store.get_or_create_conversation("/proj", "carreira")
@@ -73,7 +73,7 @@ def test_conversations_per_mode(tmp_path):
 
 
 def test_reminders(tmp_path):
-    store = MemoryStore(tmp_path / "zora.db")
+    store = MemoryStore(tmp_path / "zaya.db")
     try:
         rid = store.add_reminder("beber água", "2026-11-08T10:00:00+00:00")
         assert store.reminder_stats()["pending"] == 1
@@ -95,7 +95,7 @@ def test_reminders(tmp_path):
 
 
 def test_meta(tmp_path):
-    store = MemoryStore(tmp_path / "zora.db")
+    store = MemoryStore(tmp_path / "zaya.db")
     try:
         assert store.get_meta("model") is None
         store.set_meta("model", "deepseek/deepseek-flash")
@@ -107,7 +107,7 @@ def test_meta(tmp_path):
 
 
 def test_pragmas_configured(tmp_path):
-    store = MemoryStore(tmp_path / "zora.db")
+    store = MemoryStore(tmp_path / "zaya.db")
     try:
         assert store._conn.execute("PRAGMA journal_mode").fetchone()[0].lower() == "wal"
         assert store._conn.execute("PRAGMA busy_timeout").fetchone()[0] == 5000
@@ -118,7 +118,7 @@ def test_pragmas_configured(tmp_path):
 
 
 def test_concurrent_writes_are_serialized(tmp_path):
-    store = MemoryStore(tmp_path / "zora.db")
+    store = MemoryStore(tmp_path / "zaya.db")
     try:
         conv = store.get_or_create_conversation("/proj")
         conversation_id = int(conv["id"])
@@ -138,14 +138,14 @@ def test_concurrent_writes_are_serialized(tmp_path):
 
 
 def test_close_is_idempotent_and_context_manager(tmp_path):
-    with MemoryStore(tmp_path / "zora.db") as store:
+    with MemoryStore(tmp_path / "zaya.db") as store:
         store.set_meta("k", "v")
     store.close()
     store.close()
 
 
 def test_schema_version_recorded(tmp_path):
-    store = MemoryStore(tmp_path / "zora.db")
+    store = MemoryStore(tmp_path / "zaya.db")
     try:
         assert store.schema_version() == SCHEMA_VERSION
         assert store.get_meta("schema_version") == str(SCHEMA_VERSION)

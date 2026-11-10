@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from zora.cli_parser import build_parser
+from zaya.cli_parser import build_parser
 
 
 def test_parser_ask_command():
@@ -28,17 +28,17 @@ def test_parser_top_level_flags():
 
 
 def test_textual_modules_expose_public_api():
-    from zora.interface.textual_app import _HELP, TextualSink, ZaiaTextualApp
-    from zora.interface.textual_render import _welcome_art, card
-    from zora.interface.textual_screens import CommandPalette, SessionPicker
+    from zaya.interface.textual_app import _HELP, TextualSink, ZayaTextualApp
+    from zaya.interface.textual_render import _welcome_art, card
+    from zaya.interface.textual_screens import CommandPalette, SessionPicker
 
-    assert ZaiaTextualApp and TextualSink and _HELP
+    assert ZayaTextualApp and TextualSink and _HELP
     assert card and _welcome_art
     assert CommandPalette and SessionPicker
 
 
 def test_welcome_art_wordmark_cabe_na_largura():
-    from zora.interface.textual_render import _welcome_art
+    from zaya.interface.textual_render import _welcome_art
 
     art = _welcome_art(78)
     assert art

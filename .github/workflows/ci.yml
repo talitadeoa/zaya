@@ -16,7 +16,7 @@ jobs:
       - name: Instalar ferramentas
         run: pip install "ruff>=0.15,<1" "mypy>=1.10,<3"
       - name: Lint
-        run: ruff check zora tests
+        run: ruff check zaya tests
       - name: Tipos
         run: mypy
 

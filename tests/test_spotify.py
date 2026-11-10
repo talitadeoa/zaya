@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import zora.spotify.controller as controller
-from zora.spotify.controller import SpotifyCommand, execute
-from zora.spotify.intents import parse_spotify_command
+import zaya.spotify.controller as controller
+from zaya.spotify.controller import SpotifyCommand, execute
+from zaya.spotify.intents import parse_spotify_command
 
 
 def test_parse_comandos_de_spotify():

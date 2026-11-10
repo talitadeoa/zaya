@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from zora.config import Config, write_default_config
+from zaya.config import Config, write_default_config
 
 
 def test_defaults(isolated_env):
     cfg = Config.load(
-        config_path=isolated_env / "missing.toml", env={"ZORA_DATA_DIR": str(isolated_env / "data")}
+        config_path=isolated_env / "missing.toml", env={"ZAYA_DATA_DIR": str(isolated_env / "data")}
     )
     assert cfg.opencode.model == "deepseek/deepseek-flash"
     assert cfg.opencode.agent == "build"
@@ -41,11 +41,11 @@ provider = "say"
         encoding="utf-8",
     )
     env = {
-        "ZORA_OPENCODE_MODEL": "deepseek/deepseek-v4-pro",
-        "ZORA_TTS_PROVIDER": "edge",
-        "ZORA_SECOND_BRAIN_PATH": str(isolated_env / "sb"),
-        "ZORA_SB_AUTO_CONTEXT": "false",
-        "ZORA_DATA_DIR": str(isolated_env / "data2"),
+        "ZAYA_OPENCODE_MODEL": "deepseek/deepseek-v4-pro",
+        "ZAYA_TTS_PROVIDER": "edge",
+        "ZAYA_SECOND_BRAIN_PATH": str(isolated_env / "sb"),
+        "ZAYA_SB_AUTO_CONTEXT": "false",
+        "ZAYA_DATA_DIR": str(isolated_env / "data2"),
     }
     cfg = Config.load(config_path=config_path, env=env)
     assert cfg.opencode.model == "deepseek/deepseek-v4-pro"
@@ -58,11 +58,11 @@ provider = "say"
 
 def test_env_types_are_inferred_from_model(isolated_env):
     env = {
-        "ZORA_UI": "terminal",  # string, antes era tratado como bool
-        "ZORA_AUDIO_SILENCE_MS": "1500",
-        "ZORA_SB_AUTO_CONTEXT": "yes",
-        "ZORA_FAST": "off",
-        "ZORA_DATA_DIR": str(isolated_env / "data"),
+        "ZAYA_UI": "terminal",  # string, antes era tratado como bool
+        "ZAYA_AUDIO_SILENCE_MS": "1500",
+        "ZAYA_SB_AUTO_CONTEXT": "yes",
+        "ZAYA_FAST": "off",
+        "ZAYA_DATA_DIR": str(isolated_env / "data"),
     }
     cfg = Config.load(config_path=isolated_env / "missing.toml", env=env)
     assert cfg.interface.ui == "terminal"

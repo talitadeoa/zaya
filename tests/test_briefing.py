@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from zora.briefing.compose import (
+from zaya.briefing.compose import (
     collect_habits,
     collect_tasks,
     due_slot,

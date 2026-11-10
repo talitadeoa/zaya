@@ -5,10 +5,10 @@ import json
 import httpx
 import pytest
 
-from zora.config import Config, TelegramConfig
-from zora.interface.terminal import TerminalUI
-from zora.telegram.client import TelegramClient, TelegramError, _split_text
-from zora.telegram.service import TelegramService
+from zaya.config import Config, TelegramConfig
+from zaya.interface.terminal import TerminalUI
+from zaya.telegram.client import TelegramClient, TelegramError, _split_text
+from zaya.telegram.service import TelegramService
 
 
 def _cfg(**overrides) -> TelegramConfig:
@@ -44,7 +44,7 @@ async def test_send_message_endpoint_e_payload():
 
 @pytest.mark.asyncio
 async def test_send_voice_usa_sendvoice(tmp_path, monkeypatch):
-    import zora.telegram.client as mod
+    import zaya.telegram.client as mod
 
     source = tmp_path / "a.mp3"
     source.write_bytes(b"fake")

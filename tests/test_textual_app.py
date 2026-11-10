@@ -8,12 +8,12 @@ import numpy as np
 import pytest
 from textual.widgets import Input
 
-from zora.controller.modes import PERSONAS
-from zora.interface import textual_app
-from zora.interface.textual_app import (
+from zaya.controller.modes import PERSONAS
+from zaya.interface import textual_app
+from zaya.interface.textual_app import (
     _HELP,
     TextualSink,
-    ZaiaTextualApp,
+    ZayaTextualApp,
 )
 
 
@@ -103,7 +103,7 @@ class _FakeVoice:
         self.agenda = _FakeAgenda()
         self.session_id = "ses_fake"
         self.mode_key = "assistente"
-        self.mode_name = "Zaia"
+        self.mode_name = "Zaya"
         self.selected_modes: list[str] = []
 
     def modes(self) -> list:
@@ -142,7 +142,7 @@ async def _answer(text: str, sink) -> str:
 
 @pytest.mark.asyncio
 async def test_app_textual_responde_sem_erro():
-    app = ZaiaTextualApp(_answer)
+    app = ZayaTextualApp(_answer)
     async with app.run_test() as pilot:
         await pilot.pause()
         await pilot.press("i")
@@ -155,7 +155,7 @@ async def test_app_textual_responde_sem_erro():
 
 @pytest.mark.asyncio
 async def test_submit_text_finishes_with_answer():
-    app = ZaiaTextualApp(_answer)
+    app = ZayaTextualApp(_answer)
     async with app.run_test() as pilot:
         await pilot.pause()
         captured: dict[str, str] = {}
@@ -173,7 +173,7 @@ async def test_submit_text_reports_answer_errors():
     async def broken(text: str, sink) -> str:
         raise RuntimeError("boom")
 
-    app = ZaiaTextualApp(broken)
+    app = ZayaTextualApp(broken)
     async with app.run_test() as pilot:
         await pilot.pause()
         captured: dict[str, str] = {}
@@ -188,7 +188,7 @@ async def test_submit_text_reports_answer_errors():
 
 @pytest.mark.asyncio
 async def test_submit_text_ignores_second_turn_while_running():
-    app = ZaiaTextualApp(_answer)
+    app = ZayaTextualApp(_answer)
     async with app.run_test() as pilot:
         await pilot.pause()
         calls: list[str] = []
@@ -205,7 +205,7 @@ async def test_submit_text_ignores_second_turn_while_running():
 
 @pytest.mark.asyncio
 async def test_help_command_writes_help_note():
-    app = ZaiaTextualApp(_answer)
+    app = ZayaTextualApp(_answer)
     async with app.run_test() as pilot:
         await pilot.pause()
         written: list[str] = []
@@ -219,7 +219,7 @@ async def test_help_command_writes_help_note():
 
 @pytest.mark.asyncio
 async def test_quit_command_exits_app():
-    app = ZaiaTextualApp(_answer)
+    app = ZayaTextualApp(_answer)
     async with app.run_test() as pilot:
         await pilot.pause()
         exits: list[object] = []
@@ -233,7 +233,7 @@ async def test_quit_command_exits_app():
 
 @pytest.mark.asyncio
 async def test_plain_text_is_sent_to_answer():
-    app = ZaiaTextualApp(_answer)
+    app = ZayaTextualApp(_answer)
     received: list[str] = []
 
     async def fake_submit(text: str) -> None:
@@ -243,17 +243,17 @@ async def test_plain_text_is_sent_to_answer():
         await pilot.pause()
         app.submit_text = fake_submit
 
-        event = SimpleNamespace(value="olá zaia", input=SimpleNamespace(value=""))
+        event = SimpleNamespace(value="olá zaya", input=SimpleNamespace(value=""))
         await app.on_input_submitted(event)
         await asyncio.sleep(0)
         await pilot.pause()
 
-    assert received == ["olá zaia"]
+    assert received == ["olá zaya"]
 
 
 @pytest.mark.asyncio
 async def test_voice_toggle_without_voice_reports_unavailable():
-    app = ZaiaTextualApp(_answer)
+    app = ZayaTextualApp(_answer)
     async with app.run_test() as pilot:
         await pilot.pause()
         await app.action_toggle_voice()
@@ -281,14 +281,14 @@ def test_sink_buffers_and_streams():
 
 
 def test_set_status_is_safe_before_mount():
-    app = ZaiaTextualApp(_answer)
+    app = ZayaTextualApp(_answer)
     app._set_status("antes do mount")
     assert app._status_base == "antes do mount"
 
 
 @pytest.mark.asyncio
 async def test_set_status_is_safe_after_unmount():
-    app = ZaiaTextualApp(_answer)
+    app = ZayaTextualApp(_answer)
     async with app.run_test() as pilot:
         await pilot.pause()
         app._set_status("durante")
@@ -299,7 +299,7 @@ async def test_set_status_is_safe_after_unmount():
 
 @pytest.mark.asyncio
 async def test_startup_sem_modal_de_modo():
-    app = ZaiaTextualApp(_answer, voice=_FakeVoice())
+    app = ZayaTextualApp(_answer, voice=_FakeVoice())
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
         assert len(app.screen_stack) == 1  # nenhum modal na abertura
@@ -309,7 +309,7 @@ async def test_startup_sem_modal_de_modo():
 @pytest.mark.asyncio
 async def test_tab_alterna_o_modo_sem_modal():
     voice = _FakeVoice()
-    app = ZaiaTextualApp(_answer, voice=voice)
+    app = ZayaTextualApp(_answer, voice=voice)
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
         await pilot.press("tab")
@@ -321,18 +321,18 @@ async def test_tab_alterna_o_modo_sem_modal():
 
 @pytest.mark.asyncio
 async def test_modebar_mostra_modo_e_atalho():
-    app = ZaiaTextualApp(_answer, voice=_FakeVoice())
+    app = ZayaTextualApp(_answer, voice=_FakeVoice())
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
         texto = str(app._modebar.render())
         assert "Tab modo" in texto
-        assert "Zaia" in texto
+        assert "Zaya" in texto
 
 
 @pytest.mark.asyncio
 async def test_shortcuts_work_with_voice_and_modals(monkeypatch):
     monkeypatch.setattr(textual_app, "ContinuousListener", _FakeListener)
-    app = ZaiaTextualApp(_answer, voice=_FakeVoice())
+    app = ZayaTextualApp(_answer, voice=_FakeVoice())
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
 
@@ -367,7 +367,7 @@ async def test_shortcuts_work_with_voice_and_modals(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_palette_escape_closes_without_submitting():
-    app = ZaiaTextualApp(_answer, voice=_FakeVoice())
+    app = ZayaTextualApp(_answer, voice=_FakeVoice())
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
         await pilot.press("escape")
@@ -402,7 +402,7 @@ async def test_push_to_talk_submits_transcribed_text(monkeypatch):
     voice.transcriber = SimpleNamespace(
         transcribe=lambda audio, vad_filter=None: "olá por voz"
     )
-    app = ZaiaTextualApp(_answer, voice=voice)
+    app = ZayaTextualApp(_answer, voice=voice)
 
     async with app.run_test() as pilot:
         await pilot.pause()
@@ -424,7 +424,7 @@ async def test_push_to_talk_submits_transcribed_text(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_palette_input_does_not_submit_chat():
-    app = ZaiaTextualApp(_answer)
+    app = ZayaTextualApp(_answer)
     async with app.run_test() as pilot:
         await pilot.pause()
         received: list[str] = []
@@ -445,7 +445,7 @@ async def test_palette_input_does_not_submit_chat():
 
 @pytest.mark.asyncio
 async def test_troca_de_modo_usa_worker_serializado(monkeypatch):
-    app = ZaiaTextualApp(_answer, voice=_FakeVoice())
+    app = ZayaTextualApp(_answer, voice=_FakeVoice())
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
         captured: dict[str, object] = {}

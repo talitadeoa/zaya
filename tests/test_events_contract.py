@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from zora.opencode.events import (
+from zaya.opencode.events import (
     assistant_text,
     event_payload,
     event_session_id,

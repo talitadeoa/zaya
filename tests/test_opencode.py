@@ -6,9 +6,9 @@ import os
 import httpx
 import pytest
 
-from zora.config import Config
-from zora.opencode.client import OpenCodeClient, OpenCodeError
-from zora.opencode.events import (
+from zaya.config import Config
+from zaya.opencode.client import OpenCodeClient, OpenCodeError
+from zaya.opencode.events import (
     assistant_text,
     event_payload,
     event_session_id,
@@ -22,7 +22,7 @@ from zora.opencode.events import (
     tool_activity,
     tool_diff,
 )
-from zora.opencode.models import ModelRef
+from zaya.opencode.models import ModelRef
 
 
 def test_tool_diff_edit():
@@ -161,7 +161,7 @@ def test_v2_message_helpers():
 
 async def test_client_v2_with_mock_transport(tmp_path, isolated_env):
     cfg = Config.load(
-        config_path=isolated_env / "missing.toml", env={"ZORA_DATA_DIR": str(tmp_path / "data")}
+        config_path=isolated_env / "missing.toml", env={"ZAYA_DATA_DIR": str(tmp_path / "data")}
     )
     cfg.opencode.model = "opencode/deepseek-v4.1-flash-free"
     client = OpenCodeClient(cfg, tmp_path / "proj")
@@ -241,7 +241,7 @@ async def test_client_v2_with_mock_transport(tmp_path, isolated_env):
 
 async def test_client_v1_with_mock_transport(tmp_path, isolated_env):
     cfg = Config.load(
-        config_path=isolated_env / "missing.toml", env={"ZORA_DATA_DIR": str(tmp_path / "data")}
+        config_path=isolated_env / "missing.toml", env={"ZAYA_DATA_DIR": str(tmp_path / "data")}
     )
     cfg.opencode.model = "deepseek/deepseek-flash"
     client = OpenCodeClient(cfg, tmp_path / "proj")
@@ -304,7 +304,7 @@ async def test_client_v1_with_mock_transport(tmp_path, isolated_env):
 
 async def test_detection_retries_while_server_starts(tmp_path, isolated_env):
     cfg = Config.load(
-        config_path=isolated_env / "missing.toml", env={"ZORA_DATA_DIR": str(tmp_path / "data")}
+        config_path=isolated_env / "missing.toml", env={"ZAYA_DATA_DIR": str(tmp_path / "data")}
     )
     client = OpenCodeClient(cfg, tmp_path / "proj")
     calls = {"location": 0}
@@ -334,7 +334,7 @@ async def test_detection_retries_while_server_starts(tmp_path, isolated_env):
 
 def _client(tmp_path, isolated_env) -> OpenCodeClient:
     cfg = Config.load(
-        config_path=isolated_env / "missing.toml", env={"ZORA_DATA_DIR": str(tmp_path / "data")}
+        config_path=isolated_env / "missing.toml", env={"ZAYA_DATA_DIR": str(tmp_path / "data")}
     )
     return OpenCodeClient(cfg, tmp_path / "proj")
 
@@ -420,12 +420,12 @@ def test_lock_de_inicializacao_impede_duas_instancias(tmp_path, isolated_env):
     os.close(fd2)
 
 
-async def test_spawn_avisa_quando_outra_zaia_esta_iniciando(tmp_path, isolated_env, monkeypatch):
+async def test_spawn_avisa_quando_outra_zaya_esta_iniciando(tmp_path, isolated_env, monkeypatch):
     client = _client(tmp_path, isolated_env)
-    monkeypatch.setattr("zora.opencode.client.shutil.which", lambda _: "/bin/true")
+    monkeypatch.setattr("zaya.opencode.client.shutil.which", lambda _: "/bin/true")
     monkeypatch.setattr(client, "_startup_lock", lambda: None)
 
-    with pytest.raises(OpenCodeError, match="Outra Zaia esta iniciando"):
+    with pytest.raises(OpenCodeError, match="Outra Zaya esta iniciando"):
         await client._spawn_server()
 
 
@@ -524,8 +524,8 @@ async def test_spawn_persiste_senha_e_pid(tmp_path, isolated_env, monkeypatch):
     client._password = "senha-fixa"
     fake = _FakeProcess(os.getpid())
 
-    monkeypatch.setattr("zora.opencode.client.shutil.which", lambda _: "/bin/true")
-    monkeypatch.setattr("zora.opencode.client.subprocess.Popen", lambda *a, **k: fake)
+    monkeypatch.setattr("zaya.opencode.client.shutil.which", lambda _: "/bin/true")
+    monkeypatch.setattr("zaya.opencode.client.subprocess.Popen", lambda *a, **k: fake)
     monkeypatch.setattr(client, "_port_in_use", lambda: False)
 
     async def healthy() -> dict:
@@ -546,8 +546,8 @@ async def test_spawn_que_falha_nao_registra_pid(tmp_path, isolated_env, monkeypa
     client = _client(tmp_path, isolated_env)
     dead = _FakeProcess(999_999, returncode=1)
 
-    monkeypatch.setattr("zora.opencode.client.shutil.which", lambda _: "/bin/true")
-    monkeypatch.setattr("zora.opencode.client.subprocess.Popen", lambda *a, **k: dead)
+    monkeypatch.setattr("zaya.opencode.client.shutil.which", lambda _: "/bin/true")
+    monkeypatch.setattr("zaya.opencode.client.subprocess.Popen", lambda *a, **k: dead)
     monkeypatch.setattr(client, "_port_in_use", lambda: False)
     monkeypatch.setattr(client, "_terminate", lambda pid: None)
 

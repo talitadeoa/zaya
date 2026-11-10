@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from zora.controller.modes import (
+from zaya.controller.modes import (
     DEFAULT_MODE,
     PERSONAS,
     get_persona,
@@ -41,7 +41,7 @@ def test_persona_block_menciona_modo_e_idioma():
 
 def test_parse_mode_switch_falas_naturais():
     assert parse_mode_switch("muda para o modo carreira") == "carreira"
-    assert parse_mode_switch("Zaia, entra no modo acadêmica") == "academica"
+    assert parse_mode_switch("Zaya, entra no modo acadêmica") == "academica"
     assert parse_mode_switch("modo conversa") == "conversa"
     assert parse_mode_switch("vira a parceira de carreira") == "carreira"
     assert parse_mode_switch("muda para o modo finanças") == "financas"

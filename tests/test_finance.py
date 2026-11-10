@@ -3,7 +3,7 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from zora.finance.quotes import Quote, fetch_quote, format_quote, normalize_ticker
+from zaya.finance.quotes import Quote, fetch_quote, format_quote, normalize_ticker
 
 
 def test_normaliza_ticker():

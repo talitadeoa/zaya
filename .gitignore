@@ -21,10 +21,10 @@ dist/
 *.key
 
 # Dados locais e pessoais (nunca versionar)
-.zora/
+.zaya/
 data/
-zora.db
-zora.db-*
+zaya.db
+zaya.db-*
 sb_index.db
 logs/
 models/

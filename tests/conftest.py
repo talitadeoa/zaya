@@ -4,23 +4,23 @@ from pathlib import Path
 
 import pytest
 
-from zora.config import Config, SecondBrainConfig
-from zora.secondbrain.index import SecondBrainIndex
-from zora.secondbrain.notes import SecondBrain
+from zaya.config import Config, SecondBrainConfig
+from zaya.secondbrain.index import SecondBrainIndex
+from zaya.secondbrain.notes import SecondBrain
 
 
 @pytest.fixture
 def isolated_env(tmp_path, monkeypatch):
     """Isola config/dados do ambiente real do usuario."""
-    monkeypatch.setenv("ZORA_DOTENV", str(tmp_path / "nao-existe.env"))
-    monkeypatch.setenv("ZORA_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("ZAYA_DOTENV", str(tmp_path / "nao-existe.env"))
+    monkeypatch.setenv("ZAYA_DATA_DIR", str(tmp_path / "data"))
     return tmp_path
 
 
 @pytest.fixture
 def cfg(tmp_path, isolated_env):
     return Config.load(
-        config_path=tmp_path / "nao-existe.toml", env={"ZORA_DATA_DIR": str(tmp_path / "data")}
+        config_path=tmp_path / "nao-existe.toml", env={"ZAYA_DATA_DIR": str(tmp_path / "data")}
     )
 
 

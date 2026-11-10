@@ -5,9 +5,9 @@ import json
 import httpx
 import pytest
 
-from zora.config import Config, WhatsAppConfig
-from zora.whatsapp.client import WhatsAppClient, WhatsAppError
-from zora.whatsapp.webhook import parse_webhook
+from zaya.config import Config, WhatsAppConfig
+from zaya.whatsapp.client import WhatsAppClient, WhatsAppError
+from zaya.whatsapp.webhook import parse_webhook
 
 
 def _cfg(**overrides) -> WhatsAppConfig:
@@ -98,7 +98,7 @@ def test_parse_webhook_texto_e_audio():
                                     "id": "wamid.1",
                                     "timestamp": "1700000000",
                                     "type": "text",
-                                    "text": {"body": "oi Zaia"},
+                                    "text": {"body": "oi Zaya"},
                                 },
                                 {
                                     "from": "5584999999999",
@@ -116,7 +116,7 @@ def test_parse_webhook_texto_e_audio():
     }
     messages = parse_webhook(payload)
     assert [m.kind for m in messages] == ["text", "audio"]
-    assert messages[0].text == "oi Zaia"
+    assert messages[0].text == "oi Zaya"
     assert messages[1].media_id == "media-9"
     assert messages[1].mime_type == "audio/ogg"
 

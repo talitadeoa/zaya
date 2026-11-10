@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from zora.finance.watchlist import Watchlist
+from zaya.finance.watchlist import Watchlist
 
 
 def test_adiciona_e_persiste(tmp_path):

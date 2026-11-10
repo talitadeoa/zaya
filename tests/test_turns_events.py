@@ -8,9 +8,9 @@ from pathlib import Path
 
 import pytest
 
-from zora.controller.orchestrator import Orchestrator
-from zora.opencode.client import OpenCodeError
-from zora.opencode.events import iter_sse_json
+from zaya.controller.orchestrator import Orchestrator
+from zaya.opencode.client import OpenCodeError
+from zaya.opencode.events import iter_sse_json
 
 FIXTURES = Path(__file__).parent / "fixtures" / "opencode"
 

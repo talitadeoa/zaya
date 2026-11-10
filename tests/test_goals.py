@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from zora.controller.goals import GoalTracker, goal_block
+from zaya.controller.goals import GoalTracker, goal_block
 
 
 def _tracker(tmp_path):

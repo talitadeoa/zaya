@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from zora.tts.manager import clean_for_speech, split_for_speech
+from zaya.tts.manager import clean_for_speech, split_for_speech
 
 
 def test_clean_for_speech_removes_markdown():
@@ -31,8 +31,8 @@ def test_clean_truncates_at_sentence():
     assert len(clean) <= 84
 
 
-def test_clean_for_speech_pronuncia_zaia():
-    assert clean_for_speech("A Zaia chegou, Zaia.") == "A Záia chegou, Záia."
+def test_clean_for_speech_pronuncia_zaya():
+    assert clean_for_speech("A Zaya chegou, Zaya.") == "A Záia chegou, Záia."
 
 
 def test_split_for_speech():

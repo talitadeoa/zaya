@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import pytest
 
-import zora.browser.session as browser_session
-from zora.browser.session import BrowserError, BrowserSession, playwright_available
-from zora.config import Config
+import zaya.browser.session as browser_session
+from zaya.browser.session import BrowserError, BrowserSession, playwright_available
+from zaya.config import Config
 
 
 def test_playwright_available_retorna_bool():

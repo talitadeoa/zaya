@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from zora.interface.markdown_text import strip_markdown
+from zaya.interface.markdown_text import strip_markdown
 
 
 def test_strip_markdown_headers_and_emphasis():

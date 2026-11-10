@@ -1,18 +1,18 @@
-# ZAIA
+# ZAYA
 
 **A agente pessoal que mora no seu Mac.**
 
-Zaia não é um chat com microfone. É uma agente com identidade, memória e
+Zaya não é um chat com microfone. É uma agente com identidade, memória e
 iniciativa: ela **ouve**, **lembra** do que importa, **age** no seu computador e
 **fala** de volta — no seu tom, no seu ritmo. Por baixo, o **OpenCode** é o motor
-que dá mãos a ela; a Zaia é a pessoa.
+que dá mãos a ela; a Zaya é a pessoa.
 
 ```text
-Você:  "Zaia, o que eu tenho hoje?"
-Zaia:  lê a Agenda, cruza com o Second Brain e responde — falando.
+Você:  "Zaya, o que eu tenho hoje?"
+Zaya:  lê a Agenda, cruza com o Second Brain e responde — falando.
 
 Você:  "revise a arquitetura do projeto de automação"
-Zaia:  consulta o contexto do projeto, envia a tarefa ao OpenCode
+Zaya:  consulta o contexto do projeto, envia a tarefa ao OpenCode
        e volta com o resultado, o diff e a explicação.
 ```
 
@@ -27,7 +27,7 @@ Zaia:  consulta o contexto do projeto, envia a tarefa ao OpenCode
 | 🎭 **Tem personalidade** | Cinco modos, preferências aprendidas e tom próprio. |
 | 🗣️ **Fala** | TTS natural (`edge`) com fallback offline (`say`). |
 
-## Um dia com a Zaia
+## Um dia com a Zaya
 
 ```text
 "bom dia"                         → saudação na hora, sem chamar o modelo
@@ -50,24 +50,24 @@ Zaia:  consulta o contexto do projeto, envia a tarefa ao OpenCode
 uv venv --python 3.12 .venv
 uv pip install --python .venv/bin/python -e ".[dev]"
 
-# comando `zora` no PATH (opcional)
+# comando `zaya` no PATH (opcional)
 uv tool install --python 3.12 --editable .
 ```
 
 Primeiro contato:
 
 ```bash
-zora config --init   # cria ~/.config/zora/config.toml
-zora doctor          # ambiente, servidor, voz e Second Brain
-zora                 # abre a interface
+zaya config --init   # cria ~/.config/zaya/config.toml
+zaya doctor          # ambiente, servidor, voz e Second Brain
+zaya                 # abre a interface
 ```
 
-Segredos ficam em `~/.config/zora/.env` ou no ambiente — nunca no TOML
+Segredos ficam em `~/.config/zaya/.env` ou no ambiente — nunca no TOML
 (veja `.env.example`).
 
 ## O cérebro: modelo e OpenCode
 
-O modelo é declarado no config da Zaia, no formato `provider/model`:
+O modelo é declarado no config da Zaya, no formato `provider/model`:
 
 ```toml
 [opencode]
@@ -76,21 +76,21 @@ model = "deepseek/deepseek-flash"
 
 O OpenCode resolve o provider. Qualquer modelo conectado funciona — DeepSeek,
 OpenCode, OpenAI, Anthropic, local. Troque em tempo real com
-`/modelo provider/model`; `zora doctor --verbose` lista os disponíveis.
+`/modelo provider/model`; `zaya doctor --verbose` lista os disponíveis.
 
 > **Modelos `*-free` têm cota.** Se aparecer `Free usage limit reached`,
 > conecte um provider (ex.: DeepSeek) e aponte o `model` para ele.
 
-A Zaia mantém o servidor OpenCode vivo entre execuções, numa porta estável por
-projeto, e guarda a credencial local em arquivo `0600` — abrir a Zaia de novo é
+A Zaya mantém o servidor OpenCode vivo entre execuções, numa porta estável por
+projeto, e guarda a credencial local em arquivo `0600` — abrir a Zaya de novo é
 quase instantâneo.
 
 ## Conversando
 
 ```bash
-zora            # interface padrão (TUI)
-zora -old       # terminal completo
-zora --watch    # reinicia sozinha quando o código muda
+zaya            # interface padrão (TUI)
+zaya -old       # terminal completo
+zaya --watch    # reinicia sozinha quando o código muda
 ```
 
 - **Voz contínua (padrão):** fale sem apertar Enter; a fala termina após ~5 s de
@@ -99,13 +99,13 @@ zora --watch    # reinicia sozinha quando o código muda
 - **Sem confirmação de transcrição:** o texto reconhecido vai direto para ela.
 - Diga **"parar"**, **"modo texto"** ou **"sair"** — ou use os atalhos.
 - **M** também desliga o microfone sozinho após 30 s de silêncio
-  (`ZORA_AUDIO_AUTO_MUTE_SECONDS`; `0` desativa).
+  (`ZAYA_AUDIO_AUTO_MUTE_SECONDS`; `0` desativa).
 
 ### Execução única
 
 ```bash
-zora ask "revise o README e sugira melhorias"
-zora ask --no-voice "responda apenas: ok"
+zaya ask "revise o README e sugira melhorias"
+zaya ask --no-voice "responda apenas: ok"
 ```
 
 Reaproveita a conversa do projeto — ótimo para scripts e smoke tests.
@@ -152,18 +152,18 @@ com SQLite FTS5 — busca offline e incremental. Links `[[Nome da Nota]]`, tags 
 frontmatter ou `#tag`.
 
 - Criar nota é **aditivo** e não pede confirmação por padrão.
-- Editar/excluir **pedem confirmação**, geram backup em `.zora/backups` e vão
-  para `.zora/trash` — nunca para o lixo do sistema.
+- Editar/excluir **pedem confirmação**, geram backup em `.zaya/backups` e vão
+  para `.zaya/trash` — nunca para o lixo do sistema.
 - Ela **nunca escreve fora da raiz** configurada.
 - `reindex_on_start = false`: o índice só é refeito no primeiro uso ou em
   `/indexar`.
 
 A memória operacional (conversas, turnos, registros) fica em SQLite, em
-`~/.local/share/zora/`.
+`~/.local/share/zaya/`.
 
 ### Memória diária (consolidação)
 
-No fim do dia, a Zaia transforma os turnos em uma nota no Second Brain —
+No fim do dia, a Zaya transforma os turnos em uma nota no Second Brain —
 `Memoria/Memória AAAA-MM-DD.md`, já indexada e recuperável nos dias seguintes.
 
 - Roda às **23:00** (enquanto ela está aberta) e, se você fechar depois disso,
@@ -194,41 +194,41 @@ coisas criadas no dia).
 **Telegram** — sem número dedicado:
 
 ```bash
-zora telegram updates        # descobre o chat_id
-zora telegram me
-zora telegram serve          # responde texto e áudio
+zaya telegram updates        # descobre o chat_id
+zaya telegram me
+zaya telegram serve          # responde texto e áudio
 ```
 
 **WhatsApp Cloud API** — envio e webhook:
 
 ```bash
-zora whatsapp send "bom dia"
-zora whatsapp audio voz.mp3
-zora whatsapp serve
+zaya whatsapp send "bom dia"
+zaya whatsapp audio voz.mp3
+zaya whatsapp serve
 ```
 
-**Spotify** — `zora spotify status|toggle|next|volume 40`; por voz também.
+**Spotify** — `zaya spotify status|toggle|next|volume 40`; por voz também.
 
 **Navegador (Playwright)** — perfil persistente com seus logins:
 
 ```bash
 uv pip install --python .venv/bin/python -e ".[browser]"
 .venv/bin/playwright install chromium
-zora browser login https://www.upwork.com
-zora browser text https://exemplo.com
-zora browser screenshot https://exemplo.com captura.png
+zaya browser login https://www.upwork.com
+zaya browser text https://exemplo.com
+zaya browser screenshot https://exemplo.com captura.png
 ```
 
-**Agenda e tarefas** — lê a página *"tarefas pra zora"*, sincroniza o status e
+**Agenda e tarefas** — lê a página *"tarefas pra zaya"*, sincroniza o status e
 acompanha o dia. `/tarefas sync` quando quiser; para checagem automática,
-`ZORA_AGENDA_TASKS_POLL_SECONDS=30`.
+`ZAYA_AGENDA_TASKS_POLL_SECONDS=30`.
 
 **Metas, foco e lua** — `/metas`, `/foco definir semanal <texto>`; nas fases
 principais da lua ela propõe o ritual do ciclo.
 
 ## Iniciativa
 
-Enquanto está aberta, a Zaia pode:
+Enquanto está aberta, a Zaya pode:
 
 - saudar você ao iniciar (respeitando horário de silêncio);
 - avisar lembretes que você pediu;
@@ -306,7 +306,7 @@ chega. Para voz falada mais rápida e offline: `/voz say`.
 ## Como ela é feita
 
 ```text
-zora/
+zaya/
   audio/recorder.py      # microfone + VAD
   stt/faster_whisper.py  # transcrição local
   tts/                   # edge-tts + say, limpeza de Markdown
@@ -315,11 +315,11 @@ zora/
   memory/store.py        # conversas e turnos (SQLite)
   controller/            # intenções, personas, iniciativa
   interface/             # TUI e terminal Rich
-  cli.py                 # zora, doctor, config, index, search, note
+  cli.py                 # zaya, doctor, config, index, search, note
 ```
 
-O comando continua se chamando `zora` por enquanto (pacote, pastas `~/.config/zora`
-e variáveis `ZORA_*`); o **nome dela** é Zaia.
+O comando continua se chamando `zaya` por enquanto (pacote, pastas `~/.config/zaya`
+e variáveis `ZAYA_*`); o **nome dela** é Zaya.
 
 ## Testes
 
@@ -332,7 +332,7 @@ sem microfone, download de modelo ou rede.
 
 ## Se algo não funcionar
 
-- `zora doctor` mostra o que falta.
+- `zaya doctor` mostra o que falta.
 - **“Free usage limit reached”** → modelo `*-free` sem cota; conecte um provider
   e ajuste `model` (ex.: `deepseek/deepseek-flash`). Reinicie com `/reiniciar`.
 - **Microfone** → permissão de Microfone para o Terminal em Ajustes do Sistema.

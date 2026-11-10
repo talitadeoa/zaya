@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from zora.audio.recorder import UtteranceSegmenter
-from zora.config import AudioConfig
+from zaya.audio.recorder import UtteranceSegmenter
+from zaya.config import AudioConfig
 
 SR = 16000
 BLOCK = int(SR * 0.03)  # 30ms

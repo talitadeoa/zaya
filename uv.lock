@@ -1062,7 +1062,7 @@ wheels = [
 ]
 
 [[package]]
-name = "zora-assistant"
+name = "zaya-assistant"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

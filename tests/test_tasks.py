@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from zora.tasks.store import TaskStore
+from zaya.tasks.store import TaskStore
 
 
 def test_sync_quebra_br_e_bullets(tmp_path):

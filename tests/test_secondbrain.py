@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from tests.conftest import write_note
-from zora.secondbrain.notes import ConfirmationRequired, NoteConflict
+from zaya.secondbrain.notes import ConfirmationRequired, NoteConflict
 
 
 def seed(brain):
@@ -95,7 +95,7 @@ def test_create_update_delete_with_backup(brain):
     note = brain.create_note(
         "Nova Ideia",
         "testar links e tags",
-        tags=["zora", "idea"],
+        tags=["zaya", "idea"],
         links=["Projeto de Automação"],
         confirm=True,
     )
@@ -110,13 +110,13 @@ def test_create_update_delete_with_backup(brain):
 
     updated = brain.update_note("Nova Ideia", "# Nova Ideia\n\nconteúdo atualizado", confirm=True)
     assert "conteúdo atualizado" in updated.path.read_text(encoding="utf-8")
-    backups = list((brain.root / ".zora" / "backups").rglob("Nova Ideia.md"))
+    backups = list((brain.root / ".zaya" / "backups").rglob("Nova Ideia.md"))
     assert backups, "backup deveria existir"
 
     removed = brain.delete_note("Nova Ideia", confirm=True)
     assert not note.path.exists()
     assert removed.exists()
-    assert ".zora/trash" in str(removed)
+    assert ".zaya/trash" in str(removed)
 
 
 def test_path_traversal_blocked(brain):

@@ -7,17 +7,17 @@ from types import SimpleNamespace
 
 import pytest
 
-from zora.config import Config, SecondBrainConfig
-from zora.memory.consolidation import (
+from zaya.config import Config, SecondBrainConfig
+from zaya.memory.consolidation import (
     DailyMemory,
     compose_note,
     day_bounds,
     format_turns,
     parse_day,
 )
-from zora.memory.store import MemoryStore
-from zora.secondbrain.index import SecondBrainIndex
-from zora.secondbrain.notes import SecondBrain
+from zaya.memory.store import MemoryStore
+from zaya.secondbrain.index import SecondBrainIndex
+from zaya.secondbrain.notes import SecondBrain
 
 
 class _FakeClient:
@@ -44,10 +44,10 @@ class _FakeClient:
 def memoria(tmp_path, isolated_env):
     cfg = Config.load(
         config_path=tmp_path / "missing.toml",
-        env={"ZORA_DATA_DIR": str(tmp_path / "data")},
+        env={"ZAYA_DATA_DIR": str(tmp_path / "data")},
     )
     cfg.memory.use_llm = False
-    store = MemoryStore(tmp_path / "zora.db")
+    store = MemoryStore(tmp_path / "zaya.db")
     sb_cfg = SecondBrainConfig(path=str(tmp_path / "brain"), default_folder="Inbox")
     index = SecondBrainIndex(sb_cfg, tmp_path / "sb.db")
     brain = SecondBrain(sb_cfg, index)
@@ -86,7 +86,7 @@ def test_format_turns_ignora_contexto_e_limita():
     ]
     texto = format_turns(turns, max_turns=10, max_chars=500)
     assert "Talita: olá" in texto
-    assert "Zaia: oi" in texto
+    assert "Zaya: oi" in texto
     assert "Notas usadas" not in texto
 
 
