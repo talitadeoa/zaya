@@ -13,7 +13,7 @@ from rich.syntax import Syntax
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.binding import Binding, BindingType
-from textual.containers import Vertical, VerticalScroll
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.css.query import NoMatches
 from textual.widgets import Input, Static
 
@@ -37,6 +37,17 @@ from zaya.interface.textual_render import (
 )
 from zaya.interface.textual_screens import CommandPalette, SessionPicker
 from zaya.interface.textual_sink import TextualSink
+
+
+class MenuButton(Static):
+    """Botão de atalhos no canto esquerdo da barra superior."""
+
+    def __init__(self) -> None:
+        super().__init__("⭘", id="menu-button")
+        self.tooltip = "Atalhos (F1)"
+
+    async def on_click(self, event) -> None:
+        await self.app.run_action("command_palette")
 
 
 class ZayaTextualApp(App):
@@ -72,11 +83,28 @@ class ZayaTextualApp(App):
     .card {
         margin-bottom: 1;
     }
-    #modebar {
+    #topbar {
+        height: 1;
+        background: #12151b;
+    }
+    #menu-button {
+        width: 3;
         height: 1;
         background: #12151b;
         color: #c9bce8;
-        padding: 0 1;
+        content-align: center middle;
+    }
+    #menu-button:hover {
+        background: #b3a1e0;
+        color: #0f1115;
+        text-style: bold;
+    }
+    #modebar {
+        width: 1fr;
+        height: 1;
+        background: #12151b;
+        color: #c9bce8;
+        padding: 0 1 0 0;
     }
     #status {
         height: 1;
@@ -131,7 +159,11 @@ class ZayaTextualApp(App):
 
     def compose(self) -> ComposeResult:
         yield Vertical(
-            Static("", id="modebar"),
+            Horizontal(
+                MenuButton(),
+                Static("", id="modebar"),
+                id="topbar",
+            ),
             VerticalScroll(id="chat"),
             Static("", id="status"),
             Input(id="input", placeholder="fale ou digite…"),
@@ -209,7 +241,6 @@ class ZayaTextualApp(App):
         if self._voice is not None:
             session = getattr(self._voice, "session_id", "") or ""
         bar = Text()
-        bar.append("▌ ", style=f"bold {ACCENT}")
         bar.append(name, style=f"bold {ACCENT}")
         bar.append("  ·  ", style=MUTED)
         if session:

@@ -15,6 +15,7 @@ from zaya.interface.textual_app import (
     TextualSink,
     ZayaTextualApp,
 )
+from zaya.interface.textual_screens import CommandPalette
 
 
 class _FakeListener:
@@ -463,3 +464,13 @@ async def test_troca_de_modo_usa_worker_serializado(monkeypatch):
 
     assert captured.get("group") == "modo"
     assert captured.get("exclusive") is True
+
+
+@pytest.mark.asyncio
+async def test_menu_button_abre_paleta_de_atalhos():
+    app = ZayaTextualApp(_answer, voice=_FakeVoice())
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        await pilot.click("#menu-button")
+        await pilot.pause()
+        assert isinstance(app.screen, CommandPalette)
