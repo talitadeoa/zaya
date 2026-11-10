@@ -1,4 +1,4 @@
-"""Leitura da Agenda (Supabase) para avisos proativos da Zora."""
+"""Leitura da Agenda (Supabase) para avisos proativos da Zaia."""
 
 from __future__ import annotations
 

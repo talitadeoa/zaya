@@ -42,7 +42,7 @@ UNIT_SECONDS: dict[str, float] = {
 }
 
 PREFIX_RE = re.compile(
-    r"^\s*(?:zora[,\s]+)?"
+    r"^\s*(?:zaia[,\s]+)?"
     r"(?:(?:me\s+)?lembr(?:e|a|ar)(?:-me)?|(?:me\s+)?avise(?:-me)?|lembrete)"
     r"\s*[:,]?\s*(?:de\s+|que\s+)?",
     re.IGNORECASE,
@@ -197,11 +197,11 @@ def parse_reminder(
 
 
 VOICE_STOP_RE = re.compile(
-    r"^\s*(?:zora[,\s]+)?(?:parar|pare|para|pausar|pause|modo\s+texto|texto|voltar)\s*[.!?]?\s*$",
+    r"^\s*(?:zaia[,\s]+)?(?:parar|pare|para|pausar|pause|modo\s+texto|texto|voltar)\s*[.!?]?\s*$",
     re.IGNORECASE,
 )
 VOICE_QUIT_RE = re.compile(
-    r"^\s*(?:zora[,\s]+)?(?:sair|tchau|encerrar|desligar|fechar)\s*[.!?]?\s*$",
+    r"^\s*(?:zaia[,\s]+)?(?:sair|tchau|encerrar|desligar|fechar)\s*[.!?]?\s*$",
     re.IGNORECASE,
 )
 

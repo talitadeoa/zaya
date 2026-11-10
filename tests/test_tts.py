@@ -31,8 +31,8 @@ def test_clean_truncates_at_sentence():
     assert len(clean) <= 84
 
 
-def test_clean_for_speech_pronuncia_zora():
-    assert clean_for_speech("A Zora chegou, Zora.") == "A Zóra chegou, Zóra."
+def test_clean_for_speech_pronuncia_zaia():
+    assert clean_for_speech("A Zaia chegou, Zaia.") == "A Záia chegou, Záia."
 
 
 def test_split_for_speech():

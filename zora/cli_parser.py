@@ -10,7 +10,7 @@ from zora import __version__
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="zora",
-        description="Zora: assistente pessoal de voz integrada ao OpenCode e ao Second Brain.",
+        description="Zaia: assistente pessoal de voz integrada ao OpenCode e ao Second Brain.",
     )
     parser.add_argument("--config", help="caminho do config TOML", default=None)
     parser.add_argument("--verbose", action="store_true", help="logs também no terminal")
@@ -34,7 +34,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--watch",
         action="store_true",
-        help="reinicia sozinha quando arquivos .py da Zora mudam",
+        help="reinicia sozinha quando arquivos .py da Zaia mudam",
     )
     parser.add_argument("--version", action="version", version=f"zora {__version__}")
     sub = parser.add_subparsers(dest="command")
@@ -84,7 +84,7 @@ def build_parser() -> argparse.ArgumentParser:
     tg_updates.add_argument("--timeout", type=int)
     tg_poll = telegram_sub.add_parser("poll", help="fica ouvindo mensagens (long polling)")
     tg_poll.add_argument("--echo", action="store_true", help="responde ecoando o texto")
-    telegram_sub.add_parser("serve", help="escuta e executa as mensagens na Zora")
+    telegram_sub.add_parser("serve", help="escuta e executa as mensagens na Zaia")
     telegram_sub.add_parser("me", help="mostra dados do bot")
 
     spotify_parser = sub.add_parser("spotify", help="controla o Spotify no macOS")

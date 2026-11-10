@@ -1,7 +1,7 @@
 """Respostas locais instantaneas para conversa trivial (sem LLM).
 
 Saudacoes, "tudo bem?" e agradecimentos nao precisam de uma ida ao OpenCode.
-Aqui a Zora responde na hora, mantendo o tom caloroso, e qualquer mensagem com
+Aqui a Zaia responde na hora, mantendo o tom caloroso, e qualquer mensagem com
 conteudo real (pedido, duvida, tarefa) continua indo para o agente.
 """
 
@@ -178,14 +178,14 @@ _MIRROR_GREETINGS = {
 
 
 def _normalize(text: str) -> str:
-    """Minusculas, sem acentos/pontuacao, sem o nome "zora" nas pontas."""
+    """Minusculas, sem acentos/pontuacao, sem o nome "zaia" nas pontas."""
     value = unicodedata.normalize("NFKD", text or "")
     value = "".join(ch for ch in value if not unicodedata.combining(ch))
     value = value.lower()
     value = re.sub(r"[^a-z0-9\s]", " ", value)
     value = re.sub(r"\s+", " ", value).strip()
-    value = re.sub(r"^(?:zora|zorinha)\b\s*", "", value)
-    value = re.sub(r"\s*\b(?:zora|zorinha)$", "", value)
+    value = re.sub(r"^zaia\b\s*", "", value)
+    value = re.sub(r"\s*\bzaia$", "", value)
     return value.strip()
 
 
@@ -240,7 +240,7 @@ def fast_reply(
 
     if normalized in _IDENTITY:
         return (
-            "Sou a Zora, sua assistente pessoal. "
+            "Sou a Zaia, sua assistente pessoal. "
             "Cuido de agenda, memória e projetos junto com você."
         )
 

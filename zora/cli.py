@@ -1,4 +1,4 @@
-"""CLI da Zora: `zora`, `zora doctor`, `zora config`, `zora index`, ..."""
+"""CLI da Zaia: `zora`, `zora doctor`, `zora config`, `zora index`, ..."""
 
 from __future__ import annotations
 

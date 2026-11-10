@@ -1,7 +1,7 @@
 [project]
 name = "zora-assistant"
 version = "0.1.0"
-description = "Zora: assistente pessoal de voz integrada ao OpenCode e a um Second Brain em Markdown."
+description = "Zaia: assistente pessoal de voz integrada ao OpenCode e a um Second Brain em Markdown."
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 license = { text = "MIT" }

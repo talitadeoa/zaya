@@ -89,7 +89,7 @@ def test_voice_control():
     assert classify_voice_control("parar") == "stop"
     assert classify_voice_control("para") == "stop"
     assert classify_voice_control("texto") == "stop"
-    assert classify_voice_control("Zora, modo texto.") == "stop"
+    assert classify_voice_control("Zaia, modo texto.") == "stop"
     assert classify_voice_control("sair") == "quit"
     assert classify_voice_control("tchau!") == "quit"
     assert classify_voice_control("continuar o projeto") is None

@@ -42,7 +42,7 @@ def test_parse_quoted_title():
 
 def test_non_register():
     assert parse_register("qual é a capital da França?") is None
-    assert parse_register("Zora, revise o projeto") is None
+    assert parse_register("Zaia, revise o projeto") is None
 
 
 def test_parse_preference():

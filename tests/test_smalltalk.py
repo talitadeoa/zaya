@@ -25,8 +25,8 @@ def test_greeting_uses_time_of_day():
     assert _tail(reply, "Bom dia") in GREETING_TAILS
 
 
-def test_greeting_with_zora_and_punctuation():
-    reply = fast_reply("Oi, Zora!", now=NOW)
+def test_greeting_with_zaia_and_punctuation():
+    reply = fast_reply("Oi, Zaia!", now=NOW)
     assert reply is not None
     assert _tail(reply, "Bom dia") in GREETING_TAILS
 
@@ -65,7 +65,7 @@ def test_thanks():
 def test_identity():
     reply = fast_reply("quem é você?", now=NOW)
     assert reply is not None
-    assert "Zora" in reply
+    assert "Zaia" in reply
 
 
 def test_time():

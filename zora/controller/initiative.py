@@ -204,11 +204,11 @@ class InitiativeMixin(OrchestratorContract):
             f"projeto {self.directory}: {title}. Não execute nada e não use "
             "ferramentas; responda apenas o plano, em português."
         )
-        system = "Você é a Zora. Seja objetiva e prática."
+        system = "Você é a Zaia. Seja objetiva e prática."
         try:
             if not self._task_session_id:
                 session = await self.client.create_session(
-                    title="Zora — tarefas", model=self.client.model
+                    title="Zaia — tarefas", model=self.client.model
                 )
                 self._task_session_id = session.id
             response = await asyncio.wait_for(
@@ -299,13 +299,13 @@ class InitiativeMixin(OrchestratorContract):
             "dela toda vez."
         )
         system = (
-            "Você é a Zora, assistente pessoal da Talita. Seja calorosa, "
+            "Você é a Zaia, assistente pessoal da Talita. Seja calorosa, "
             "carinhosa e espontânea, sem exageros."
         )
         try:
             if not self._initiative_session_id:
                 session = await self.client.create_session(
-                    title="Zora — iniciativa", model=self.client.model
+                    title="Zaia — iniciativa", model=self.client.model
                 )
                 self._initiative_session_id = session.id
             response = await asyncio.wait_for(

@@ -1,6 +1,6 @@
 """Limpeza de Markdown para exibicao no terminal (sem depender do Rich).
 
-A Zora fala a resposta enquanto o texto chega; exibir os marcadores crus de
+A Zaia fala a resposta enquanto o texto chega; exibir os marcadores crus de
 Markdown (`**`, `#`, crases, links) deixa a conversa poluida. Aqui aplicamos uma
 limpeza textual best-effort em trechos (frases/linhas) completos.
 """

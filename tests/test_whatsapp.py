@@ -98,7 +98,7 @@ def test_parse_webhook_texto_e_audio():
                                     "id": "wamid.1",
                                     "timestamp": "1700000000",
                                     "type": "text",
-                                    "text": {"body": "oi Zora"},
+                                    "text": {"body": "oi Zaia"},
                                 },
                                 {
                                     "from": "5584999999999",
@@ -116,7 +116,7 @@ def test_parse_webhook_texto_e_audio():
     }
     messages = parse_webhook(payload)
     assert [m.kind for m in messages] == ["text", "audio"]
-    assert messages[0].text == "oi Zora"
+    assert messages[0].text == "oi Zaia"
     assert messages[1].media_id == "media-9"
     assert messages[1].mime_type == "audio/ogg"
 

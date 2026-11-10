@@ -7,7 +7,7 @@ import re
 from zora.spotify.controller import SpotifyCommand
 
 _M = r"(?:m[úu]sica|spotify|faixa|track)"
-_PREFIX = r"^\s*(?:zora[,\s]+)?"
+_PREFIX = r"^\s*(?:zaia[,\s]+)?"
 
 _PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (

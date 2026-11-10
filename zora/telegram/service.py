@@ -1,4 +1,4 @@
-"""Serviço que escuta o Telegram e encaminha mensagens para a Zora."""
+"""Serviço que escuta o Telegram e encaminha mensagens para a Zaia."""
 
 from __future__ import annotations
 
@@ -72,7 +72,7 @@ class TelegramService:
         text = (message.get("text") or "").strip()
         if text in {"/start", "/iniciar"}:
             await self.client.send_message(
-                "Oi! Sou a Zora. Manda texto ou áudio que eu executo e te aviso "
+                "Oi! Sou a Zaia. Manda texto ou áudio que eu executo e te aviso "
                 "aqui quando terminar.",
                 chat_id=chat_id,
             )

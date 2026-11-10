@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass, field
 
 REGISTER_RE = re.compile(
-    r"^\s*(?:zora[,\s]+)?"
+    r"^\s*(?:zaia[,\s]+)?"
     r"(?:registre|registra|anote|anota|salve|salva|guarde|guarda|"
     r"crie\s+uma\s+nota(?:\s+sobre)?|cria\s+uma\s+nota(?:\s+sobre)?|nova\s+nota)"
     r"\b[:,]?\s*(.*)$",
@@ -14,14 +14,14 @@ REGISTER_RE = re.compile(
 )
 
 PREFERENCE_RE = re.compile(
-    r"^\s*(?:zora[,\s]+)?"
+    r"^\s*(?:zaia[,\s]+)?"
     r"(?:anote|anota|registre|registra|salve|salva|guarde|guarda)"
     r"\s+(?:isso\s+)?(?:a\s+|uma\s+)?(?:como\s+)?prefer[êe]ncia\s*[:,]?\s*(.+)$",
     re.IGNORECASE | re.DOTALL,
 )
 
 LEMBRAR_RE = re.compile(
-    r"^\s*(?:zora[,\s]+)?lembre(?:-se)?\s+que\s+(.+)$",
+    r"^\s*(?:zaia[,\s]+)?lembre(?:-se)?\s+que\s+(.+)$",
     re.IGNORECASE | re.DOTALL,
 )
 

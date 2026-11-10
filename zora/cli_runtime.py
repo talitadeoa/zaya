@@ -64,7 +64,7 @@ async def _run_app(cfg: Config, verbose: bool) -> None:
 
 
 async def _run_textual(cfg: Config, verbose: bool) -> None:
-    from zora.interface.textual_app import ZoraTextualApp
+    from zora.interface.textual_app import ZaiaTextualApp
 
     orchestrator, store, index = _build_app(cfg, verbose, quiet=True)
     await orchestrator.prepare()
@@ -75,7 +75,7 @@ async def _run_textual(cfg: Config, verbose: bool) -> None:
     async def cleanup() -> None:
         await orchestrator.aclose()
 
-    app = ZoraTextualApp(
+    app = ZaiaTextualApp(
         answer, cleanup=cleanup, subtitle=cfg.opencode.model, voice=orchestrator
     )
     result = None
@@ -107,7 +107,7 @@ def _code_snapshot() -> dict[str, float]:
 
 
 def _watch_mode() -> None:
-    """Roda a Zora e reinicia o processo quando o código-fonte muda."""
+    """Roda a Zaia e reinicia o processo quando o código-fonte muda."""
     args = [arg for arg in sys.argv[1:] if arg != "--watch"]
     cmd = [sys.executable, "-m", "zora", *args]
     child = subprocess.Popen(cmd)
