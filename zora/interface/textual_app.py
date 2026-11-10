@@ -13,9 +13,9 @@ from rich.syntax import Syntax
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.binding import Binding, BindingType
-from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.containers import Vertical, VerticalScroll
 from textual.css.query import NoMatches
-from textual.widgets import Header, Input, Static
+from textual.widgets import Input, Static
 
 from zora.audio.recorder import ContinuousListener
 from zora.controller.modes import PERSONAS, get_persona
@@ -53,61 +53,53 @@ class ZaiaTextualApp(App):
         Binding("f1", "command_palette", "Comandos"),
         Binding("f2", "sessions", "Sessões"),
         Binding("f3", "cycle_mode", "Modo"),
-        Binding("ctrl+t", "toggle_theme", "Tema"),
         Binding("ctrl+l", "clear_chat", "Limpar"),
     ]
 
     CSS = """
     Screen {
-        background: #0b0614;
-        color: #e5e7eb;
+        background: #0f1115;
+        color: #e3e6eb;
     }
     #chat {
         border: none;
-        padding: 0 1;
+        padding: 1 1 0 1;
         scrollbar-size-vertical: 1;
         scrollbar-size-horizontal: 0;
-        scrollbar-color: #79DCFD;
-        scrollbar-background: #140a24;
+        scrollbar-color: #3a424f;
+        scrollbar-background: #0f1115;
     }
     .card {
         margin-bottom: 1;
     }
     #modebar {
         height: 1;
-        background: #140a24;
-        color: #e6c3fd;
+        background: #12151b;
+        color: #c9bce8;
         padding: 0 1;
     }
     #status {
         height: 1;
-        color: #A8EFDB;
+        color: #8fbfae;
         padding: 0 1;
     }
     #commandbar {
         height: 1;
-        background: #0e7490;
-        color: #e0f2fe;
+        background: #12151b;
+        color: #7b8494;
         padding: 0 1;
     }
-    #input-frame {
-        height: 5;
-        margin-bottom: 1;
-        background: #1a1230;
-    }
-    #input-rail {
-        width: 1;
-        height: 1fr;
-        background: #79DCFD;
-    }
     #input {
-        border: none;
-        background: #1a1230;
-        color: #e5e7eb;
-        height: 1fr;
+        height: 3;
+        margin: 0 1;
+        border: round #262c37;
+        background: #151922;
+        color: #e3e6eb;
+        padding: 0 1;
     }
     #input:focus {
-        background: #241a3d;
+        background: #1b202a;
+        border: round #b3a1e0;
     }
     """
 
@@ -138,16 +130,11 @@ class ZaiaTextualApp(App):
         self._chat_ref: VerticalScroll | None = None
 
     def compose(self) -> ComposeResult:
-        yield Header(show_clock=False)
         yield Vertical(
             Static("", id="modebar"),
             VerticalScroll(id="chat"),
             Static("", id="status"),
-            Horizontal(
-                Static("", id="input-rail"),
-                Input(id="input"),
-                id="input-frame",
-            ),
+            Input(id="input", placeholder="fale ou digite…"),
         )
         yield Static(_SHORTCUTS, id="commandbar")
 
@@ -724,7 +711,6 @@ class ZaiaTextualApp(App):
             "Trocar modo",
             "Sessões",
             "Nova sessão",
-            "Alternar tema",
             "Limpar conversa",
             "Focar entrada",
             "Chinês on/off",
@@ -746,8 +732,6 @@ class ZaiaTextualApp(App):
             self.action_sessions()
         elif label == "Nova sessão":
             self.run_worker(self._new_session_ui(), group="modo", exclusive=True)
-        elif label == "Alternar tema":
-            self.action_toggle_theme()
         elif label == "Limpar conversa":
             self.action_clear_chat()
         elif label == "Focar entrada":
@@ -760,10 +744,6 @@ class ZaiaTextualApp(App):
             self.exit(42)
         elif label == "Sair":
             self.exit()
-
-    def action_toggle_theme(self) -> None:
-        current = str(getattr(self, "theme", ""))
-        self.theme = "textual-light" if "dark" in current else "textual-dark"
 
     def action_clear_chat(self) -> None:
         self._clear_messages()

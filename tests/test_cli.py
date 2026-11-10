@@ -37,11 +37,11 @@ def test_textual_modules_expose_public_api():
     assert CommandPalette and SessionPicker
 
 
-def test_welcome_art_lado_a_lado_cabe_na_largura():
+def test_welcome_art_wordmark_cabe_na_largura():
     from zora.interface.textual_render import _welcome_art
 
     art = _welcome_art(78)
     assert art
-    assert all(len(segments) >= 2 for segments in art)
+    assert len(art) <= 8
     largura = max(sum(len(texto) for texto, _ in segments) for segments in art)
     assert largura <= 78

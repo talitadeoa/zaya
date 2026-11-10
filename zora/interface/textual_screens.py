@@ -19,14 +19,14 @@ class CommandPalette(ModalScreen[str | None]):
     CSS = """
     CommandPalette {
         align: center middle;
-        background: #000000aa;
+        background: #05070acc;
     }
     #palette {
         width: 64;
         height: auto;
         max-height: 20;
-        border: round #D644FB;
-        background: #140a24;
+        border: round #b3a1e0;
+        background: #151922;
         padding: 1;
     }
     #palette-input {
@@ -71,33 +71,33 @@ class SessionPicker(ModalScreen[object]):
     CSS = """
     SessionPicker {
         align: center middle;
-        background: #000000cc;
+        background: #05070add;
     }
     #session-box {
         width: 84;
         height: auto;
         max-height: 26;
-        border: round #79DCFD;
-        background: #0b1a22;
+        border: round #8fb0c9;
+        background: #12171f;
         padding: 1 2;
     }
     #session-title {
-        color: #79DCFD;
+        color: #8fb0c9;
         text-style: bold;
         margin-bottom: 1;
     }
     #session-hint {
-        color: #8a8a99;
+        color: #7b8494;
         margin-top: 1;
     }
     #session-list {
         border: none;
-        background: #0b1a22;
+        background: #12171f;
         padding: 0;
     }
     #session-list > .option-list--option-highlighted {
-        background: #79DCFD;
-        color: #041019;
+        background: #8fb0c9;
+        color: #0f1115;
         text-style: bold;
     }
     """
