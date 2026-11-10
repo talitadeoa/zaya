@@ -16,6 +16,7 @@ BG = "#0f1115"
 SURFACE = "#151922"
 SURFACE_ALT = "#1b202a"
 BORDER = "#262c37"
+SHADOW = "#3a2f52"
 
 # Superficies dos cards: apenas um leve desvio do fundo; o rail colorido faz o
 # papel de destaque, sem pintar a caixa inteira.
@@ -64,13 +65,51 @@ def _vgradient(count: int, stops: list[str]) -> list[str]:
     return colors
 
 
+def _add_shadow(
+    rows: list[list[tuple[str, str]]], color: str, char: str = "░"
+) -> list[list[tuple[str, str]]]:
+    """Desenha uma sombra deslocada 1 coluna/1 linha atras do wordmark."""
+    grid: list[list[tuple[str, str]]] = []
+    for segments in rows:
+        line = "".join(text for text, _ in segments)
+        colors: list[str] = []
+        for text, style in segments:
+            colors.extend([style] * len(text))
+        grid.append([(ch, colors[i]) for i, ch in enumerate(line)])
+    width = max((len(row) for row in grid), default=0)
+    grid = [row + [(" ", "")] * (width - len(row)) for row in grid]
+    canvas: list[list[tuple[str, str]]] = [
+        [(" ", "") for _ in range(width + 1)] for _ in range(len(grid) + 1)
+    ]
+    for r, row in enumerate(grid):
+        for c, (ch, _style) in enumerate(row):
+            if ch.strip():
+                canvas[r + 1][c + 1] = (char, color)
+    for r, row in enumerate(grid):
+        for c, (ch, style) in enumerate(row):
+            if ch.strip():
+                canvas[r][c] = (ch, style)
+
+    merged: list[list[tuple[str, str]]] = []
+    for row in canvas:
+        chunks: list[tuple[str, str]] = []
+        for ch, style in row:
+            if chunks and chunks[-1][1] == style:
+                chunks[-1] = (chunks[-1][0] + ch, style)
+            else:
+                chunks.append((ch, style))
+        merged.append(chunks)
+    return merged
+
+
 def _welcome_art(max_cols: int = 78) -> list[list[tuple[str, str]]]:
-    """Wordmark do banner, com gradiente vertical curto e discreto."""
+    """Wordmark do banner, com gradiente vertical e sombra deslocada."""
     colors = _vgradient(len(_WORDMARK), [LILAC, ACCENT, CYAN])
-    return [
+    rows = [
         [(line[:max_cols], color)]
         for line, color in zip(_WORDMARK, colors, strict=False)
     ]
+    return _add_shadow(rows, SHADOW)
 
 
 _SHORTCUTS = "i digitar · f falar · Tab modo · F1 comandos · F2 sessões · Esc parar"
@@ -85,7 +124,14 @@ _HELP = (
 )
 
 
-def card(label: Text | str, body, accent: str, background: str):
+def card(
+    label: Text | str,
+    body,
+    accent: str,
+    background: str,
+    *,
+    max_width: int = 88,
+):
     """Card com rail vertical solido a esquerda.
 
     Usa o fundo de uma celula de 1 coluna como "linha" continua: diferente
@@ -107,7 +153,7 @@ def card(label: Text | str, body, accent: str, background: str):
     table.add_column("rail", width=1, no_wrap=True, style=f"on {accent}")
     table.add_column(
         "card",
-        max_width=88,
+        max_width=max_width,
         overflow="fold",
         style=f"on {background}",
     )

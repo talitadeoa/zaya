@@ -220,7 +220,6 @@ class ZayaTextualApp(App):
 
     async def _render_welcome(self) -> None:
         self._render_banner()
-        self._mount(Text("assistente pessoal · OpenCode · Second Brain", style=MUTED))
         await self._render_dashboard()
         self.call_after_refresh(self._scroll_top)
 
@@ -403,11 +402,14 @@ class ZayaTextualApp(App):
             header_style=f"bold {ACCENT}",
             expand=True,
         )
-        table.add_column("Meta", style="bold")
-        table.add_column("Próximo passo", style=MUTED)
+        table.add_column("Meta", style="bold", no_wrap=True)
+        table.add_column("Próximo passo", style=MUTED, no_wrap=True)
         for goal in goals:
             table.add_row(escape(goal.label), escape(goal.next_step or "—"))
-        self._mount(card("🎯 Metas", table, ACCENT, ZAYA_BG))
+        available = max(60, self.size.width - 8)
+        self._mount(
+            card("🎯 Metas", table, ACCENT, ZAYA_BG, max_width=available)
+        )
 
     async def _write_moon_note(self) -> None:
         detail = moon_details()
