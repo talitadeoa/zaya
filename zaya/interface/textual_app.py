@@ -39,6 +39,14 @@ from zaya.interface.textual_screens import CommandPalette, SessionPicker
 from zaya.interface.textual_sink import TextualSink
 
 
+class ModeBar(Static):
+    """Barra do modo: clique troca de modo, sem abrir modal."""
+
+    async def on_click(self, event) -> None:
+        event.stop()
+        await self.app.run_action("cycle_mode")
+
+
 class MenuButton(Static):
     """Botão de atalhos no canto esquerdo da barra superior."""
 
@@ -161,7 +169,7 @@ class ZayaTextualApp(App):
         yield Vertical(
             Horizontal(
                 MenuButton(),
-                Static("", id="modebar"),
+                ModeBar("", id="modebar"),
                 id="topbar",
             ),
             VerticalScroll(id="chat"),
@@ -254,9 +262,6 @@ class ZayaTextualApp(App):
 
     def action_cycle_mode(self) -> None:
         """Alterna para o próximo modo (Tab/F3), sem abrir modal."""
-        if self._insert_mode:
-            # Digitação em andamento: não troca o modo por engano.
-            return
         modes = self._mode_list()
         if not modes:
             return

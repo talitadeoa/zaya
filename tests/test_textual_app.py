@@ -474,3 +474,28 @@ async def test_menu_button_abre_paleta_de_atalhos():
         await pilot.click("#menu-button")
         await pilot.pause()
         assert isinstance(app.screen, CommandPalette)
+
+
+@pytest.mark.asyncio
+async def test_tab_troca_modo_mesmo_digitando():
+    voice = _FakeVoice()
+    app = ZayaTextualApp(_answer, voice=voice)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        await pilot.press("i")
+        await pilot.press("tab")
+        await pilot.pause()
+        assert voice.mode_key == "conversa"
+        assert not isinstance(app.screen, CommandPalette)
+
+
+@pytest.mark.asyncio
+async def test_click_modebar_troca_modo_sem_modal():
+    voice = _FakeVoice()
+    app = ZayaTextualApp(_answer, voice=voice)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        await pilot.click("#modebar")
+        await pilot.pause()
+        assert voice.mode_key == "conversa"
+        assert not isinstance(app.screen, CommandPalette)
