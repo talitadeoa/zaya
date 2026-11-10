@@ -23,11 +23,15 @@ from zora.controller.smalltalk import fast_reply
 from zora.opencode.client import OpenCodeError
 from zora.opencode.events import (
     assistant_text,
+    event_payload,
     event_session_id,
     event_type,
     message_error,
+    message_id,
+    structured_error_text,
     text_delta,
     tool_activity,
+    tool_detail,
     tool_diff,
 )
 from zora.spotify.controller import SpotifyCommand, SpotifyError
@@ -44,6 +48,7 @@ TOOL_LABELS = {
     "edit": "editando",
     "write": "escrevendo",
     "bash": "executando",
+    "shell": "executando",
     "grep": "buscando",
     "glob": "listando",
     "webfetch": "consultando web",
@@ -147,6 +152,10 @@ class TurnMixin(OrchestratorContract):
         if self._session_dirty:
             await self._clear_stale_session()
             self._session_dirty = False
+        # Fotografa o par conversa+sessao: uma troca de modo no meio do turno
+        # nao pode desviar o prompt nem gravar a resposta na conversa nova.
+        conversation_id = self.conversation_id
+        session_id = self.session_id
         self.ui.set_status("◐ pensando…")
         fast = self.cfg.interface.fast
         hits = []
@@ -165,12 +174,15 @@ class TurnMixin(OrchestratorContract):
             if hits:
                 self.ui.context_hits(hits)
                 self.store.add_turn(
-                    self.conversation_id,
+                    conversation_id,
                     "context",
                     "Notas usadas: " + ", ".join(hit.rel_path for hit in hits),
                 )
 
         prompt = text
+        resume = self._take_resume_context()
+        if resume:
+            prompt = f"{resume}\n\n---\n\n{prompt}"
         if hits:
             context = format_context(hits, max_chars=self.cfg.secondbrain.context_chars)
             prompt = (
@@ -179,14 +191,14 @@ class TurnMixin(OrchestratorContract):
                 "Responda em português do Brasil, de forma concisa e direta. "
                 "Use o contexto acima somente quando for relevante. "
                 "Não leia nem edite arquivos do Second Brain para esta resposta: "
-                "o contexto já foi fornecido pela Zora."
+                "o contexto já foi fornecido pela Zaia."
             )
         if not fast:
             goals = self.goals.detect(text)
             if goals:
                 prompt = goal_block(goals) + "\n\n---\n\n" + prompt
                 self.store.add_turn(
-                    self.conversation_id,
+                    conversation_id,
                     "context",
                     "Metas relacionadas: " + ", ".join(goal.label for goal in goals),
                 )
@@ -196,7 +208,7 @@ class TurnMixin(OrchestratorContract):
             system_parts.append(preferences)
         if self.cfg.interface.concise:
             system_parts.append(
-                "[Diretriz da Zora: seja conciso e direto; "
+                "[Diretriz da Zaia: seja conciso e direto; "
                 "use ferramentas apenas quando necessário.]"
             )
         if self.cfg.interface.concise and self._is_short_prompt(text):
@@ -213,7 +225,7 @@ class TurnMixin(OrchestratorContract):
 
         streaming = self._start_speech_streaming() if speak else False
         try:
-            answer = await self._run_turn(prompt, system=system)
+            answer = await self._run_turn(prompt, system=system, session_id=session_id)
         except TurnInterrupted:
             self._session_dirty = True
             self.ui.clear_status()
@@ -223,7 +235,7 @@ class TurnMixin(OrchestratorContract):
         except (KeyboardInterrupt, asyncio.CancelledError):
             self._session_dirty = True
             self.ui.clear_status()
-            await self.client.abort(self.session_id)
+            await self.client.abort(session_id)
             self.tts.stop()
             self.ui.warning("execução interrompida")
             await self._stop_speech_streaming()
@@ -243,7 +255,7 @@ class TurnMixin(OrchestratorContract):
             await self._stop_speech_streaming()
             return ""
 
-        self.store.add_turn(self.conversation_id, "assistant", answer)
+        self.store.add_turn(conversation_id, "assistant", answer)
         if streaming:
             self.ui.set_status("▶ falando…")
             await self._finish_speech_streaming(answer)
@@ -254,8 +266,11 @@ class TurnMixin(OrchestratorContract):
         self.ui.clear_status()
         return answer
 
-    async def _run_turn(self, text: str, system: str | None = None) -> str:
+    async def _run_turn(
+        self, text: str, system: str | None = None, session_id: str | None = None
+    ) -> str:
         """Executa o turno com Ctrl+C escopado: aborta e devolve o controle."""
+        sid = session_id or self.session_id
         loop = asyncio.get_running_loop()
         interrupt = asyncio.Event()
 
@@ -269,7 +284,7 @@ class TurnMixin(OrchestratorContract):
         except (ValueError, OSError):
             previous = None
 
-        turn_task = asyncio.create_task(self._turn_impl(text, system))
+        turn_task = asyncio.create_task(self._turn_impl(text, system, sid))
         interrupt_task = asyncio.create_task(interrupt.wait())
         try:
             done, _pending = await asyncio.wait(
@@ -279,7 +294,7 @@ class TurnMixin(OrchestratorContract):
                 return turn_task.result()
 
             self.tts.stop()
-            await self.client.abort(self.session_id)
+            await self.client.abort(sid)
             turn_task.cancel()
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 await turn_task
@@ -292,8 +307,11 @@ class TurnMixin(OrchestratorContract):
                 except (ValueError, OSError):
                     pass
 
-    async def _turn_impl(self, text: str, system: str | None = None) -> str:
+    async def _turn_impl(
+        self, text: str, system: str | None = None, session_id: str | None = None
+    ) -> str:
         assert self.conversation_id is not None
+        sid = session_id or self.session_id
         before_id = self._last_assistant_message_id
 
         queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
@@ -302,7 +320,7 @@ class TurnMixin(OrchestratorContract):
         async def pump() -> None:
             try:
                 async for event in self.client.stream_events(stop=stop):
-                    if event_session_id(event) == self.session_id:
+                    if event_session_id(event) == sid:
                         await queue.put(event)
             except asyncio.CancelledError:
                 return
@@ -313,7 +331,7 @@ class TurnMixin(OrchestratorContract):
         user_message_id = "msg_z" + uuid.uuid4().hex[:24]
         try:
             await self.client.prompt_async(
-                self.session_id,
+                sid,
                 text,
                 model=self.client.model,
                 system=system,
@@ -344,13 +362,54 @@ class TurnMixin(OrchestratorContract):
         last_event_ts = started
         last_text: dict[str, str] = {}
         last_reasoning: dict[str, str] = {}
+        seen_text: set[str] = set()
+        seen_reasoning: set[str] = set()
         collected: list[str] = []
         seen_tools: set[str] = set()
+        tool_names: dict[str, str] = {}
+        tool_inputs: dict[str, dict[str, Any]] = {}
         wrote_stream = False
         saw_activity = False
         saw_busy = False
         tool_running = False
         self._answer_buffer = ""
+
+        def emit_text(delta: str, assistant_message_id: str | None = None) -> None:
+            nonlocal wrote_stream
+            if not delta:
+                return
+            if assistant_message_id:
+                self._last_assistant_message_id = str(assistant_message_id)
+            collected.append(delta)
+            for chunk in self._feed_display(delta):
+                if not wrote_stream:
+                    self.ui.begin_stream()
+                    wrote_stream = True
+                self.ui.token(chunk)
+                if self._stream_sink is not None:
+                    self._stream_sink.token(chunk)
+            self._feed_speech(delta)
+
+        def emit_tool(call_id: str, tool: str, detail: str) -> None:
+            if call_id in seen_tools:
+                return
+            seen_tools.add(call_id)
+            if not wrote_stream:
+                label = TOOL_LABELS.get(tool, tool)
+                self.ui.tool(label, detail)
+                if self._stream_sink is not None:
+                    self._stream_sink.tool(label, detail)
+
+        def emit_diff(call_id: str, tool: str, state: dict[str, Any]) -> None:
+            if not self.cfg.interface.show_diffs:
+                return
+            part = {"type": "tool", "id": call_id, "name": tool, "state": state}
+            diff = tool_diff(part)
+            if diff:
+                filename, patch = diff
+                self.ui.diff(filename, patch)
+                if self._stream_sink is not None:
+                    self._stream_sink.diff(filename, patch)
 
         try:
             while True:
@@ -369,7 +428,9 @@ class TurnMixin(OrchestratorContract):
                         status = await self.client.session_status(self.session_id)
                     except OpenCodeError:
                         status = None
-                    if status and not (isinstance(status, dict) and status.get("type") == "idle"):
+                    if status and not (
+                        isinstance(status, dict) and status.get("type") == "idle"
+                    ):
                         saw_busy = True
                     idle = (
                         bool(status) and isinstance(status, dict) and status.get("type") == "idle"
@@ -390,7 +451,8 @@ class TurnMixin(OrchestratorContract):
 
                 last_event_ts = time.monotonic()
                 kind = event_type(event)
-                props = event.get("properties") or {}
+                is_v2 = "data" in event and "properties" not in event
+                props = event_payload(event)
 
                 if kind == "message.part.updated":
                     saw_activity = True
@@ -413,19 +475,7 @@ class TurnMixin(OrchestratorContract):
                         previous = last_text.get(part_id, "")
                         delta, current = text_delta(part, previous)
                         last_text[part_id] = current
-                        if delta:
-                            message_id = part.get("messageID")
-                            if message_id:
-                                self._last_assistant_message_id = str(message_id)
-                            collected.append(delta)
-                            for chunk in self._feed_display(delta):
-                                if not wrote_stream:
-                                    self.ui.begin_stream()
-                                    wrote_stream = True
-                                self.ui.token(chunk)
-                                if self._stream_sink is not None:
-                                    self._stream_sink.token(chunk)
-                            self._feed_speech(delta)
+                        emit_text(delta, part.get("messageID"))
                     elif part.get("type") == "tool":
                         state = part.get("state") or {}
                         tstatus = state.get("status")
@@ -436,27 +486,103 @@ class TurnMixin(OrchestratorContract):
                         activity = tool_activity(part)
                         if activity:
                             call_id, tool, detail = activity
-                            if call_id not in seen_tools:
-                                seen_tools.add(call_id)
-                                if not wrote_stream:
-                                    label = TOOL_LABELS.get(tool, tool)
-                                    self.ui.tool(label, detail)
-                                    if self._stream_sink is not None:
-                                        self._stream_sink.tool(label, detail)
-                        if tstatus in {"completed", "error"} and self.cfg.interface.show_diffs:
-                            diff = tool_diff(part)
-                            if diff:
-                                filename, patch = diff
-                                self.ui.diff(filename, patch)
-                                if self._stream_sink is not None:
-                                    self._stream_sink.diff(filename, patch)
-                elif kind == "session.idle":
+                            emit_tool(call_id, tool, detail)
+                        if tstatus in {"completed", "error"}:
+                            emit_diff(
+                                str(part.get("callID") or part.get("id") or ""),
+                                str(part.get("tool") or part.get("name") or "tool"),
+                                state,
+                            )
+                elif kind == "session.text.started":
+                    saw_activity = True
+                elif kind == "session.text.delta":
+                    saw_activity = True
+                    assistant_id = props.get("assistantMessageID")
+                    if ignore_message_id and str(assistant_id) == ignore_message_id:
+                        continue
+                    key = f"{assistant_id}:{props.get('ordinal', 0)}"
+                    seen_text.add(key)
+                    emit_text(str(props.get("delta") or ""), assistant_id)
+                elif kind == "session.text.ended":
+                    saw_activity = True
+                    assistant_id = props.get("assistantMessageID")
+                    key = f"{assistant_id}:{props.get('ordinal', 0)}"
+                    if key not in seen_text:
+                        seen_text.add(key)
+                        emit_text(str(props.get("text") or ""), assistant_id)
+                elif kind == "session.reasoning.started":
+                    saw_activity = True
+                elif kind == "session.reasoning.delta":
+                    saw_activity = True
+                    if not self.cfg.interface.show_reasoning:
+                        continue
+                    assistant_id = props.get("assistantMessageID")
+                    key = f"{assistant_id}:{props.get('ordinal', 0)}"
+                    seen_reasoning.add(key)
+                    current = last_reasoning.get(key, "") + str(props.get("delta") or "")
+                    last_reasoning[key] = current
+                    if current:
+                        self.ui.reasoning(current)
+                        if self._stream_sink is not None:
+                            self._stream_sink.reasoning(current)
+                elif kind == "session.reasoning.ended":
+                    saw_activity = True
+                    if not self.cfg.interface.show_reasoning:
+                        continue
+                    assistant_id = props.get("assistantMessageID")
+                    key = f"{assistant_id}:{props.get('ordinal', 0)}"
+                    if key not in seen_reasoning:
+                        current = str(props.get("text") or "")
+                        if current:
+                            self.ui.reasoning(current)
+                            if self._stream_sink is not None:
+                                self._stream_sink.reasoning(current)
+                elif kind == "session.tool.input.started":
+                    saw_activity = True
+                    call_id = str(props.get("id") or "")
+                    if call_id:
+                        tool_names[call_id] = str(props.get("name") or "tool")
+                elif kind == "session.tool.called":
+                    saw_activity = True
+                    tool_running = True
+                    call_id = str(props.get("id") or "")
+                    tool = tool_names.get(call_id, "tool")
+                    payload = props.get("input")
+                    if isinstance(payload, dict):
+                        tool_inputs[call_id] = payload
+                    emit_tool(call_id, tool, tool_detail(payload))
+                elif kind == "session.tool.progress":
+                    saw_activity = True
+                elif kind in {"session.tool.success", "session.tool.failed"}:
+                    saw_activity = True
+                    tool_running = False
+                    call_id = str(props.get("id") or "")
+                    tool = tool_names.get(call_id, "tool")
+                    metadata = props.get("metadata")
+                    tool_state: dict[str, Any] = {
+                        "status": "completed" if kind.endswith("success") else "error",
+                        "input": tool_inputs.get(call_id, {}),
+                        "metadata": metadata if isinstance(metadata, dict) else {},
+                    }
+                    if kind.endswith("failed"):
+                        tool_state["error"] = props.get("error")
+                    emit_diff(call_id, tool, tool_state)
+                elif kind == "session.execution.failed":
+                    error = structured_error_text(props.get("error"))
+                    raise OpenCodeError(f"erro na sessão OpenCode: {error}")
+                elif kind in {
+                    "session.execution.succeeded",
+                    "session.execution.interrupted",
+                    "session.idle",
+                }:
+                    saw_activity = True
                     break
                 elif kind == "session.error":
-                    error = props.get("error") or {}
+                    error = structured_error_text(props.get("error"))
                     raise OpenCodeError(f"erro na sessão OpenCode: {error}")
                 elif kind in {"permission.asked", "permission.v2.asked"}:
-                    await self._handle_permission(props, kind)
+                    permission_kind = "permission.v2.asked" if is_v2 else kind
+                    await self._handle_permission(props, permission_kind)
         finally:
             for chunk in self._flush_display():
                 if not wrote_stream:
@@ -507,16 +633,15 @@ class TurnMixin(OrchestratorContract):
             except OpenCodeError:
                 message = None
             if message:
-                info = message.get("info") or {}
-                if info.get("id") != before_id:
+                if message_id(message) != before_id:
                     error = message_error(message)
                     if error:
                         raise OpenCodeError(f"O agente retornou erro: {error}")
                     text = assistant_text(message)
                     if text:
-                        info_id = info.get("id")
-                        if info_id:
-                            self._last_assistant_message_id = str(info_id)
+                        current_id = message_id(message)
+                        if current_id:
+                            self._last_assistant_message_id = current_id
                         return text
             await asyncio.sleep(0.2)
         return ""

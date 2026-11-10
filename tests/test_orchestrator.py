@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import types
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -11,6 +13,7 @@ from zora.controller.commands import CommandsMixin
 from zora.controller.contract import OrchestratorContract
 from zora.controller.goals import GoalTracker
 from zora.controller.initiative import InitiativeMixin
+from zora.controller.memory import MemoryMixin
 from zora.controller.orchestrator import Orchestrator
 from zora.controller.registration import RegistrationMixin
 from zora.controller.speech import SpeechMixin
@@ -174,6 +177,7 @@ def test_mixins_share_the_explicit_contract():
         TurnMixin,
         VoiceMixin,
         CommandsMixin,
+        MemoryMixin,
         RegistrationMixin,
         InitiativeMixin,
     )
@@ -250,6 +254,38 @@ async def test_toggle_commands_update_config(orch):
 
 
 @pytest.mark.asyncio
+async def test_prepare_liga_o_worker_de_memoria(orch, monkeypatch):
+    chamadas: list[bool] = []
+
+    async def fake_bootstrap() -> None:
+        orch.session_id = "ses_teste"
+
+    monkeypatch.setattr(orch, "_bootstrap", fake_bootstrap)
+    monkeypatch.setattr(orch, "_start_memory_worker", lambda: chamadas.append(True))
+
+    await orch.prepare()
+
+    assert chamadas == [True]
+
+
+@pytest.mark.asyncio
+async def test_comando_consolidar_usa_o_dia_pedido(orch, monkeypatch):
+    chamadas: list[tuple] = []
+
+    async def fake(day=None, *, force=False, timeout_seconds=None):
+        chamadas.append((day, force))
+        return "Memoria/Memória teste.md"
+
+    monkeypatch.setattr(orch, "consolidate_day", fake)
+
+    await orch._handle_command("/consolidar ontem forcar")
+
+    esperado = datetime.now().astimezone().date() - timedelta(days=1)
+    assert chamadas == [(esperado, True)]
+    assert orch.ui.called("success")
+
+
+@pytest.mark.asyncio
 async def test_auto_approve_warns(orch):
     await orch._handle_command("/autoaprovar on")
     assert orch.cfg.opencode.auto_approve is True
@@ -319,3 +355,58 @@ def test_find_task_matches_id_and_title(orch):
     assert orch._find_task(task.id) is task
     assert orch._find_task("readme") is task
     assert orch._find_task("inexistente") is None
+
+
+class RecordingClient(FakeClient):
+    """Cria sessoes com atraso para expor intercalacoes entre trocas de modo."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.created: dict[str, str] = {}
+
+    async def create_session(self, title: str | None = None, **kwargs):
+        await asyncio.sleep(0.01)
+        session_id = f"ses-{len(self.created) + 1}"
+        self.created[session_id] = title or ""
+        return types.SimpleNamespace(id=session_id)
+
+
+@pytest.mark.asyncio
+async def test_trocas_concorrentes_de_modo_nao_cruzam_sessoes(orch):
+    client = RecordingClient()
+    orch.client = client
+
+    await asyncio.gather(orch.select_mode("carreira"), orch.select_mode("academica"))
+
+    carreira = orch.store.get_or_create_conversation(str(orch.directory), "carreira")
+    academica = orch.store.get_or_create_conversation(str(orch.directory), "academica")
+    sid_carreira = carreira["opencode_session_id"]
+    sid_academica = academica["opencode_session_id"]
+
+    assert sid_carreira and sid_academica
+    assert sid_carreira != sid_academica
+    assert "Carreira" in client.created[sid_carreira]
+    assert "Acad" in client.created[sid_academica]
+
+    atual = orch.store.get_conversation(orch.conversation_id)
+    assert atual["mode"] == orch.persona.key
+    assert atual["opencode_session_id"] == orch.session_id
+
+
+@pytest.mark.asyncio
+async def test_sessao_ausente_reinjeta_o_historico_local(orch):
+    orch._prepare_conversation()
+    conversation_id = orch.conversation_id
+    orch.store.add_turn(conversation_id, "user", "quero vaga de suporte")
+    orch.store.add_turn(conversation_id, "assistant", "vamos revisar seu curriculo")
+    orch.store.set_session(conversation_id, "ses_sumiu")
+
+    await orch._activate_conversation(conversation_id, orch.persona)
+
+    conversa = orch.store.get_conversation(conversation_id)
+    assert conversa["opencode_session_id"] != "ses_sumiu"
+    contexto = orch._take_resume_context()
+    assert "Talita: quero vaga de suporte" in contexto
+    assert "Zaia: vamos revisar seu curriculo" in contexto
+    assert orch._take_resume_context() == ""
+

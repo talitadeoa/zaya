@@ -1,178 +1,241 @@
-# ZORA
+# ZAIA
 
-Assistente pessoal de voz para macOS, integrada ao **OpenCode** (como motor de
-programação) e a um **Second Brain em Markdown**. A Zora é uma camada própria de
-interface, voz, memória e orquestração — ela **não** reimplementa um agente de
-programação.
+**A agente pessoal que mora no seu Mac.**
 
+Zaia não é um chat com microfone. É uma agente com identidade, memória e
+iniciativa: ela **ouve**, **lembra** do que importa, **age** no seu computador e
+**fala** de volta — no seu tom, no seu ritmo. Por baixo, o **OpenCode** é o motor
+que dá mãos a ela; a Zaia é a pessoa.
+
+```text
+Você:  "Zaia, o que eu tenho hoje?"
+Zaia:  lê a Agenda, cruza com o Second Brain e responde — falando.
+
+Você:  "revise a arquitetura do projeto de automação"
+Zaia:  consulta o contexto do projeto, envia a tarefa ao OpenCode
+       e volta com o resultado, o diff e a explicação.
 ```
-Você: (Enter) "Zora, revise a arquitetura do projeto de automação."
-Zora: consulta o Second Brain, envia a tarefa ao OpenCode e responde falando.
+
+## O que faz dela uma agente
+
+| | |
+|---|---|
+| 👂 **Ouve** | STT local (`faster-whisper`), pt-BR, sem mandar áudio para fora. |
+| 🧠 **Lembra** | Second Brain em Markdown + memória de conversas em SQLite. |
+| 🛠️ **Age** | Edita arquivos, roda comandos, navega, mexe na Agenda, no Spotify. |
+| 💡 **Tem iniciativa** | Lembretes, check-ins, foco do ciclo e rituais de lua. |
+| 🎭 **Tem personalidade** | Cinco modos, preferências aprendidas e tom próprio. |
+| 🗣️ **Fala** | TTS natural (`edge`) com fallback offline (`say`). |
+
+## Um dia com a Zaia
+
+```text
+"bom dia"                         → saudação na hora, sem chamar o modelo
+"me lembre de beber água em 30min" → lembrete local, dispara quando der a hora
+"o que tem na Agenda hoje?"        → tarefas do dia, sem duplicar
+"anote: deploy precisa de backup"  → nota no Second Brain, com link e índice
+"continua aquele projeto de ontem" → retoma a sessão e o contexto
+"pausa a música"                   → Spotify
+"sair"                             → tchau de verdade
+23:00                              → consolida o dia numa nota de memória
 ```
 
-## Por que Python 3.12?
+## Começando
 
-O `faster-whisper` depende de `ctranslate2` e `onnxruntime`, que **não têm wheels
-para Python 3.14 nem para macOS Intel recente**. Este projeto fixa Python 3.12
-(`>=3.12,<3.13`), gerenciado pelo `uv`, sem alterar o Python do sistema.
-
-## Requisitos
-
-- macOS (testado em 14.8.4 Intel x86_64)
-- [uv](https://docs.astral.sh/uv/)
-- OpenCode >= 1.18 (`opencode --version`)
-- `ffmpeg`, `say`/`afplay` (nativos do macOS)
-- PortAudio para microfone: `brew install portaudio`
-- Um provider configurado no OpenCode (ex.: DeepSeek via `opencode auth login`)
-
-## Instalação
+**Requisitos:** macOS, [uv](https://docs.astral.sh/uv/), OpenCode 1.18+,
+`ffmpeg` e PortAudio (`brew install portaudio`). Python fica fixo em 3.12
+(`faster-whisper` ainda não tem wheels para 3.14).
 
 ```bash
-cd /Users/talita/zora
 uv venv --python 3.12 .venv
 uv pip install --python .venv/bin/python -e ".[dev]"
 
-# disponibiliza o comando `zora` no PATH (opcional)
+# comando `zora` no PATH (opcional)
 uv tool install --python 3.12 --editable .
 ```
 
-Crie/revise a configuração:
+Primeiro contato:
 
 ```bash
-zora config --init      # cria ~/.config/zora/config.toml
-zora config             # mostra caminhos e configuração efetiva
-zora doctor             # diagnostica ambiente, servidor, voz e Second Brain
+zora config --init   # cria ~/.config/zora/config.toml
+zora doctor          # ambiente, servidor, voz e Second Brain
+zora                 # abre a interface
 ```
 
-Segredos **nunca** vão no TOML. Use `~/.config/zora/.env` ou variáveis de
-ambiente (veja `.env.example`).
+Segredos ficam em `~/.config/zora/.env` ou no ambiente — nunca no TOML
+(veja `.env.example`).
 
-## Modelo (DeepSeek)
+## O cérebro: modelo e OpenCode
 
-O modelo é resolvido pelo OpenCode, no formato `provider/model`:
+O modelo é declarado no config da Zaia, no formato `provider/model`:
 
 ```toml
 [opencode]
 model = "deepseek/deepseek-flash"
 ```
 
-Troque em tempo de execução com `/modelo deepseek/deepseek-v4-pro`. A arquitetura
-não depende do DeepSeek: qualquer provider/model conectado ao OpenCode funciona.
+O OpenCode resolve o provider. Qualquer modelo conectado funciona — DeepSeek,
+OpenCode, OpenAI, Anthropic, local. Troque em tempo real com
+`/modelo provider/model`; `zora doctor --verbose` lista os disponíveis.
 
-## Uso
+> **Modelos `*-free` têm cota.** Se aparecer `Free usage limit reached`,
+> conecte um provider (ex.: DeepSeek) e aponte o `model` para ele.
+
+A Zaia mantém o servidor OpenCode vivo entre execuções, numa porta estável por
+projeto, e guarda a credencial local em arquivo `0600` — abrir a Zaia de novo é
+quase instantâneo.
+
+## Conversando
 
 ```bash
-# dentro do diretório do projeto
-zora
+zora            # interface padrão (TUI)
+zora -old       # terminal completo
+zora --watch    # reinicia sozinha quando o código muda
 ```
 
-- **Modo contínuo (padrão):** fale sem apertar Enter. A Zora ouve, executa,
-  responde e volta a ouvir. A fala termina após **5s de silêncio**.
-- **Legendas ao vivo:** a transcrição parcial aparece enquanto você fala
-  (a cada ~1,5s); no fim, a Zora usa a transcrição completa.
-- **M** pausa/retoma o microfone (útil quando você não vai falar).
-- O microfone **desliga sozinho** após 30s de silêncio; **M** retoma
-  (`ZORA_AUDIO_AUTO_MUTE_SECONDS`, `0` desativa).
-- **Esc** interrompe a fala/execução na hora e volta a ouvir.
-- **T** volta ao modo texto; **começar a digitar** também volta automaticamente
-  (ou diga **"parar"**, **"para"**, **"modo texto"**).
-- Diga **"sair"** para encerrar.
-- A transcrição é enviada **direto**, sem pedido de confirmação
-  (`stt.confirm_transcript = false`).
-- **Enter** envia o texto digitado; o modo texto **permanece** em texto.
-- **Enter vazio** (ou `/fala`) volta para a escuta contínua por voz.
-- Digitar texto envia a instrução diretamente.
-- **Ctrl+C** interrompe a execução atual ou pausa a escuta contínua.
+- **Voz contínua (padrão):** fale sem apertar Enter; a fala termina após ~5 s de
+  silêncio. **M** pausa/retoma, **Esc** interrompe, **T** volta ao texto.
+- **Texto:** digite e dê Enter. Enter vazio (ou `/fala`) volta para a voz.
+- **Sem confirmação de transcrição:** o texto reconhecido vai direto para ela.
+- Diga **"parar"**, **"modo texto"** ou **"sair"** — ou use os atalhos.
+- **M** também desliga o microfone sozinho após 30 s de silêncio
+  (`ZORA_AUDIO_AUTO_MUTE_SECONDS`; `0` desativa).
 
-### Execução única (sem interface)
+### Execução única
 
 ```bash
 zora ask "revise o README e sugira melhorias"
 zora ask --no-voice "responda apenas: ok"
 ```
 
-`zora ask` reaproveita a mesma conversa/sessão do projeto e é útil para scripts e
-smoke tests.
+Reaproveita a conversa do projeto — ótimo para scripts e smoke tests.
 
 ### Comandos
 
 | Comando | Função |
 |---|---|
-| `/ajuda` | lista comandos |
-| `/status` | servidor, sessão, modelo, memória e voz |
-| `/buscar <termo>` | pesquisa no Second Brain |
-| `/nota <título>` | lê uma nota |
-| `/indexar` | reindexa o Second Brain (forçado) |
-| `/novo` | nova conversa + nova sessão OpenCode |
-| `/modelo <provider/model>` | troca o modelo |
-| `/modo [nome]` | lista ou troca o modo ativo |
-| `/bolsa <ticker>` | cotação rápida (ex.: PETR4, AAPL) |
-| `/rapido on\|off` | modo rápido (sem contexto, respostas curtas) |
-| `/carteira [add\|remover]` | lista/acompanha seus ativos |
-| `/metas` | painel com foco atual e metas de longo prazo |
-| `/painel` | mesmo painel de metas |
-| `/foco [definir\\|limpar]` | define/limpa o foco do ciclo |
-| `/tarefas [sync\|limpar]` | lista/sincroniza/limpa tarefas concluídas |
-| `/voz on\|off\|edge\|say\|none` | controla a voz |
-| `/continuo on\|off` | escuta contínua sem Enter |
-| `/fala` | volta para a escuta contínua |
-| `/texto` | volta para o modo texto (digitar) |
-| `/preferencia <texto>` | aprende uma preferência (taste) |
-| `/preferencias` | mostra as preferências registradas |
-| `/confirmar on\|off` | pede (ou não) confirmação ao criar nota |
-| `/autoaprovar on\|off` | auto-aprova ferramentas do OpenCode (perigoso) |
-| `/interromper` | aborta a execução atual |
-| `/sessao` | mostra o ID da sessão |
-| `/contexto on\|off` | liga/desliga contexto automático do Second Brain |
-| `/historico` | últimos turnos da conversa |
-| `/reiniciar` | reinicia com o código novo |
-| `/sair` | encerra |
+| `/ajuda` · `/status` | comandos disponíveis · servidor, sessão, modelo, memória |
+| `/buscar <termo>` · `/nota <título>` | Second Brain |
+| `/indexar` · `/novo` · `/consolidar [dia]` | reindexa · nova conversa · memória do dia |
+| `/modelo <provider/model>` · `/modo [nome]` | troca modelo · troca persona |
+| `/bolsa <ticker>` · `/carteira` | cotação · sua carteira |
+| `/metas` · `/painel` · `/foco` | foco do ciclo e metas de longo prazo |
+| `/tarefas [sync\|fazer\|concluir\|limpar]` | tarefas de longo prazo |
+| `/voz on\|off\|edge\|say\|none` · `/continuo on\|off` | voz e escuta |
+| `/fala` · `/texto` · `/interromper` | modo de entrada e controle |
+| `/preferencia <texto>` · `/preferencias` | aprende · mostra preferências |
+| `/confirmar on\|off` · `/autoaprovar on\|off` | confirmação de notas · ferramentas |
+| `/contexto on\|off` · `/historico` · `/sessao` | contexto, histórico e sessão |
+| `/reiniciar` · `/sair` | reinicia com código novo · encerra |
 
-### Modos
+## Personalidade
 
-A Zora tem cinco modos, que mudam a diretriz enviada ao OpenCode:
+Cinco modos mudam a diretriz que ela envia ao motor:
 
-- **academica** — pesquisa, mestrado, leitura, escrita e metodologia.
+- **academica** — pesquisa, mestrado, leitura, escrita e método.
 - **carreira** — emprego, currículo, vagas e entrevistas.
 - **assistente** — agenda, rotinas, compromissos e prioridades.
-- **conversa** — conversa informal, acolhedora e íntima.
-- **financas** — bolsa, ações, orçamento e investimentos.
+- **conversa** — informal, acolhedora, íntima.
+- **financas** — bolsa, orçamento e investimentos.
 
-O modo ativo é persistido entre sessões e pode ser trocado com `/modo <nome>`.
-O padrão é definido em `[interface] default_mode`.
+`/modo <nome>` troca na hora, **Tab/F3** percorre os modos e o modo fica salvo
+entre sessões. O padrão é **conversa** (`[interface] default_mode`).
 
-### Voz
+As **preferências** (`~/SecondBrain/preferences.md`) são lidas em todo turno:
+nome, idioma, formalidade, o que evitar. Ela aprende com `/preferencia ...`,
+"anote como preferência: ..." ou "lembre que eu prefiro ...".
 
-- **STT:** `faster-whisper` local, pt-BR, CPU `int8` (configurável: `base`,
-  `small`, `medium`...). O primeiro uso baixa o modelo do Hugging Face.
-- **TTS:** `edge` (online, voz `pt-BR-FranciscaNeural`) por padrão, com fallback
-  automático para `say` (offline, voz `Luciana`) se a rede falhar. Para uso 100%
-  offline: `/voz say`.
-- **Modo contínuo (padrão):** o microfone fica aberto e ouve sem limite de
-  tempo. A fala termina após **5s de silêncio** (`audio.silence_ms`) ou quando
-  você aperta **Enter** para iniciar/encerrar manualmente. Diga **"parar"** ou
-  **"modo texto"** para sair; **"sair"** encerra. Desligue com `/continuo off`.
-- **Transcrição parcial ao vivo:** enquanto você fala, trechos parciais são
-  exibidos a cada `stt.partial_interval_seconds` (1,5s), usando uma janela de
-  `stt.partial_window_seconds` (10s). Ao final, a transcrição completa substitui
-  as parciais e é enviada ao agente.
-- Uma fala não tem limite de duração por padrão (`audio.max_seconds = 0`).
-- **Sem confirmação de transcrição:** o texto reconhecido vai direto para a Zora
-  (`stt.confirm_transcript = false`). Se ouvir errado, diga "parar" e corrija.
-- Áudios de entrada **nunca** saem da máquina; o STT é local.
+## Memória
 
-### Iniciativa e lembretes
+**Second Brain** é uma pasta de Markdown sua (padrão `~/SecondBrain`), indexada
+com SQLite FTS5 — busca offline e incremental. Links `[[Nome da Nota]]`, tags no
+frontmatter ou `#tag`.
 
-A Zora pode tomar iniciativa **enquanto está aberta**:
+- Criar nota é **aditivo** e não pede confirmação por padrão.
+- Editar/excluir **pedem confirmação**, geram backup em `.zora/backups` e vão
+  para `.zora/trash` — nunca para o lixo do sistema.
+- Ela **nunca escreve fora da raiz** configurada.
+- `reindex_on_start = false`: o índice só é refeito no primeiro uso ou em
+  `/indexar`.
 
-- saúda você ao iniciar (respeitando horário de silêncio);
-- avisa lembretes que você criou;
-- após um tempo sem interação, faz um check-in curto (limite diário e
-  intervalo mínimo).
+A memória operacional (conversas, turnos, registros) fica em SQLite, em
+`~/.local/share/zora/`.
+
+### Memória diária (consolidação)
+
+No fim do dia, a Zaia transforma os turnos em uma nota no Second Brain —
+`Memoria/Memória AAAA-MM-DD.md`, já indexada e recuperável nos dias seguintes.
+
+- Roda às **23:00** (enquanto ela está aberta) e, se você fechar depois disso,
+  consolida o que faltou ao sair.
+- Ao abrir no dia seguinte, **recupera o dia anterior** se ele não foi
+  consolidado.
+- Funciona na TUI, no terminal e no serviço do Telegram (worker próprio,
+  independente do modo proativo).
+- O resumo é feito pelo modelo; se o provedor falhar, cai num resumo local
+  determinístico (nunca perde o dia).
+- Manual: `/consolidar`, `/consolidar ontem` ou `/consolidar 2026-11-09`;
+  `/consolidar forcar` refaz a nota com o que houver.
+
+```toml
+[memory]
+enabled = true
+at = "23:00"          # horário local
+on_exit = true
+use_llm = true        # resumo pelo modelo (com fallback local)
+folder = "Memoria"
+```
+
+A nota separa **Síntese**, **Decisões**, **Conversas** e **Registros** (notas e
+coisas criadas no dia).
+
+## Integrações
+
+**Telegram** — sem número dedicado:
+
+```bash
+zora telegram updates        # descobre o chat_id
+zora telegram me
+zora telegram serve          # responde texto e áudio
+```
+
+**WhatsApp Cloud API** — envio e webhook:
+
+```bash
+zora whatsapp send "bom dia"
+zora whatsapp audio voz.mp3
+zora whatsapp serve
+```
+
+**Spotify** — `zora spotify status|toggle|next|volume 40`; por voz também.
+
+**Navegador (Playwright)** — perfil persistente com seus logins:
+
+```bash
+uv pip install --python .venv/bin/python -e ".[browser]"
+.venv/bin/playwright install chromium
+zora browser login https://www.upwork.com
+zora browser text https://exemplo.com
+zora browser screenshot https://exemplo.com captura.png
+```
+
+**Agenda e tarefas** — lê a página *"tarefas pra zora"*, sincroniza o status e
+acompanha o dia. `/tarefas sync` quando quiser; para checagem automática,
+`ZORA_AGENDA_TASKS_POLL_SECONDS=30`.
+
+**Metas, foco e lua** — `/metas`, `/foco definir semanal <texto>`; nas fases
+principais da lua ela propõe o ritual do ciclo.
+
+## Iniciativa
+
+Enquanto está aberta, a Zaia pode:
+
+- saudar você ao iniciar (respeitando horário de silêncio);
+- avisar lembretes que você pediu;
+- fazer um check-in curto após um tempo sem interação.
 
 ```text
 "me lembre de beber água em 30 minutos"
-"lembre-me de estudar amanhã às 9h"
 "me avise de ligar daqui a 2 horas"
 
 /lembrar pagar o boleto hoje às 18h
@@ -181,234 +244,55 @@ A Zora pode tomar iniciativa **enquanto está aberta**:
 /proativo on|off
 ```
 
-Configuração em `[proactive]`:
+Os lembretes ficam no SQLite local; se ela estiver fechada na hora, você recebe
+na próxima abertura. Ajustes em `[proactive]` (intervalo, limite diário,
+`quiet_hours`).
+
+## Privacidade e segurança
+
+- **Áudio nunca sai da máquina**: o STT é local. Só o texto da resposta vai para
+  o TTS `edge` — use `say` para ficar 100% offline.
+- **Chaves só em `.env`/ambiente**; o config é redigido ao ser exibido.
+- O servidor OpenCode escuta em `127.0.0.1`, com senha local e permissões
+  restritas.
+- Nada da transcrição é executado direto: tudo passa pelo agente e pelas
+  permissões do OpenCode.
+- `auto_approve` é opt-in e vem desligado.
+
+## Velocidade
 
 ```toml
-[proactive]
-enabled = true
-startup_greeting = true
-idle_checkin = true
-idle_minutes = 45
-min_interval_minutes = 60
-daily_max = 4
-quiet_hours = "23:00-08:00"
-check_interval_seconds = 30
-reminders = true
+[interface]
+concise = true              # respostas diretas, menos exploração
+
+[secondbrain]
+confirm_create = false
+reindex_on_start = false    # use /indexar quando quiser
+
+[stt]
+model = "base"              # mais rápido que "small"
 ```
 
-Os lembretes ficam no SQLite local e disparam quando a Zora está rodando; se ela
-estiver fechada na hora, você os recebe na próxima abertura.
+Saudações, hora e data respondem sem LLM. O streaming mostra o texto assim que
+chega. Para voz falada mais rápida e offline: `/voz say`.
 
-### Preferências (taste)
+## Como ela é feita
 
-`~/SecondBrain/preferences.md` é lido em **todo turno** e injetado no prompt
-(nome, idioma, tom, formalidade etc.). Ele evolui com o tempo:
-
-```bash
-# no terminal da Zora
-/preferencia prefiro respostas ainda mais curtas
-/preferencias          # mostra o que está registrado
-
-# ou por linguagem natural
-"anote como preferência: evite jargões"
-"lembre que eu prefiro café sem açúcar"
-```
-
-O arquivo é aditivo (deduplicado) e ganha backup antes de cada alteração.
-
-### Second Brain
-
-Configure o caminho em `secondbrain.path` (padrão `~/SecondBrain`). A base de
-exemplo já vem criada. O índice fica fora da base (`~/.local/share/zora/sb_index.db`).
-
-- Busca textual com **SQLite FTS5** (offline, incremental).
-- Links internos no padrão `[[Nome da Nota]]`; tags via frontmatter YAML ou `#tag`.
-- **Criar nota não pede confirmação por padrão** (`confirm_create = false`) e é
-  aditivo. **Editar/excluir continuam pedindo** (`require_confirmation = true`),
-  geram backup em `.zora/backups` e exclusões vão para `.zora/trash`.
-- A Zora nunca escreve fora da raiz configurada (proteção contra path traversal).
-
-Exemplos:
-
-```
-"registre a decisão: vamos usar OpenCode como motor de execução"
-"anote que o deploy precisa de backup antes de migrar"
-"Zora, continue aquele projeto de automação que discutimos antes"
-```
-
-### WhatsApp
-
-Integração com o WhatsApp Cloud API (Meta) para enviar texto e áudio:
-
-```bash
-zora whatsapp send "bom dia"
-zora whatsapp audio ~/caminho/voz.mp3
-zora whatsapp serve      # webhook para receber mensagens
-```
-
-Configure `ZORA_WHATSAPP_*` no `.env` (veja `.env.example`). O `serve` precisa de
-um túnel HTTPS (ngrok/cloudflared) para a Meta alcançar o webhook. Para mensagem
-de voz nativa, converta o áudio para OGG/Opus; MP3 funciona como áudio comum.
-
-### Telegram
-
-Alternativa mais simples ao WhatsApp (sem número dedicado):
-
-1. No Telegram, fale com **@BotFather**, envie `/newbot` e copie o **token**.
-2. Coloque `ZORA_TELEGRAM_BOT_TOKEN` e `ZORA_TELEGRAM_ENABLED=true` no `.env`.
-3. Fale com o seu bot uma vez e rode `zora telegram updates` para descobrir o
-   `chat_id`; defina em `ZORA_TELEGRAM_ALLOWED_CHAT_ID` se quiser fixar.
-4. Teste com:
-
-```bash
-zora telegram me
-zora telegram send "bom dia"
-zora telegram serve
-```
-
-`zora telegram serve` fica ouvindo texto e áudio e executa cada mensagem na
-Zora (OpenCode + Second Brain), respondendo no próprio Telegram quando termina.
-O `poll` usa long polling (não precisa de túnel HTTPS). Áudio funciona via
-`zora telegram audio arquivo.mp3`; para respostas também como mensagem de voz
-(OGG/Opus, requer `ffmpeg`), defina `ZORA_TELEGRAM_VOICE_REPLIES=true`.
-
-Para a Zora **editar arquivos** pelo Telegram, as ferramentas do OpenCode
-precisam de aprovação. Como o serviço não tem terminal, habilite
-`ZORA_OPENCODE_AUTO_APPROVE=true` (perigoso; use só com o bot restrito ao seu
-`chat_id`). Sem isso, ações que exigem permissão serão recusadas.
-
-### Spotify
-
-Controle o Spotify no macOS (app instalado):
-
-```bash
-zora spotify status
-zora spotify toggle
-zora spotify next
-zora spotify volume 40
-```
-
-Por voz: "pausa a música", "próxima música", "aumenta o volume". Se não estiver
-instalado: `brew install --cask spotify`.
-
-### Navegador (Playwright)
-
-Automação de navegador com perfil persistente (cookies/logins):
-
-```bash
-uv pip install --python .venv/bin/python -e ".[browser]"
-.venv/bin/playwright install chromium
-
-zora browser login https://www.upwork.com
-zora browser text https://exemplo.com
-zora browser screenshot https://exemplo.com captura.png
-```
-
-O perfil fica em `~/.local/share/zora/browser`, então o login é reaproveitado.
-Sites com proteção forte podem exigir `--no-headless` (o `login` já abre visível).
-
-### Tarefas de longo prazo
-
-A Zora lê a página **“tarefas pra zora”** na Agenda, sincroniza os itens e
-acompanha o status (`pending`, `in_progress`, `done`):
-
-```bash
-/tarefas              # lista
-/tarefas sync         # relê a página da Agenda
-/tarefas fazer <id>   # executa a tarefa no projeto
-/tarefas concluir <id>
-/tarefas limpar       # remove as concluídas do estado local
-```
-
-Por padrão a Zora **não checa a página sozinha** — use `/tarefas sync` quando
-quiser. Para checagem automática, defina `ZORA_AGENDA_TASKS_POLL_SECONDS=30`
-(compara o `updated_at` e só busca o conteúdo quando muda). O estado fica em
-`~/.local/share/zora/tasks.json` (fora do repositório).
-
-### Carteira
-
-A Zora acompanha os ativos que você salvar em `~/.config/zora/watchlist.json`:
-
-```bash
-/carteira                 # cotações da carteira
-/carteira add PETR4       # adiciona
-/carteira add Petroleo=PETR4
-/carteira remover PETR4
-```
-
-### Metas e focos
-
-O painel (`/metas` ou `/painel`) mostra o **foco atual** e as **metas de longo
-prazo** (`~/.config/zora/goals.json`). As metas da Agenda não são duplicadas.
-
-- `/foco definir semanal <texto>` (ou `mensal` / `trimestral`)
-- `/foco limpar`
-- O foco fica em `~/.config/zora/focus.json`.
-
-Nas fases principais da lua (nova, quarto crescente, cheia e quarto minguante),
-a Zora pergunta no início se você quer definir ou ajustar o foco, com um ritual
-para a fase.
-
-### Agenda proativa
-
-A Zora lê as tarefas do dia na Agenda (mesma base Supabase), mas **não avisa
-sozinha por padrão**. Para ativar os avisos, use `ZORA_AGENDA_NOTIFY_PENDING=true`.
-Configure `ZORA_AGENDA_ENV_FILE` apontando para o `.env` do projeto Agenda e
-ajuste a frequência em `ZORA_AGENDA_POLL_MINUTES` (padrão 30).
-
-### Pensamentos e diffs
-
-Durante a execução, a Zora mostra um resumo do **raciocínio** na linha de status
-e exibe os **diffs** das ferramentas de edição em caixas coloridas. Desative com
-`ZORA_UI_SHOW_REASONING=false` e/ou `ZORA_UI_SHOW_DIFFS=false`.
-
-### Interface Textual
-
-```bash
-zora                    # interface nova (TUI, padrão)
-zora -old               # interface antiga (terminal completo)
-zora -tui               # força a TUI (equivalente ao padrão)
-zora --watch            # reinicia sozinha quando o código muda
-```
-
-São dois front-ends do mesmo cérebro. Agora `zora` abre a **TUI** por padrão;
-`zora -old` abre o terminal antigo. O serviço do Telegram pode rodar junto. A TUI
-abre com o **ASCII colorido da Zora**, o **foco/metas** e a **fase da lua**, e
-tem chat com streaming, diffs e raciocínio.
-
-A TUI usa dois modos:
-
-- **Normal** (padrão): letras são atalhos — **i** digitar, **t** texto, **m**
-  mudo, **v** voz on/off, **f** falar (push-to-talk), **c** escuta contínua,
-  **Esc** interromper. **F1** paleta, **Ctrl+T** tema, **Ctrl+L** limpar.
-- **Insert**: campo de texto focado; **Esc** volta ao normal.
-
-Diferença: **v** liga/desliga a voz da resposta (TTS); **f** grava uma fala;
-**c** deixa o microfone aberto para conversa contínua. Para fixar:
-`ZORA_UI=textual` ou `ui = "textual"` em `[interface]`.
-
-## Arquitetura
-
-```
+```text
 zora/
-  config.py              # TOML + .env + defaults, paths
-  audio/recorder.py      # microfone push-to-talk + VAD por RMS
-  stt/faster_whisper.py  # transcrição local pt-BR
-  tts/                   # edge-tts + say, limpeza de Markdown, fallback
-  opencode/client.py     # HTTP real: sessions, prompts, SSE, permissions
-  opencode/events.py     # parser SSE e parts
-  secondbrain/index.py   # FTS5 incremental
-  secondbrain/notes.py   # criar/ler/editar com confirmação + backup
-  memory/store.py        # SQLite: conversas, turnos, registros
-  controller/            # intents + orquestrador
-  interface/terminal.py  # UI Rich
-  cli.py                 # `zora`, doctor, config, index, search, note
-tests/
+  audio/recorder.py      # microfone + VAD
+  stt/faster_whisper.py  # transcrição local
+  tts/                   # edge-tts + say, limpeza de Markdown
+  opencode/client.py     # sessões, prompts, SSE, permissões
+  secondbrain/           # índice FTS5 + notas com backup
+  memory/store.py        # conversas e turnos (SQLite)
+  controller/            # intenções, personas, iniciativa
+  interface/             # TUI e terminal Rich
+  cli.py                 # zora, doctor, config, index, search, note
 ```
 
-O servidor OpenCode é gerenciado por projeto: a Zora escolhe uma porta estável
-derivada do diretório e reaproveita a sessão anterior (`resume_session`). Para
-usar um servidor já existente, defina `opencode.base_url`.
+O comando continua se chamando `zora` por enquanto (pacote, pastas `~/.config/zora`
+e variáveis `ZORA_*`); o **nome dela** é Zaia.
 
 ## Testes
 
@@ -416,67 +300,26 @@ usar um servidor já existente, defina `opencode.base_url`.
 .venv/bin/python -m pytest
 ```
 
-Os testes cobrem configuração, intenções, índice/busca/notas do Second Brain,
-memória, parsing de eventos e payloads do OpenCode — sem exigir microfone,
-modelo baixado ou rede.
+Cobrem config, intenções, Second Brain, memória, eventos/payloads do OpenCode —
+sem microfone, download de modelo ou rede.
 
-## Velocidade
+## Se algo não funcionar
 
-Ajustes que reduzem latência (sem trocar de modelo):
+- `zora doctor` mostra o que falta.
+- **“Free usage limit reached”** → modelo `*-free` sem cota; conecte um provider
+  e ajuste `model` (ex.: `deepseek/deepseek-flash`). Reinicie com `/reiniciar`.
+- **Microfone** → permissão de Microfone para o Terminal em Ajustes do Sistema.
+- **Voz robótica** → `/voz say`; natural → `/voz edge`.
+- **Servidor** → se houver um OpenCode de outra pasta na mesma porta, ajuste
+  `opencode.base_url` ou encerre o antigo.
 
-```toml
-[interface]
-concise = true              # pede respostas diretas, menos exploração
+## Roadmap
 
-[secondbrain]
-confirm_create = false      # registrar ideia não pergunta
-reindex_on_start = false    # não varre a base a cada início (use /indexar)
-
-[stt]
-model = "base"              # mais rápido que "small" (menos preciso)
-```
-
-- O streaming retorna assim que o texto do assistente chega, sem espera extra.
-- Saudações e small talk ("oi", "bom dia", "tudo bem?", "obrigada") respondem
-  na hora, sem chamar o modelo (`[interface] fast_smalltalk = true`).
-- Hora e data ("que horas são?", "que dia é hoje?") também são respondidas
-  localmente, sem LLM.
-- A saudação inicial é instantânea por padrão; para personalizá-la pelo modelo,
-  use `[proactive] greeting_via_llm = true` (mais lenta).
-- O índice só é reconstruído no primeiro uso ou quando você roda `/indexar`.
-- Para respostas faladas mais rápidas e offline, use `/voz say`.
-- `opencode.auto_approve = false` por padrão. Ativar isso remove as perguntas de
-  ferramentas do OpenCode, mas **auto-aprova comandos/edições** — use com cautela.
-
-## Segurança e privacidade
-
-- API keys/segredos apenas em `.env`/ambiente; o config é redigido ao exibir.
-- STT local; o TTS `edge` envia apenas o texto da resposta (use `say` para offline).
-- O servidor escuta em `127.0.0.1`; opcionalmente protegido por
-  `OPENCODE_SERVER_PASSWORD` (HTTP Basic).
-- Nenhum comando é executado diretamente da transcrição: tudo passa pelo agente e
-  pelas permissões do OpenCode.
-- Criação de nota é aditiva e não pede confirmação por padrão; edição/exclusão
-  continuam exigindo confirmação e geram backup.
-- `opencode.auto_approve` é opt-in e vem desligado: por padrão as permissões de
-  ferramentas do OpenCode são respeitadas.
-
-## Roadmap incremental
-
-- [x] Fase 1: diagnóstico + arquitetura + API real validada
-- [x] Fase 2: MVP de voz (push-to-talk, STT, OpenCode, resposta)
-- [x] Fase 3: Second Brain (índice FTS5, busca, criação, links, contexto)
+- [x] Fase 1: diagnóstico + API real validada
+- [x] Fase 2: voz (push-to-talk, STT, OpenCode, resposta)
+- [x] Fase 3: Second Brain (FTS5, busca, criação, contexto)
 - [x] Fase 4: contexto automático + registro de decisões
-- [x] Fase 5 (parcial): TTS com interrupção, `/interromper`, contexto persistente
-- [ ] Conversa contínua / wake word
-- [ ] Steering nativo (`/api/session/{id}/prompt` com `delivery=steer`)
-- [ ] Busca semântica opcional (embeddings locais)
-
-## Troubleshooting
-
-- `zora doctor` mostra o que está faltando.
-- **Microfone:** conceda permissão de Microfone ao Terminal em Ajustes do Sistema.
-- **faster-whisper:** confirme que está rodando no `.venv` Python 3.12.
-- **Servidor:** se houver um OpenCode em outra pasta usando a mesma porta, ajuste
-  `opencode.base_url` ou encerre o servidor antigo.
-- **Voz robótica/offline:** `/voz say`; **voz natural:** `/voz edge`.
+- [x] Fase 5: TTS com interrupção, `/interromper`, contexto persistente
+- [ ] Conversa contínua com wake word
+- [ ] Steering nativo (`delivery=steer`)
+- [ ] Busca semântica local (embeddings)

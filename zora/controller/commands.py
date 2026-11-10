@@ -124,6 +124,8 @@ class CommandsMixin(OrchestratorContract):
             self._toggle_fast(argument)
         elif command in {"/chines", "/chinês", "/中文"}:
             self._toggle_chinese(argument)
+        elif command in {"/consolidar", "/memoria", "/memória"}:
+            await self._handle_consolidate(argument)
         elif command in {"/preferencia", "/preferência"}:
             if not argument:
                 self.ui.warning("uso: /preferencia <texto>")
@@ -167,17 +169,21 @@ class CommandsMixin(OrchestratorContract):
         self.ui.info(f"modo ativo: {self.persona.name} ({self.persona.key})")
 
     async def _new_session(self) -> None:
-        assert self.conversation_id is not None
-        conv = self.store.create_conversation(
-            str(self.directory), title="Nova sessão", mode=self.persona.key
-        )
-        self.conversation_id = int(conv["id"])
-        session = await self.client.create_session(
-            title=f"Zora — {self.directory.name} · {self.persona.name}",
-            model=self.client.model,
-        )
-        self.store.set_session(self.conversation_id, session.id)
-        self.session_id = session.id
+        async with self._transition_lock:
+            conv = self.store.create_conversation(
+                str(self.directory), title="Nova sessão", mode=self.persona.key
+            )
+            conversation_id = int(conv["id"])
+            session = await self.client.create_session(
+                title=f"Zaia — {self.directory.name} · {self.persona.name}",
+                model=self.client.model,
+            )
+            self.store.set_session(conversation_id, session.id)
+            self.conversation_id = conversation_id
+            self.session_id = session.id
+            self._last_assistant_message_id = None
+            self._resume_context = ""
+            self.store.set_meta("mode", self.persona.key)
         self.ui.success(f"nova sessão: {session.id}")
 
     async def _switch_model(self, argument: str) -> None:
@@ -462,7 +468,7 @@ class CommandsMixin(OrchestratorContract):
         try:
             if not self._zh_session_id:
                 session = await self.client.create_session(
-                    title="Zora — 中文", model=self.client.model
+                    title="Zaia — 中文", model=self.client.model
                 )
                 self._zh_session_id = session.id
             response = await asyncio.wait_for(

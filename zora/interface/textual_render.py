@@ -74,29 +74,72 @@ def _vgradient(count: int, stops: list[str]) -> list[str]:
     return colors
 
 
-def _welcome_art(max_cols: int = 78) -> list[tuple[str, str]]:
-    art: list[tuple[str, str]] = []
-    figure_colors = _vgradient(len(_ASCII_FIGURE), [LILAC, ACCENT, CYAN, MINT])
-    art.extend(zip(_ASCII_FIGURE, figure_colors, strict=False))
-    divine = fit_braille(DIVINE_LINES, max_cols=max_cols, max_rows=26)
-    if divine:
-        art.append(("", MUTED))
-        divine_colors = _vgradient(len(divine), [MINT, CYAN, LILAC, ACCENT])
-        art.extend(zip(divine, divine_colors, strict=False))
-    return art
+def _center_lines(lines: list[str], height: int) -> list[str]:
+    """Centraliza verticalmente um bloco de linhas na altura pedida."""
+    if len(lines) >= height:
+        return lines
+    top = (height - len(lines)) // 2
+    return [""] * top + lines + [""] * (height - top - len(lines))
+
+
+def _welcome_art(max_cols: int = 78) -> list[list[tuple[str, str]]]:
+    """Banner de boas-vindas com as duas artes lado a lado.
+
+    Cada linha e uma lista de segmentos ``(texto, cor)`` para que a figura e a
+    arte braille mantenham gradientes próprios. Em terminais estreitos, cai de
+    volta para o layout empilhado.
+    """
+    figure = list(_ASCII_FIGURE)
+    figure_w = max((len(line) for line in figure), default=0)
+    gap = 2
+    available = max_cols - figure_w - gap
+
+    if available < 12:
+        figure_colors = _vgradient(len(figure), [LILAC, ACCENT, CYAN, MINT])
+        art: list[list[tuple[str, str]]] = [
+            [(line, color)] for line, color in zip(figure, figure_colors, strict=False)
+        ]
+        divine = fit_braille(DIVINE_LINES, max_cols=max_cols, max_rows=26)
+        if divine:
+            art.append([("", MUTED)])
+            divine_colors = _vgradient(len(divine), [MINT, CYAN, LILAC, ACCENT])
+            art.extend(
+                [[(line, color)] for line, color in zip(divine, divine_colors, strict=False)]
+            )
+        return art
+
+    divine = fit_braille(DIVINE_LINES, max_cols=available, max_rows=26)
+    height = max(len(figure), len(divine))
+    figure = _center_lines(figure, height)
+    divine = _center_lines(divine, height)
+    figure_colors = _vgradient(height, [LILAC, ACCENT, CYAN, MINT])
+    divine_colors = _vgradient(height, [MINT, CYAN, LILAC, ACCENT])
+
+    rows: list[list[tuple[str, str]]] = []
+    for index in range(height):
+        rows.append(
+            [
+                (figure[index].ljust(figure_w), figure_colors[index]),
+                (" " * gap, MUTED),
+                (divine[index], divine_colors[index]),
+            ]
+        )
+    return rows
 
 
 _SHORTCUTS = (
     "i digitar · t texto · m mudo · v voz · f falar · c contínua · "
-    "Esc interromper · F1 comandos · F2 sessões · F3 modo · Ctrl+T tema · Ctrl+L limpar"
+    "Tab modo · Esc interromper · F1 comandos · F2 sessões · F3 modo · "
+    "Ctrl+T tema · Ctrl+L limpar"
 )
 
 _HELP = (
     "Modo normal: i digitar · t texto · m mudo · v voz on/off · f falar · "
-    "c escuta contínua · Esc interromper. No modo insert, Esc volta ao normal. "
-    "F1 paleta · F2 sessões · F3 trocar modo · Ctrl+T tema · Ctrl+L limpar. "
-    "Cada modo tem o próprio histórico de sessões; /novo abre uma sessão nova. "
-    "/chines on|off mostra 中文 + pinyin de cada mensagem."
+    "c escuta contínua · Tab alterna o modo · Esc interromper. No modo insert, "
+    "Esc volta ao normal. F1 paleta · F2 sessões · F3 modo · Ctrl+T tema · "
+    "Ctrl+L limpar. Cada modo tem o próprio histórico de sessões; /novo abre "
+    "uma sessão nova. /consolidar [hoje|ontem|AAAA-MM-DD] salva a memória do dia "
+    "no Second Brain. /chines on|off mostra 中文 + pinyin de cada mensagem."
 )
 
 

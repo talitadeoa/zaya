@@ -97,6 +97,7 @@ class OrchestratorContract(ABC):
 
     # --- iniciativa/agenda ---
     _proactive_task: asyncio.Task[None] | None
+    _memory_task: asyncio.Task[None] | None
     _proactive_count: int
     _proactive_day: date
     _last_proactive: float
@@ -125,6 +126,27 @@ class OrchestratorContract(ABC):
     _answer_buffer: str
     _session_dirty: bool
     _last_assistant_message_id: str | None
+    _transition_lock: asyncio.Lock
+    _resume_context: str
+
+    # --- memoria diaria ---
+    @abstractmethod
+    async def consolidate_day(
+        self,
+        day: date | None = None,
+        *,
+        force: bool = False,
+        timeout_seconds: float | None = None,
+    ) -> str | None:
+        ...
+
+    @abstractmethod
+    async def _maybe_consolidate(self, now: datetime) -> None:
+        ...
+
+    @abstractmethod
+    async def _handle_consolidate(self, argument: str) -> None:
+        ...
 
     # --- metodos que um mixin chama de outro (implementados nos mixins) ---
     @abstractmethod
@@ -236,7 +258,11 @@ class OrchestratorContract(ABC):
         ...
 
     @abstractmethod
-    async def _clear_stale_session(self) -> None:
+    async def _clear_stale_session(self, session_id: str | None = None) -> None:
+        ...
+
+    @abstractmethod
+    def _take_resume_context(self) -> str:
         ...
 
     @abstractmethod

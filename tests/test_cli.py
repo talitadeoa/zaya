@@ -28,14 +28,20 @@ def test_parser_top_level_flags():
 
 
 def test_textual_modules_expose_public_api():
-    from zora.interface.textual_app import _HELP, TextualSink, ZoraTextualApp
+    from zora.interface.textual_app import _HELP, TextualSink, ZaiaTextualApp
     from zora.interface.textual_render import _welcome_art, card
-    from zora.interface.textual_screens import (
-        CommandPalette,
-        ModePicker,
-        SessionPicker,
-    )
+    from zora.interface.textual_screens import CommandPalette, SessionPicker
 
-    assert ZoraTextualApp and TextualSink and _HELP
+    assert ZaiaTextualApp and TextualSink and _HELP
     assert card and _welcome_art
-    assert CommandPalette and ModePicker and SessionPicker
+    assert CommandPalette and SessionPicker
+
+
+def test_welcome_art_lado_a_lado_cabe_na_largura():
+    from zora.interface.textual_render import _welcome_art
+
+    art = _welcome_art(78)
+    assert art
+    assert all(len(segments) >= 2 for segments in art)
+    largura = max(sum(len(texto) for texto, _ in segments) for segments in art)
+    assert largura <= 78

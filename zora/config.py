@@ -1,4 +1,4 @@
-"""Configuracao da Zora.
+"""Configuracao da Zaia.
 
 Precedencia (maior vence):
   1. variaveis de ambiente ZORA_*
@@ -24,7 +24,7 @@ APP_NAME = "zora"
 class OpenCodeConfig(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
-    # Vazio => a Zora escolhe uma porta estavel por diretorio de projeto.
+    # Vazio => a Zaia escolhe uma porta estavel por diretorio de projeto.
     base_url: str = ""
     directory: str = ""
     model: str = "deepseek/deepseek-flash"
@@ -134,8 +134,25 @@ class InterfaceConfig(BaseModel):
     fast_smalltalk: bool = True
     # Eco em chinês (caracteres + pinyin) para cada mensagem.
     chinese_echo: bool = False
-    # Modo inicial: academica | carreira | assistente | conversa.
-    default_mode: str = "assistente"
+    # Modo inicial: academica | carreira | assistente | conversa | financas.
+    default_mode: str = "conversa"
+
+
+class MemoryConfig(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    # Consolida os turnos do dia numa nota de memoria no Second Brain.
+    enabled: bool = True
+    # Horario local (HH:MM) em que o dia e consolidado enquanto a Zaia roda.
+    at: str = "23:00"
+    # Ao encerrar depois desse horario, consolida o que ainda estiver pendente.
+    on_exit: bool = True
+    # Resumo pelo modelo; se falhar, cai no resumo local deterministico.
+    use_llm: bool = True
+    folder: str = "Memoria"
+    max_turns: int = 120
+    max_chars: int = 16000
+    llm_timeout_seconds: float = 90.0
 
 
 class ProactiveConfig(BaseModel):
@@ -193,7 +210,7 @@ class AgendaConfig(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     enabled: bool = True
-    # .env do projeto Agenda (Supabase). Nada e copiado para o repo da Zora.
+    # .env do projeto Agenda (Supabase). Nada e copiado para o repo da Zaia.
     env_file: str = "~/agenda-git/agenda/.env"
     poll_minutes: float = 30.0
     max_items: int = 5
@@ -227,6 +244,7 @@ class Config(BaseModel):
     secondbrain: SecondBrainConfig = Field(default_factory=SecondBrainConfig)
     interface: InterfaceConfig = Field(default_factory=InterfaceConfig)
     proactive: ProactiveConfig = Field(default_factory=ProactiveConfig)
+    memory: MemoryConfig = Field(default_factory=MemoryConfig)
     whatsapp: WhatsAppConfig = Field(default_factory=WhatsAppConfig)
     telegram: TelegramConfig = Field(default_factory=TelegramConfig)
     agenda: AgendaConfig = Field(default_factory=AgendaConfig)
@@ -383,6 +401,11 @@ _ENV_MAP: dict[str, tuple[str, str]] = {
     "ZORA_OPENCODE_DIRECTORY": ("opencode", "directory"),
     "ZORA_OPENCODE_MODEL": ("opencode", "model"),
     "ZORA_OPENCODE_PASSWORD": ("opencode", "server_password"),
+    "ZORA_MEMORY_AT": ("memory", "at"),
+    "ZORA_MEMORY_ENABLED": ("memory", "enabled"),
+    "ZORA_MEMORY_FOLDER": ("memory", "folder"),
+    "ZORA_MEMORY_ON_EXIT": ("memory", "on_exit"),
+    "ZORA_MEMORY_USE_LLM": ("memory", "use_llm"),
     "ZORA_PROACTIVE_CHECK_INTERVAL_SECONDS": ("proactive", "check_interval_seconds"),
     "ZORA_PROACTIVE_DAILY_MAX": ("proactive", "daily_max"),
     "ZORA_PROACTIVE_ENABLED": ("proactive", "enabled"),
@@ -457,10 +480,10 @@ def _apply_env(raw: dict[str, Any], env: dict[str, str]) -> None:
 
 
 _DEFAULT_CONFIG_TEMPLATE = """\
-# Configuracao da Zora. Segredos NAO devem ficar aqui: use ~/.config/zora/.env
+# Configuracao da Zaia. Segredos NAO devem ficar aqui: use ~/.config/zora/.env
 
 [opencode]
-# Vazio = a Zora gerencia um servidor por diretorio de projeto.
+# Vazio = a Zaia gerencia um servidor por diretorio de projeto.
 base_url = ""
 directory = ""
 model = "deepseek/deepseek-flash"
@@ -530,7 +553,7 @@ ui = "textual"             # textual (padrão) | terminal
 fast = false               # modo rápido: sem busca automática, respostas curtas
 fast_smalltalk = true      # saudações respondem na hora, sem chamar o modelo
 chinese_echo = false       # mostra chinês + pinyin de cada mensagem
-default_mode = "assistente"     # academica | carreira | assistente | conversa
+default_mode = "conversa"       # academica | carreira | assistente | conversa | financas
 
 [whatsapp]
 enabled = false
@@ -567,6 +590,14 @@ api_base_url = "https://api.telegram.org"
 poll_timeout = 25
 voice_replies = false
 # bot_token vai apenas no .env/ambiente.
+
+[memory]
+# Consolida o dia em uma nota de memoria no Second Brain.
+enabled = true
+at = "23:00"
+on_exit = true
+use_llm = true
+folder = "Memoria"
 
 [proactive]
 enabled = true

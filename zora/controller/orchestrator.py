@@ -1,4 +1,4 @@
-"""Orquestrador da Zora: voz -> STT -> contexto -> OpenCode -> resposta/voz.
+"""Orquestrador da Zaia: voz -> STT -> contexto -> OpenCode -> resposta/voz.
 
 O comportamento concreto vive em mixins coesos (fala, turnos, voz, comandos,
 registro e iniciativa). Esta classe mantem o estado compartilhado, o ciclo de
@@ -21,6 +21,7 @@ from zora.controller.commands import CommandsMixin
 from zora.controller.contract import StreamSink
 from zora.controller.goals import GoalTracker
 from zora.controller.initiative import InitiativeMixin
+from zora.controller.memory import MemoryMixin
 from zora.controller.modes import PERSONAS, Persona, get_persona, resolve_mode
 from zora.controller.registration import RegistrationMixin
 from zora.controller.speech import SpeechMixin
@@ -31,6 +32,7 @@ from zora.focus import FocusStore
 from zora.interface.terminal import TerminalUI
 from zora.memory.store import MemoryStore
 from zora.opencode.client import OpenCodeClient, OpenCodeError
+from zora.opencode.events import message_id
 from zora.secondbrain.index import SecondBrainIndex
 from zora.secondbrain.notes import SecondBrain
 from zora.stt.faster_whisper import WhisperTranscriber
@@ -43,6 +45,7 @@ class Orchestrator(
     TurnMixin,
     VoiceMixin,
     CommandsMixin,
+    MemoryMixin,
     RegistrationMixin,
     InitiativeMixin,
 ):
@@ -99,6 +102,7 @@ class Orchestrator(
         self._stt_lock = asyncio.Lock()
         self._partial_last = ""
         self._proactive_task: asyncio.Task | None = None
+        self._memory_task: asyncio.Task[None] | None = None
         self._proactive_count = 0
         self._proactive_day = datetime.now().astimezone().date()
         self._last_proactive = 0.0
@@ -130,6 +134,13 @@ class Orchestrator(
         self._answer_buffer = ""
         self._session_dirty = False
         self._last_assistant_message_id: str | None = None
+        # Serializa troca de modo/conversa/sessao. Sem isso, dois workers do TUI
+        # podem intercalar os awaits e gravar a sessao de um modo na conversa
+        # de outro.
+        self._transition_lock = asyncio.Lock()
+        # Historico local reinjetado no proximo turno quando a sessao antiga
+        # nao existe mais (a conversa continua, o contexto do provedor nao).
+        self._resume_context = ""
 
     async def _bootstrap(self) -> None:
         await self.client.ensure_server()
@@ -138,8 +149,8 @@ class Orchestrator(
                 "auto-aprovação de ferramentas do OpenCode está ATIVA (opencode.auto_approve=true)"
             )
         self._prepare_conversation()
-        self.session_id = await self._ensure_session()
-        await self._clear_stale_session()
+        assert self.conversation_id is not None
+        await self._activate_conversation(self.conversation_id, self.persona)
         await self._seed_last_message_id()
         self._refresh_index_on_start()
         if self._voice_available():
@@ -152,6 +163,31 @@ class Orchestrator(
             self.logger.debug("warmup do STT falhou: %s", exc)
 
     async def _shutdown(self) -> None:
+        if self._memory_task is not None:
+            if not self._memory_task.done():
+                try:
+                    await asyncio.wait_for(
+                        asyncio.shield(self._memory_task), timeout=15.0
+                    )
+                except Exception:
+                    self._memory_task.cancel()
+                    with contextlib.suppress(asyncio.CancelledError, Exception):
+                        await self._memory_task
+            self._memory_task = None
+        if (
+            self.cfg.memory.enabled
+            and self.cfg.memory.on_exit
+            and datetime.now().astimezone().strftime("%H:%M") >= self.cfg.memory.at
+        ):
+            try:
+                await asyncio.wait_for(
+                    self.consolidate_day(
+                        datetime.now().astimezone().date(), timeout_seconds=20.0
+                    ),
+                    timeout=25.0,
+                )
+            except Exception as exc:  # pragma: no cover - depende do provedor
+                self.logger.warning("consolidacao ao sair falhou: %s", exc)
         if self._warmup_task is not None:
             self._warmup_task.cancel()
             with contextlib.suppress(asyncio.CancelledError, Exception):
@@ -190,6 +226,8 @@ class Orchestrator(
         self, text: str, speak: bool = False, close: bool = True
     ) -> str:
         """Responde uma instrução externa (ex.: Telegram) e devolve o texto."""
+        if not close:
+            self._start_memory_worker()
         if not self.session_id:
             await self._bootstrap()
         try:
@@ -214,6 +252,7 @@ class Orchestrator(
         """Sobe servidor/sessão antes do primeiro uso (aquece a TUI)."""
         if not self.session_id:
             await self._bootstrap()
+        self._start_memory_worker()
 
     async def answer_stream(self, text: str, sink: StreamSink | None) -> str:
         """Como answer_once, mas envia tokens/eventos para um sink de UI."""
@@ -265,6 +304,8 @@ class Orchestrator(
         if self.cfg.proactive.enabled:
             self._proactive_task = asyncio.create_task(self._proactive_loop(greet=False))
 
+        self._start_memory_worker()
+
         try:
             await self._check_focus(datetime.now().astimezone())
         except Exception as exc:  # pragma: no cover
@@ -308,33 +349,110 @@ class Orchestrator(
             self.logger.warning("falha ao indexar Second Brain: %s", exc, exc_info=True)
             self.ui.warning(f"não foi possível indexar o Second Brain: {exc}")
 
-    async def _ensure_session(self) -> str:
-        assert self.conversation_id is not None
-        conv = self.store.get_conversation(self.conversation_id)
+    async def _open_session(
+        self, conversation_id: int, persona: Persona
+    ) -> tuple[str, bool]:
+        """Retoma a sessao da conversa ou cria uma nova.
+
+        Devolve ``(session_id, criada)``. O segundo item diz se a sessao
+        anterior sumiu (ou nunca existiu), para que o chamador possa reinjetar
+        o historico local no proximo turno.
+        """
+        conv = self.store.get_conversation(conversation_id)
         sid = conv["opencode_session_id"]
         if self.cfg.opencode.resume_session and sid:
             existing = await self.client.get_session(sid)
             if existing:
-                return sid
+                return sid, False
+            self.logger.warning(
+                "sessao %s da conversa %s nao existe mais; abrindo nova",
+                sid,
+                conversation_id,
+            )
         session = await self.client.create_session(
-            title=f"Zora — {self.directory.name} · {self.persona.name}",
+            title=f"Zaia — {self.directory.name} · {persona.name}",
             model=self.client.model,
         )
-        self.store.set_session(self.conversation_id, session.id)
-        return session.id
+        self.store.set_session(conversation_id, session.id)
+        return session.id, True
 
-    async def _clear_stale_session(self) -> None:
+    async def _ensure_session(self) -> str:
+        """Mantido para compatibilidade; le o estado atual."""
+        assert self.conversation_id is not None
+        sid, _created = await self._open_session(self.conversation_id, self.persona)
+        return sid
+
+    async def _activate_conversation(
+        self,
+        conversation_id: int,
+        persona: Persona,
+        *,
+        seed_history: bool = True,
+    ) -> None:
+        """Troca conversa+persona+sessao como uma unica operacao.
+
+        Tudo o que depende de await acontece antes; o estado compartilhado so e
+        alterado no fim, já com a sessao certa. Assim duas trocas simultaneas
+        nao se cruzam.
+        """
+        async with self._transition_lock:
+            sid, created = await self._open_session(conversation_id, persona)
+            if created and seed_history:
+                context = self._history_context(conversation_id)
+                if context:
+                    self._resume_context = context
+                    self.logger.info(
+                        "historico da conversa %s sera reinjetado no proximo turno",
+                        conversation_id,
+                    )
+            self.persona = persona
+            self.conversation_id = conversation_id
+            self.session_id = sid
+            self._last_assistant_message_id = None
+            self.store.set_meta("mode", persona.key)
+            await self._clear_stale_session(sid)
+
+    def _history_context(self, conversation_id: int, limit: int = 24) -> str:
+        """Resume os ultimos turnos locais para reconstruir o contexto."""
+        lines: list[str] = []
+        for row in self.store.turns(conversation_id, limit=limit):
+            role = str(row["role"])
+            if role not in {"user", "assistant"}:
+                continue
+            text = " ".join(str(row["text"]).split())
+            if not text:
+                continue
+            if len(text) > 400:
+                text = text[:400].rstrip() + "…"
+            lines.append(f"{'Talita' if role == 'user' else 'Zaia'}: {text}")
+        if not lines:
+            return ""
+        body = "\n".join(lines)
+        if len(body) > 6000:
+            body = body[-6000:].split("\n", 1)[-1]
+        return (
+            "[Contexto de continuidade — histórico local recuperado porque a "
+            "sessão anterior não estava disponível. Use apenas quando for "
+            "relevante.]\n" + body
+        )
+
+    def _take_resume_context(self) -> str:
+        context, self._resume_context = self._resume_context, ""
+        return context
+
+    async def _clear_stale_session(self, session_id: str | None = None) -> None:
         """Aborta uma execucao presa (sessao em busy) antes de iniciar outra."""
-        if not self.session_id:
+        sid = session_id or self.session_id
+        if not sid:
             return
         try:
-            status = await self.client.session_status(self.session_id)
+            status = await self.client.session_status(sid)
         except OpenCodeError:
             return
         if status and isinstance(status, dict) and status.get("type") != "idle":
             self.logger.warning("sessao presa (%s); abortando antes do proximo turno", status)
             self.ui.warning("liberando uma execução anterior presa…")
-            await self.client.abort(self.session_id)
+            await self.client.abort(sid)
             await asyncio.sleep(0.2)
 
     async def _seed_last_message_id(self) -> None:
@@ -343,10 +461,9 @@ class Orchestrator(
             message = await self.client.latest_assistant(self.session_id)
         except OpenCodeError:
             return
-        info = (message or {}).get("info") or {}
-        message_id = info.get("id")
-        if message_id:
-            self._last_assistant_message_id = str(message_id)
+        current_id = message_id(message) if message else None
+        if current_id:
+            self._last_assistant_message_id = current_id
 
     async def _loop(self) -> None:
         while True:
@@ -436,11 +553,8 @@ class Orchestrator(
         persona = get_persona(key)
         if persona is None:
             return
-        self.persona = persona
-        self.store.set_meta("mode", persona.key)
-        self._prepare_conversation()
-        self.session_id = await self._ensure_session()
-        await self._clear_stale_session()
+        conv = self.store.get_or_create_conversation(str(self.directory), persona.key)
+        await self._activate_conversation(int(conv["id"]), persona)
 
     async def select_conversation(self, conversation_id: int) -> None:
         try:
@@ -448,12 +562,8 @@ class Orchestrator(
         except KeyError:
             return
         persona = resolve_mode(conv["mode"])
-        self.persona = persona
-        self.store.set_meta("mode", persona.key)
         self.store.set_current(conversation_id)
-        self.conversation_id = conversation_id
-        self.session_id = await self._ensure_session()
-        await self._clear_stale_session()
+        await self._activate_conversation(conversation_id, persona)
 
     async def new_session(self) -> None:
         await self._new_session()

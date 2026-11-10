@@ -159,7 +159,7 @@ class TerminalUI:
         grid.add_row("Modelo", escape(model))
         grid.add_row("Memória", f"Second Brain conectado · {sb_notes} nota(s)")
         grid.add_row("Voz", ("ativa · " if tts_enabled else "desativada · ") + escape(voice))
-        title = Text("Zora", style=f"bold {ACCENT}")
+        title = Text("Zaia", style=f"bold {ACCENT}")
         self._print()
         for line, color in zip(_ASCII_ART, _ASCII_COLORS, strict=False):
             self._print(Text(line, style=f"bold {color}"))
@@ -221,7 +221,7 @@ class TerminalUI:
     # ---------------------------------------------------------------- streaming
     def _render_stream_panel(self) -> Panel:
         text = "".join(self._stream_buffer)
-        title = self._stream_title or _message_title("Zora", ACCENT)
+        title = self._stream_title or _message_title("Zaia", ACCENT)
         return Panel(
             escape(text),
             title=title,
@@ -263,7 +263,7 @@ class TerminalUI:
             self._erase_status()
             self._streaming = True
             self._stream_buffer = []
-            self._stream_title = _message_title("Zora", ACCENT)
+            self._stream_title = _message_title("Zaia", ACCENT)
             tty = self._tty
             if not tty:
                 self._write_raw("\r\x1b[2K◐ escrevendo…")
@@ -308,7 +308,7 @@ class TerminalUI:
             self._print(
                 Panel(
                     escape(text),
-                    title=title or _message_title("Zora", ACCENT),
+                    title=title or _message_title("Zaia", ACCENT),
                     title_align="left",
                     border_style=ACCENT,
                     padding=(0, 1),
@@ -318,7 +318,7 @@ class TerminalUI:
             self._draw_status()
 
     def print_markdown(self, text: str, title: str | None = None) -> None:
-        header = title or _message_title("Zora", ACCENT)
+        header = title or _message_title("Zaia", ACCENT)
         self._print(
             Panel(
                 Markdown(text or ""),
@@ -334,7 +334,7 @@ class TerminalUI:
         self._print(
             Panel(
                 escape(text),
-                title=_message_title("Zora", ACCENT),
+                title=_message_title("Zaia", ACCENT),
                 title_align="left",
                 subtitle=Text("iniciativa", style=MUTED),
                 subtitle_align="right",
@@ -584,7 +584,7 @@ class TerminalUI:
 
     # ------------------------------------------------------------------- misc
     def help(self) -> None:
-        table = Table(title="Comandos da Zora", border_style=ACCENT, show_header=False)
+        table = Table(title="Comandos da Zaia", border_style=ACCENT, show_header=False)
         table.add_column(style="bold cyan", no_wrap=True)
         table.add_column()
         rows = [
@@ -609,10 +609,11 @@ class TerminalUI:
             ("/voz on|off|edge|say|none", "controla a voz"),
             ("/preferencia <texto>", "aprende uma preferência (taste)"),
             ("/preferencias", "mostra as preferências aprendidas"),
+            ("/consolidar [hoje|ontem|AAAA-MM-DD]", "salva a memória do dia no Second Brain"),
             ("/lembrar <texto> em <tempo>", "cria um lembrete falado"),
             ("/lembretes", "lista lembretes pendentes"),
             ("/cancelar <id>", "cancela um lembrete"),
-            ("/proativo on|off", "liga/desliga iniciativa da Zora"),
+            ("/proativo on|off", "liga/desliga iniciativa da Zaia"),
             ("/continuo on|off", "escuta contínua (sem Enter a cada fala)"),
             ("/fala", "volta para a escuta contínua por voz"),
             ("/texto", "volta para o modo texto (digitar)"),
@@ -620,8 +621,8 @@ class TerminalUI:
             ("/autoaprovar on|off", "auto-aprova ferramentas do OpenCode (perigoso)"),
             ("/interromper", "aborta a execução atual no OpenCode"),
             ("/sessao", "mostra o ID da sessão OpenCode"),
-            ("/reiniciar", "reinicia a Zora com o código novo"),
-            ("/sair", "encerra a Zora"),
+            ("/reiniciar", "reinicia a Zaia com o código novo"),
+            ("/sair", "encerra a Zaia"),
         ]
         for command, description in rows:
             table.add_row(command, description)

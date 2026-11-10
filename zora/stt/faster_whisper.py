@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import shutil
+import subprocess
 from pathlib import Path
 
 import numpy as np
 
 from zora.config import STTConfig
+
+SAMPLE_RATE = 16000
 
 
 class STTError(RuntimeError):
@@ -71,15 +75,47 @@ class WhisperTranscriber:
         except Exception as exc:  # pragma: no cover
             raise STTError(f"falha na transcricao: {exc}") from exc
 
-    def transcribe_file(self, path: str | Path) -> str:
-        model = self._ensure_model()
-        try:
-            segments, _info = model.transcribe(
-                str(path),
-                language=self.cfg.language,
-                beam_size=self.cfg.beam_size,
-                vad_filter=self.cfg.vad_filter,
+    def _decode_audio(self, path: str | Path) -> np.ndarray:
+        """Decodifica qualquer formato suportado pelo ffmpeg para float32 mono 16 kHz.
+
+        O PyAV embutido no faster-whisper e incompativel com a versao do PyAV
+        instalada (wheels recentes), entao nao entregamos o arquivo direto ao
+        modelo: convertemos para PCM antes.
+        """
+        ffmpeg = shutil.which("ffmpeg")
+        if not ffmpeg:
+            raise STTError(
+                "ffmpeg nao encontrado no PATH; e necessario para decodificar "
+                "audios do Telegram."
             )
-            return " ".join(seg.text.strip() for seg in segments if seg.text.strip()).strip()
-        except Exception as exc:  # pragma: no cover
-            raise STTError(f"falha na transcricao: {exc}") from exc
+        cmd = [
+            ffmpeg,
+            "-nostdin",
+            "-v",
+            "error",
+            "-i",
+            str(path),
+            "-f",
+            "f32le",
+            "-ac",
+            "1",
+            "-ar",
+            str(SAMPLE_RATE),
+            "pipe:1",
+        ]
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                check=False,
+            )
+        except OSError as exc:
+            raise STTError(f"falha ao executar ffmpeg: {exc}") from exc
+        if result.returncode != 0:
+            detail = result.stderr.decode("utf-8", "replace").strip()
+            raise STTError(f"ffmpeg nao conseguiu decodificar o audio: {detail}")
+        return np.frombuffer(result.stdout, dtype=np.float32).copy()
+
+    def transcribe_file(self, path: str | Path) -> str:
+        audio = self._decode_audio(path)
+        return self.transcribe(audio)

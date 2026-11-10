@@ -1,4 +1,4 @@
-"""Telas modais da interface Textual (paleta, seletor de modo e sessões)."""
+"""Telas modais da interface Textual (paleta e sessões)."""
 
 from __future__ import annotations
 
@@ -34,6 +34,8 @@ class CommandPalette(ModalScreen[str | None]):
     }
     """
 
+    BINDINGS: ClassVar[list[BindingType]] = [Binding("escape", "cancel", "Voltar")]
+
     def compose(self) -> ComposeResult:
         yield Vertical(
             Input(placeholder="Buscar comando…", id="palette-input"),
@@ -53,83 +55,14 @@ class CommandPalette(ModalScreen[str | None]):
             if needle in label.lower():
                 options.add_option(label)
 
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
     def on_input_changed(self, event: Input.Changed) -> None:
         self._refresh(event.value)
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         self.dismiss(str(event.option.prompt))
-
-
-class ModePicker(ModalScreen[str | None]):
-    """Escolha de um dos modos (personas) da Zora."""
-
-    CSS = """
-    ModePicker {
-        align: center middle;
-        background: #000000cc;
-    }
-    #mode-box {
-        width: 76;
-        height: auto;
-        max-height: 24;
-        border: round #D644FB;
-        background: #140a24;
-        padding: 1 2;
-    }
-    #mode-title {
-        color: #D644FB;
-        text-style: bold;
-        margin-bottom: 1;
-    }
-    #mode-hint {
-        color: #8a8a99;
-        margin-top: 1;
-    }
-    #mode-list {
-        border: none;
-        background: #140a24;
-        padding: 0;
-    }
-    #mode-list > .option-list--option-highlighted {
-        background: #D644FB;
-        color: #0b0614;
-        text-style: bold;
-    }
-    """
-
-    BINDINGS: ClassVar[list[BindingType]] = [Binding("escape", "cancel", "Voltar")]
-
-    def __init__(self, modes: list, current: str):
-        super().__init__()
-        self._modes = list(modes)
-        self._current = current
-        self._keys: list[str] = []
-
-    def compose(self) -> ComposeResult:
-        with Vertical(id="mode-box"):
-            yield Static("Escolha um modo", id="mode-title")
-            yield OptionList(id="mode-list")
-            yield Static("↑↓ escolher · Enter confirmar · Esc manter", id="mode-hint")
-
-    def on_mount(self) -> None:
-        options = self.query_one("#mode-list", OptionList)
-        options.clear_options()
-        self._keys.clear()
-        highlighted = 0
-        for index, persona in enumerate(self._modes):
-            self._keys.append(persona.key)
-            mark = "●" if persona.key == self._current else "○"
-            options.add_option(f"{mark} {persona.name}  —  {persona.summary}")
-            if persona.key == self._current:
-                highlighted = index
-        options.highlighted = highlighted
-        options.focus()
-
-    def action_cancel(self) -> None:
-        self.dismiss(None)
-
-    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
-        self.dismiss(self._keys[event.option_index])
 
 
 class SessionPicker(ModalScreen[object]):

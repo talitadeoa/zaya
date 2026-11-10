@@ -14,6 +14,7 @@ from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.binding import Binding, BindingType
 from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.css.query import NoMatches
 from textual.widgets import Header, Input, Static
 
 from zora.audio.recorder import ContinuousListener
@@ -34,11 +35,11 @@ from zora.interface.textual_render import (
     _welcome_art,
     card,
 )
-from zora.interface.textual_screens import CommandPalette, ModePicker, SessionPicker
+from zora.interface.textual_screens import CommandPalette, SessionPicker
 from zora.interface.textual_sink import TextualSink
 
 
-class ZoraTextualApp(App):
+class ZaiaTextualApp(App):
     BINDINGS: ClassVar[list[BindingType]] = [
         Binding("i", "insert", "Digitar"),
         Binding("enter", "insert", "Digitar"),
@@ -47,10 +48,11 @@ class ZoraTextualApp(App):
         Binding("v", "toggle_voice", "Voz"),
         Binding("f", "push_to_talk", "Falar"),
         Binding("c", "toggle_listen", "Contínua"),
-        Binding("escape", "escape", "Voltar", priority=True),
+        Binding("escape", "escape", "Voltar"),
+        Binding("tab", "cycle_mode", "Modo", priority=True),
         Binding("f1", "command_palette", "Comandos"),
         Binding("f2", "sessions", "Sessões"),
-        Binding("f3", "modes", "Modo"),
+        Binding("f3", "cycle_mode", "Modo"),
         Binding("ctrl+t", "toggle_theme", "Tema"),
         Binding("ctrl+l", "clear_chat", "Limpar"),
     ]
@@ -131,6 +133,9 @@ class ZoraTextualApp(App):
         self._dot_phase = 0
         self._stream_widget: Static | None = None
         self._modebar: Static | None = None
+        self._status_ref: Static | None = None
+        self._input_ref: Input | None = None
+        self._chat_ref: VerticalScroll | None = None
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=False)
@@ -147,14 +152,16 @@ class ZoraTextualApp(App):
         yield Static(_SHORTCUTS, id="commandbar")
 
     async def on_mount(self) -> None:
-        self.title = "Zora"
+        self.title = "Zaia"
         self.sub_title = self._subtitle
         self._modebar = self.query_one("#modebar", Static)
+        self._status_ref = self.query_one("#status", Static)
+        self._input_ref = self.query_one("#input", Input)
+        self._chat_ref = self.query_one("#chat", VerticalScroll)
         await self._render_welcome()
         self._normal_mode()
         self._update_modebar()
         self.set_interval(0.4, self._tick_status)
-        self.call_after_refresh(self._prompt_mode)
 
     def _render_banner(self) -> None:
         width = 78
@@ -162,11 +169,14 @@ class ZoraTextualApp(App):
             width = max(40, min(96, self.size.width - 6))
         except Exception:
             pass
-        art = _welcome_art(width)
         banner = Text()
-        for index, (line, color) in enumerate(art):
-            style = f"bold {color}" if line.strip() else ""
-            banner.append(line, style=style)
+        art = _welcome_art(width)
+        for index, segments in enumerate(art):
+            for chunk, color in segments:
+                if not chunk:
+                    continue
+                style = f"bold {color}" if chunk.strip() else ""
+                banner.append(chunk, style=style)
             if index < len(art) - 1:
                 banner.append("\n")
         self._mount(banner)
@@ -202,7 +212,7 @@ class ZoraTextualApp(App):
         if self._voice is not None and hasattr(self._voice, "mode_name"):
             return self._voice.mode_name
         persona = get_persona(self._mode_key())
-        return persona.name if persona else "Zora"
+        return persona.name if persona else "Zaia"
 
     def _update_modebar(self) -> None:
         if self._modebar is None:
@@ -220,20 +230,39 @@ class ZoraTextualApp(App):
         else:
             bar.append("sem sessão", style=MUTED)
         bar.append("  ·  ", style=MUTED)
-        bar.append("F2 sessões · F3 modo", style=MUTED)
+        bar.append("F2 sessões · Tab modo", style=MUTED)
         self._modebar.update(bar)
         self.sub_title = f"{self._subtitle} · {name}" if self._subtitle else name
 
-    def _prompt_mode(self) -> None:
-        if self._voice is None:
+    def action_cycle_mode(self) -> None:
+        """Alterna para o próximo modo (Tab/F3), sem abrir modal."""
+        if self._insert_mode:
+            # Digitação em andamento: não troca o modo por engano.
             return
-        self.push_screen(ModePicker(self._mode_list(), self._mode_key()), self._on_mode_chosen)
+        modes = self._mode_list()
+        if not modes:
+            return
+        keys = [persona.key for persona in modes]
+        try:
+            index = keys.index(self._mode_key())
+        except ValueError:
+            index = -1
+        self.run_worker(
+            self._apply_mode(keys[(index + 1) % len(keys)]),
+            group="modo",
+            exclusive=True,
+        )
 
-    def _on_mode_chosen(self, key: str | None) -> None:
-        if not key:
-            self._update_modebar()
+    def _handle_modo_command(self, text: str) -> None:
+        argument = text.partition(" ")[2].strip()
+        if not argument:
+            self.action_cycle_mode()
             return
-        self.run_worker(self._apply_mode(key), exclusive=False)
+        persona = get_persona(argument)
+        if persona is None:
+            self._set_status(f"modo desconhecido: {argument}")
+            return
+        self.run_worker(self._apply_mode(persona.key), group="modo", exclusive=True)
 
     async def _apply_mode(self, key: str) -> None:
         if self._voice is None:
@@ -271,9 +300,6 @@ class ZoraTextualApp(App):
             else:
                 self._write_zora(text)
 
-    def action_modes(self) -> None:
-        self._prompt_mode()
-
     def action_sessions(self) -> None:
         if self._voice is None or not hasattr(self._voice, "sessions"):
             self._set_status("sessões indisponíveis")
@@ -287,11 +313,11 @@ class ZoraTextualApp(App):
         if target is None:
             return
         if target == "new":
-            self.run_worker(self._new_session_ui(), exclusive=False)
+            self.run_worker(self._new_session_ui(), group="modo", exclusive=True)
             return
         if not isinstance(target, int):
             return
-        self.run_worker(self._apply_session(target), exclusive=False)
+        self.run_worker(self._apply_session(target), group="modo", exclusive=True)
 
     async def _new_session_ui(self) -> None:
         if self._voice is None:
@@ -406,11 +432,17 @@ class ZoraTextualApp(App):
                 pass
 
     def on_key(self, event) -> None:
+        stack = self.screen_stack
+        if stack and self.screen is not stack[0]:
+            return
         if not self._insert_mode and event.character == "/":
             event.stop()
             self.action_slash()
 
     async def on_input_submitted(self, event: Input.Submitted) -> None:
+        # Inputs de telas modais (ex.: busca da paleta) não são mensagens.
+        if getattr(event.input, "id", None) not in (None, "input"):
+            return
         text = event.value.strip()
         event.input.value = ""
         if not text:
@@ -427,14 +459,17 @@ class ZoraTextualApp(App):
         if text.startswith(("/chines", "/chinês", "/中文")):
             self._toggle_chinese(text)
             return
-        if text in {"/modo", "/modos", "/perfil", "/persona"}:
-            self._prompt_mode()
+        if text == "/modo" or text.startswith("/modo "):
+            self._handle_modo_command(text)
+            return
+        if text in {"/modos", "/perfil", "/persona"}:
+            self.action_cycle_mode()
             return
         if text in {"/sessoes", "/sessões", "/sessao", "/sessão"}:
             self.action_sessions()
             return
         if text in {"/novo", "/nova"}:
-            self.run_worker(self._new_session_ui(), exclusive=False)
+            self.run_worker(self._new_session_ui(), group="modo", exclusive=True)
             return
         self.run_worker(self.submit_text(text), exclusive=False)
 
@@ -610,9 +645,20 @@ class ZoraTextualApp(App):
         except asyncio.CancelledError:
             pass
 
+    def _status_widget(self) -> Static | None:
+        """Retorna o widget de status, ou None antes do mount/após o unmount."""
+        if self._status_ref is not None:
+            return self._status_ref
+        try:
+            return self.query_one("#status", Static)
+        except NoMatches:
+            return None
+
     def _set_status(self, text: str) -> None:
         self._status_base = text.rstrip(".…").strip()
-        self.query_one("#status", Static).update(text)
+        widget = self._status_widget()
+        if widget is not None:
+            widget.update(text)
 
     def _tick_status(self) -> None:
         if not self._turn_running or not self._status_base:
@@ -620,9 +666,12 @@ class ZoraTextualApp(App):
         base = self._status_base
         if not ("ndo" in base.lower() or base.startswith(("◐", "▶", "▸", "🎙"))):
             return
+        widget = self._status_widget()
+        if widget is None:
+            return
         self._dot_phase = (self._dot_phase + 1) % 3
         dots = "." * (self._dot_phase + 1)
-        self.query_one("#status", Static).update(self._status_base + dots)
+        widget.update(self._status_base + dots)
 
     # ------------------------------------------------------------------ modes
     def _normal_mode(self) -> None:
@@ -635,7 +684,9 @@ class ZoraTextualApp(App):
 
     def action_slash(self) -> None:
         self.action_insert()
-        field = self.query_one("#input", Input)
+        field = self._input_widget()
+        if field is None:
+            return
         field.value = "/"
         try:
             field.cursor_position = len(field.value)
@@ -644,7 +695,9 @@ class ZoraTextualApp(App):
 
     def action_insert(self) -> None:
         self._insert_mode = True
-        self.query_one("#input", Input).focus()
+        field = self._input_widget()
+        if field is not None:
+            field.focus()
         self._set_status("")
 
     async def action_escape(self) -> None:
@@ -675,7 +728,7 @@ class ZoraTextualApp(App):
             "Limpar conversa",
             "Focar entrada",
             "Chinês on/off",
-            "Reiniciar Zora",
+            "Reiniciar Zaia",
             "Sair",
         ]
 
@@ -688,20 +741,22 @@ class ZoraTextualApp(App):
         if label == "Ajuda":
             self._write_note(_HELP)
         elif label == "Trocar modo":
-            self._prompt_mode()
+            self.action_cycle_mode()
         elif label == "Sessões":
             self.action_sessions()
         elif label == "Nova sessão":
-            self.run_worker(self._new_session_ui(), exclusive=False)
+            self.run_worker(self._new_session_ui(), group="modo", exclusive=True)
         elif label == "Alternar tema":
             self.action_toggle_theme()
         elif label == "Limpar conversa":
             self.action_clear_chat()
         elif label == "Focar entrada":
-            self.query_one("#input", Input).focus()
+            field = self._input_widget()
+            if field is not None:
+                field.focus()
         elif label == "Chinês on/off":
             self._toggle_chinese("")
-        elif label == "Reiniciar Zora":
+        elif label == "Reiniciar Zaia":
             self.exit(42)
         elif label == "Sair":
             self.exit()
@@ -739,7 +794,7 @@ class ZoraTextualApp(App):
         if len(preview) > _STREAM_PREVIEW_CHARS:
             preview = "… " + preview[-_STREAM_PREVIEW_CHARS:]
         self._stream_widget.update(
-            card("✦ Zora", Text(preview), ACCENT, ZORA_BG)
+            card("✦ Zaia", Text(preview), ACCENT, ZORA_BG)
         )
         self.call_after_refresh(self._scroll_chat)
 
@@ -749,7 +804,7 @@ class ZoraTextualApp(App):
                 self._write_zora(answer)
             return
         self._stream_widget.update(
-            card("✦ Zora", Text(answer), ACCENT, ZORA_BG)
+            card("✦ Zaia", Text(answer), ACCENT, ZORA_BG)
         )
         self._stream_widget = None
         self.call_after_refresh(self._scroll_chat)
@@ -770,7 +825,17 @@ class ZoraTextualApp(App):
         )
 
     def _chat(self) -> VerticalScroll:
+        if self._chat_ref is not None:
+            return self._chat_ref
         return self.query_one("#chat", VerticalScroll)
+
+    def _input_widget(self) -> Input | None:
+        if self._input_ref is not None:
+            return self._input_ref
+        try:
+            return self.query_one("#input", Input)
+        except NoMatches:
+            return None
 
     def _write_user(self, text: str) -> None:
         self._mount(card("❯ Talita", Text(text), CYAN, USER_BG), message=True)  # noqa: RUF001
@@ -778,7 +843,7 @@ class ZoraTextualApp(App):
             self.run_worker(self._echo_zh(text), exclusive=False)
 
     def _write_zora(self, text: str) -> None:
-        self._mount(card("✦ Zora", Text(text), ACCENT, ZORA_BG), message=True)
+        self._mount(card("✦ Zaia", Text(text), ACCENT, ZORA_BG), message=True)
 
     async def _echo_zh(self, text: str) -> None:
         if self._voice is None:

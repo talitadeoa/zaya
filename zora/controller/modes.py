@@ -1,4 +1,4 @@
-"""Modos (personas) da Zora.
+"""Modos (personas) da Zaia.
 
 Cada modo injeta uma diretriz de comportamento no prompt enviado ao OpenCode,
 sem alterar a infraestrutura. O modo ativo e persistido em `MemoryStore.meta`.
@@ -87,7 +87,7 @@ PERSONAS: dict[str, Persona] = {
     ),
 }
 
-DEFAULT_MODE = "assistente"
+DEFAULT_MODE = "conversa"
 
 ALIASES = {
     "academico": "academica",
@@ -113,15 +113,15 @@ _MODE_WORD = r"(?P<mode>[a-zA-ZÀ-ÿ]+)"
 
 _MODE_SWITCH_PATTERNS = [
     re.compile(
-        r"^(?:zora[,\s]+)?(?:muda|mude|troca|troque|ativa|ative|entra|entre|"
+        r"^(?:zaia[,\s]+)?(?:muda|mude|troca|troque|ativa|ative|entra|entre|"
         r"vai|volta|quero|vamos|bora)\s+(?:para\s+|pro\s+|no\s+)?(?:o\s+)?modo\s+"
         + _MODE_WORD
         + r"\s*[.!?]?\s*$",
         re.IGNORECASE,
     ),
-    re.compile(r"^(?:zora[,\s]+)?modo\s+" + _MODE_WORD + r"\s*[.!?]?\s*$", re.IGNORECASE),
+    re.compile(r"^(?:zaia[,\s]+)?modo\s+" + _MODE_WORD + r"\s*[.!?]?\s*$", re.IGNORECASE),
     re.compile(
-        r"^(?:zora[,\s]+)?(?:vira|vire|assume|assuma)\s+(?:a\s+)?parceira\s+"
+        r"^(?:zaia[,\s]+)?(?:vira|vire|assume|assuma)\s+(?:a\s+)?parceira\s+"
         r"(?:de\s+)?" + _MODE_WORD + r"\s*[.!?]?\s*$",
         re.IGNORECASE,
     ),
@@ -162,7 +162,7 @@ def resolve_mode(key: str | None) -> Persona:
 
 def persona_block(persona: Persona) -> str:
     return (
-        f"[Modo ativo da Zora: {persona.name}]\n"
+        f"[Modo ativo da Zaia: {persona.name}]\n"
         f"{persona.directive}\n"
         "Trate a usuária por 'você' e responda em português do Brasil."
     )

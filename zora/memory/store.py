@@ -1,4 +1,4 @@
-"""Memoria operacional da Zora: conversas, turnos e registros (SQLite).
+"""Memoria operacional da Zaia: conversas, turnos e registros (SQLite).
 
 As consultas sao locais e de microssegundos, entao o acesso continua sincrono
 (chamar ``asyncio.to_thread`` para cada SELECT custaria mais do que a query).
@@ -237,6 +237,25 @@ class MemoryStore:
             ).fetchall()
         return list(reversed(rows))
 
+    def turns_between(
+        self, start_iso: str, end_iso: str, project_path: str | None = None
+    ) -> list[sqlite3.Row]:
+        """Turnos de todas as conversas num intervalo (para consolidar o dia)."""
+        query = """
+            SELECT t.*, c.mode AS mode, c.title AS conversation_title,
+                   c.project_path AS project_path
+            FROM turns t
+            JOIN conversations c ON c.id = t.conversation_id
+            WHERE t.created_at >= ? AND t.created_at < ?
+        """
+        params: list[Any] = [start_iso, end_iso]
+        if project_path:
+            query += " AND c.project_path = ?"
+            params.append(project_path)
+        query += " ORDER BY t.id ASC"
+        with self._lock:
+            return list(self._conn.execute(query, params).fetchall())
+
     # ------------------------------------------------------------------ records
     def record_note(
         self,
@@ -252,6 +271,17 @@ class MemoryStore:
                 VALUES (?, ?, ?, ?, ?)
                 """,
                 (conversation_id, kind, path, title, _now()),
+            )
+
+    def records_between(self, start_iso: str, end_iso: str) -> list[sqlite3.Row]:
+        """Registros (notas criadas etc.) num intervalo de tempo."""
+        with self._lock:
+            return list(
+                self._conn.execute(
+                    "SELECT * FROM records WHERE created_at >= ? AND created_at < ? "
+                    "ORDER BY id ASC",
+                    (start_iso, end_iso),
+                ).fetchall()
             )
 
     def recent_records(self, limit: int = 10) -> list[sqlite3.Row]:

@@ -68,8 +68,8 @@ class FakeClient:
         self.replies.append((session_id, permission_id, answer, v2))
 
 
-async def _fixture_events() -> list[dict]:
-    path = FIXTURES / "stream.sse.txt"
+async def _fixture_events(name: str = "stream.sse.txt") -> list[dict]:
+    path = FIXTURES / name
 
     async def lines():
         for line in path.read_text(encoding="utf-8").splitlines():
@@ -123,4 +123,42 @@ async def test_consume_events_raises_on_session_error(cfg):
     )
 
     with pytest.raises(OpenCodeError):
+        await orch._consume_events(queue)
+
+
+@pytest.mark.asyncio
+async def test_consume_events_from_v2_fixture(cfg):
+    orch, ui, client = _make_orchestrator(cfg)
+    queue: asyncio.Queue[dict] = asyncio.Queue()
+    for event in await _fixture_events("stream.v2.sse.txt"):
+        queue.put_nowait(event)
+
+    answer = await orch._consume_events(queue)
+
+    assert answer == "Olá, mundo"
+    assert "".join(ui.tokens) == "Olá, mundo"
+    assert ui.stream_started and ui.stream_ended
+    assert ui.tools == [("editando", "a.py")]
+    assert len(ui.diffs) == 1
+    assert ui.diffs[0][0] == "a.py" and "-x" in ui.diffs[0][1]
+    assert ui.permissions == [("edit", ["a.py"])]
+    assert client.replies == [("ses_abc", "per_1", "once", True)]
+    assert orch._last_assistant_message_id == "msg_2"
+
+
+@pytest.mark.asyncio
+async def test_consume_events_v2_execution_failed(cfg):
+    orch, _ui, _client = _make_orchestrator(cfg)
+    queue: asyncio.Queue[dict] = asyncio.Queue()
+    queue.put_nowait(
+        {
+            "type": "session.execution.failed",
+            "data": {
+                "sessionID": "ses_abc",
+                "error": {"type": "provider.no-route", "message": "Model unavailable"},
+            },
+        }
+    )
+
+    with pytest.raises(OpenCodeError, match=r"provider\.no-route"):
         await orch._consume_events(queue)
