@@ -186,27 +186,12 @@ def morning_message(
     name: str,
     day: date,
     tasks: list[Item],
-    habits: list[Item],
-    routine_found: bool,
     max_items: int = 15,
 ) -> str:
     greeting = f"Bom dia, {name}!" if name else "Bom dia!"
     lines = [greeting, _date_label(day), "", "Tarefas do dia"]
     task_lines = _task_lines(tasks, max_items)
     lines.extend(task_lines or ["Nenhuma tarefa marcada na Agenda."])
-
-    if habits:
-        lines.extend(
-            [
-                "",
-                "Rotina matinal",
-                *[f"{_check(habit.done)} {habit.text}" for habit in habits],
-                "",
-                "Você já cumpriu os hábitos da rotina matinal?",
-            ]
-        )
-    elif routine_found:
-        lines.extend(["", "Rotina matinal", "Sem hábitos cadastrados."])
     return "\n".join(lines)
 
 
@@ -214,10 +199,9 @@ def noon_message(
     name: str,
     day: date,
     tasks: list[Item],
-    habits: list[Item],
-    routine_found: bool,
     max_items: int = 15,
 ) -> str:
+    """Resumo do meio-dia: so as tarefas normais, sem rotinas."""
     greeting = f"Meio-dia, {name}." if name else "Meio-dia."
     flat = list(_flatten(tasks))
     done = [(depth, item) for depth, item in flat if item.done]
@@ -233,18 +217,6 @@ def noon_message(
     lines.extend(_flat_lines(done, max_items) or ["Nada marcado como feito ainda."])
     lines.extend(["", "Ainda falta"])
     lines.extend(_flat_lines(pending, max_items) or ["Tudo certo por aqui."])
-
-    if habits:
-        done_habits = sum(1 for habit in habits if habit.done)
-        lines.extend(
-            [
-                "",
-                f"Rotina matinal: {done_habits}/{len(habits)}",
-                *[f"{_check(habit.done)} {habit.text}" for habit in habits],
-            ]
-        )
-    elif routine_found:
-        lines.extend(["", "Rotina matinal", "Sem hábitos cadastrados."])
     return "\n".join(lines)
 
 

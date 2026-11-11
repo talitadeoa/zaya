@@ -13,7 +13,6 @@ from zaya.agenda.client import AgendaError
 from zaya.controller.contract import OrchestratorContract
 from zaya.controller.proactive import ReminderSpec, greeting_for, in_quiet_hours
 from zaya.focus import RITUALS, principal_phase_today
-from zaya.opencode.events import assistant_text
 
 
 class InitiativeMixin(OrchestratorContract):
@@ -215,8 +214,7 @@ class InitiativeMixin(OrchestratorContract):
                 self.client.prompt_sync(self._task_session_id, prompt, system=system),
                 timeout=25.0,
             )
-            text = assistant_text(response) if isinstance(response, dict) else ""
-            return " ".join(text.split()).strip()
+            return " ".join(response.text.split()).strip()
         except Exception as exc:  # pragma: no cover - depende do modelo/rede
             self.logger.warning("plano da tarefa falhou: %s", exc)
             return ""
@@ -314,8 +312,7 @@ class InitiativeMixin(OrchestratorContract):
                 ),
                 timeout=20.0,
             )
-            text = assistant_text(response) if isinstance(response, dict) else ""
-            text = " ".join(text.split()).strip().strip('"').strip("'")
+            text = " ".join(response.text.split()).strip().strip('"').strip("'")
             if text:
                 self._last_idle_message = text
                 return text

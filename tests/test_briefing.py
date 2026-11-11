@@ -132,29 +132,38 @@ def test_routine_occurs_on_semanal_respeita_intervalo():
     assert routine_occurs_on(routine, date(2026, 11, 17)) is True
 
 
-def test_morning_message_lista_tarefas_e_pergunta_da_rotina():
+def test_morning_message_lista_so_as_tarefas_normais():
     tasks = collect_tasks(_notes())
-    habits, found = collect_habits(_notes(), "matinal")
 
-    text = morning_message("Talita", DAY, tasks, habits, found)
+    text = morning_message("Talita", DAY, tasks)
 
     assert text.startswith("Bom dia, Talita!")
     assert "terça, 10/11" in text
     assert "☐ Revisar currículo" in text
     assert "  ☑ Ajustar seção de dados" in text
-    assert "Rotina matinal" in text
-    assert "Você já cumpriu os hábitos da rotina matinal?" in text
+    assert "Rotina matinal" not in text
+    assert "alongar" not in text
+    assert "meditar" not in text
 
 
 def test_noon_message_separa_feito_e_pendente():
     tasks = collect_tasks(_notes())
-    habits, found = collect_habits(_notes(), "matinal")
 
-    text = noon_message("Talita", DAY, tasks, habits, found)
+    text = noon_message("Talita", DAY, tasks)
 
     assert "Tarefas: 1/2 concluídas" in text
     assert "Feito até agora" in text
     assert "☑ Ajustar seção de dados" in text
     assert "Ainda falta" in text
     assert "☐ Revisar currículo" in text
-    assert "Rotina matinal: 1/2" in text
+
+
+def test_noon_message_nao_mostra_rotina():
+    notes = _notes()
+    tasks = collect_tasks(notes)
+
+    text = noon_message("Talita", DAY, tasks)
+
+    assert "Rotina matinal" not in text
+    assert "alongar" not in text
+    assert "meditar" not in text

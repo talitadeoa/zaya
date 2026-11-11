@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 
+from zaya.agent import AgentError
 from zaya.cli_commands import (
     _config_command,
     _doctor,
@@ -21,7 +22,6 @@ from zaya.cli_parser import build_parser
 from zaya.cli_runtime import _ask_command, _run_app, _watch_mode
 from zaya.config import Config
 from zaya.interface.terminal import TerminalUI
-from zaya.opencode.client import OpenCodeError
 
 
 def main() -> None:
@@ -64,7 +64,7 @@ def main() -> None:
             asyncio.run(_run_app(cfg, args.verbose))
     except KeyboardInterrupt:
         ui.info("até logo.")
-    except OpenCodeError as exc:
+    except AgentError as exc:
         ui.error(str(exc))
         raise SystemExit(1) from None
     except Exception as exc:  # pragma: no cover - fallback amigavel

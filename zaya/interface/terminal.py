@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+from collections.abc import Callable
 from pathlib import Path
 
 from rich import box
@@ -59,6 +60,9 @@ class TerminalUI:
         self._stream_title: Text | None = None
         self._live: Live | None = None
         self._lock = threading.RLock()
+        # Interface grafica (TUI) instala aqui o modal de permissao. Quando
+        # ausente, o modo quiet recusa a ferramenta (ex.: Telegram).
+        self.permission_callback: Callable[[str, list[str]], str] | None = None
 
     # ------------------------------------------------------------------ status
     def _write_raw(self, text: str) -> None:
@@ -163,7 +167,7 @@ class TerminalUI:
         self._print()
         for line, color in zip(_ASCII_ART, _ASCII_COLORS, strict=False):
             self._print(Text(line, style=f"bold {color}"))
-        self._print(Text("assistente pessoal · OpenCode · Second Brain", style=MUTED))
+        self._print(Text("assistente pessoal · agente próprio · Second Brain", style=MUTED))
         self._print()
         self._print(Panel(grid, title=title, border_style=ACCENT, padding=(0, 1)))
         self._print()
@@ -550,6 +554,8 @@ class TerminalUI:
         return raw in {"s", "sim", "y", "yes"}
 
     def permission(self, tool: str, patterns: list[str]) -> str:
+        if self.permission_callback is not None:
+            return self.permission_callback(tool, list(patterns))
         if self._quiet:
             return "reject"
         self._suspend_live()
@@ -557,7 +563,7 @@ class TerminalUI:
         try:
             self._print(
                 Panel(
-                    f"O OpenCode quer usar [bold]{escape(tool)}[/]\n"
+                    f"O agente quer usar [bold]{escape(tool)}[/]\n"
                     + ("padrões: " + escape(", ".join(patterns)) if patterns else ""),
                     title="permissão necessária",
                     border_style="yellow",
@@ -591,12 +597,13 @@ class TerminalUI:
             ("[Enter]", "gravar uma instrução por voz"),
             ("/ajuda", "mostra esta ajuda"),
             ("/status", "servidor, sessão, modelo, memória e voz"),
+            ("/tokens", "consumo de tokens por turno e total da sessão"),
             ("/buscar <termo>", "pesquisa no Second Brain"),
             ("/nota <título>", "lê uma nota do Second Brain"),
             ("/indexar", "reindexa o Second Brain"),
-            ("/novo", "inicia nova conversa e sessão no OpenCode"),
+            ("/novo", "inicia nova conversa e sessão do agente"),
             ("/modelo <provider/model>", "troca o modelo da sessão"),
-            ("/modo [nome]", "lista ou troca o modo (academica, carreira, assistente, conversa, financas)"),
+            ("/modo [nome]", "lista ou troca o modo (pesquisadora, trabalhadora, investidora, assistente)"),
             ("/bolsa <ticker>", "cotação rápida (ex.: PETR4, AAPL)"),
             ("/carteira [add|remover]", "lista/acompanha seus ativos"),
             ("/metas", "painel visual com foco atual e metas de longo prazo"),
@@ -618,9 +625,9 @@ class TerminalUI:
             ("/fala", "volta para a escuta contínua por voz"),
             ("/texto", "volta para o modo texto (digitar)"),
             ("/confirmar on|off", "pede (ou não) confirmação ao criar nota"),
-            ("/autoaprovar on|off", "auto-aprova ferramentas do OpenCode (perigoso)"),
-            ("/interromper", "aborta a execução atual no OpenCode"),
-            ("/sessao", "mostra o ID da sessão OpenCode"),
+            ("/autoaprovar on|off", "auto-aprova ferramentas do agente (perigoso)"),
+            ("/interromper", "aborta a execução atual do agente"),
+            ("/sessao", "mostra o ID da sessão do agente"),
             ("/reiniciar", "reinicia a Zaya com o código novo"),
             ("/sair", "encerra a Zaya"),
         ]

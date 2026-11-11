@@ -4,16 +4,16 @@
 
 Zaya não é um chat com microfone. É uma agente com identidade, memória e
 iniciativa: ela **ouve**, **lembra** do que importa, **age** no seu computador e
-**fala** de volta — no seu tom, no seu ritmo. Por baixo, o **OpenCode** é o motor
-que dá mãos a ela; a Zaya é a pessoa.
+**fala** de volta — no seu tom, no seu ritmo. Por baixo, um **agente próprio**
+(loop de ferramentas + API do modelo) dá mãos a ela; a Zaya é a pessoa.
 
 ```text
 Você:  "Zaya, o que eu tenho hoje?"
 Zaya:  lê a Agenda, cruza com o Second Brain e responde — falando.
 
 Você:  "revise a arquitetura do projeto de automação"
-Zaya:  consulta o contexto do projeto, envia a tarefa ao OpenCode
-       e volta com o resultado, o diff e a explicação.
+Zaya:  consulta o contexto do projeto, usa as ferramentas para ler e editar
+       arquivos e volta com o resultado, o diff e a explicação.
 ```
 
 ## O que faz dela uma agente
@@ -24,7 +24,7 @@ Zaya:  consulta o contexto do projeto, envia a tarefa ao OpenCode
 | 🧠 **Lembra** | Second Brain em Markdown + memória de conversas em SQLite. |
 | 🛠️ **Age** | Edita arquivos, roda comandos, navega, mexe na Agenda, no Spotify. |
 | 💡 **Tem iniciativa** | Lembretes, check-ins, foco do ciclo e rituais de lua. |
-| 🎭 **Tem personalidade** | Cinco modos, preferências aprendidas e tom próprio. |
+| 🎭 **Tem personalidade** | Quatro modos, preferências aprendidas e tom próprio. |
 | 🗣️ **Fala** | TTS natural (`edge`) com fallback offline (`say`). |
 
 ## Um dia com a Zaya
@@ -42,7 +42,8 @@ Zaya:  consulta o contexto do projeto, envia a tarefa ao OpenCode
 
 ## Começando
 
-**Requisitos:** macOS, [uv](https://docs.astral.sh/uv/), OpenCode 1.18+,
+**Requisitos:** macOS, [uv](https://docs.astral.sh/uv/), uma chave de API de
+modelo (DeepSeek, OpenAI, Anthropic ou um servidor local compatível com OpenAI),
 `ffmpeg` e PortAudio (`brew install portaudio`). Python fica fixo em 3.12
 (`faster-whisper` ainda não tem wheels para 3.14).
 
@@ -58,32 +59,51 @@ Primeiro contato:
 
 ```bash
 zaya config --init   # cria ~/.config/zaya/config.toml
-zaya doctor          # ambiente, servidor, voz e Second Brain
+zaya doctor          # ambiente, provedor do agente, voz e Second Brain
 zaya                 # abre a interface
 ```
 
 Segredos ficam em `~/.config/zaya/.env` ou no ambiente — nunca no TOML
 (veja `.env.example`).
 
-## O cérebro: modelo e OpenCode
+## O cérebro: agente próprio
 
-O modelo é declarado no config da Zaya, no formato `provider/model`:
+O agente fala direto com a API do modelo e executa as ferramentas localmente —
+não há servidor intermediário. O config declara provedor e modelo:
 
 ```toml
-[opencode]
-model = "deepseek/deepseek-flash"
+[agent]
+provider = "deepseek"        # deepseek | openai | openrouter | ollama | anthropic | custom
+model = "deepseek-flash"
 ```
 
-O OpenCode resolve o provider. Qualquer modelo conectado funciona — DeepSeek,
-OpenCode, OpenAI, Anthropic, local. Troque em tempo real com
-`/modelo provider/model`; `zaya doctor --verbose` lista os disponíveis.
+A chave fica no ambiente ou em `~/.config/zaya/.env`:
 
-> **Modelos `*-free` têm cota.** Se aparecer `Free usage limit reached`,
-> conecte um provider (ex.: DeepSeek) e aponte o `model` para ele.
+```bash
+ZAYA_AGENT_API_KEY=...       # vale para qualquer provedor
+# ou as chaves nativas: DEEPSEEK_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, ...
+```
 
-A Zaya mantém o servidor OpenCode vivo entre execuções, numa porta estável por
-projeto, e guarda a credencial local em arquivo `0600` — abrir a Zaya de novo é
-quase instantâneo.
+Exemplos:
+
+```toml
+[agent]
+provider = "anthropic"
+model = "claude-sonnet-4-5"
+
+[agent]
+provider = "ollama"          # servidor local, sem chave
+model = "llama3.2"
+```
+
+Troque em tempo real com `/modelo provider/model`; `zaya doctor --verbose`
+consulta a lista de modelos do provedor. Para um endpoint incompatível com os
+presets, use `provider = "custom"` e informe `base_url`.
+
+As sessões ficam em `~/.local/share/zaya/sessions/` e são retomadas entre
+execuções. O agente tem ferramentas de leitura (`read`, `list`, `glob`, `grep`),
+escrita (`write`, `edit`) e shell (`bash`); as que alteram algo pedem
+confirmação, a menos que `agent.auto_approve=true`.
 
 ## Conversando
 
@@ -114,7 +134,7 @@ Reaproveita a conversa do projeto — ótimo para scripts e smoke tests.
 
 | Comando | Função |
 |---|---|
-| `/ajuda` · `/status` | comandos disponíveis · servidor, sessão, modelo, memória |
+| `/ajuda` · `/status` · `/tokens` | comandos · provedor, sessão, modelo, memória · consumo por turno |
 | `/buscar <termo>` · `/nota <título>` | Second Brain |
 | `/indexar` · `/novo` · `/consolidar [dia]` | reindexa · nova conversa · memória do dia |
 | `/modelo <provider/model>` · `/modo [nome]` | troca modelo · troca persona |
@@ -130,20 +150,20 @@ Reaproveita a conversa do projeto — ótimo para scripts e smoke tests.
 
 ## Personalidade
 
-Cinco modos mudam a diretriz que ela envia ao motor:
+Quatro modos mudam a diretriz que ela envia ao motor:
 
-- **academica** — pesquisa, mestrado, leitura, escrita e método.
-- **carreira** — emprego, currículo, vagas e entrevistas.
-- **assistente** — agenda, rotinas, compromissos e prioridades.
-- **conversa** — informal, acolhedora, íntima.
-- **financas** — bolsa, orçamento e investimentos.
+- **pesquisadora** — pesquisa, mestrado, leitura, escrita e método.
+- **trabalhadora** — emprego, currículo, vagas e entrevistas.
+- **investidora** — bolsa, orçamento e investimentos.
+- **assistente** — agenda, rotinas, prioridades e conversa informal.
 
-`/modo <nome>` troca na hora, **Tab/F3** percorre os modos e o modo fica salvo
-entre sessões. O padrão é **conversa** (`[interface] default_mode`).
+`/modo <nome>` troca na hora, **Tab/F3** abrem o seletor de modo e o modo fica
+salvo entre sessões. O padrão é **assistente** (`[interface] default_mode`).
 
-As **preferências** (`~/SecondBrain/preferences.md`) são lidas em todo turno:
-nome, idioma, formalidade, o que evitar. Ela aprende com `/preferencia ...`,
-"anote como preferência: ..." ou "lembre que eu prefiro ...".
+As **preferências** (`~/SecondBrain/preferences.md`) ficam no prefixo estável do
+prompt — lidas uma vez e reaproveitadas pelo cache: nome, idioma, formalidade,
+o que evitar. Ela aprende com `/preferencia ...`, "anote como preferência: ..."
+ou "lembre que eu prefiro ...".
 
 ## Memória
 
@@ -253,9 +273,11 @@ na próxima abertura. Ajustes em `[proactive]` (intervalo, limite diário,
 Automação determinística, sem gastar token: lê a Agenda e envia duas mensagens
 por dia para o seu chat do Telegram.
 
-- **08:00** — bom dia com as tarefas do dia e os hábitos da rotina matinal
-  (marcando o que já foi feito), perguntando se você cumpriu a rotina.
+- **08:00** — bom dia com as tarefas do dia, sem incluir as rotinas.
 - **12:00** — o que foi concluído, o que falta e como está a rotina matinal.
+- **12:00 (seg, qua, sex)** — resumo da carteira (`/carteira`) com a cotação
+  de cada ativo, melhor e pior variação do dia. Também é determinístico, sem
+  gastar token.
 
 Funciona na TUI, no terminal e no serviço do Telegram; roda com qualquer um
 deles aberto. O slot do dia fica marcado no SQLite, então TUI e serviço abertos
@@ -269,6 +291,12 @@ noon_at = "12:00"
 noon_until = "18:00"      # depois disso o resumo do meio-dia não sai
 morning_routine = "matinal"  # trecho do nome da rotina na Agenda
 max_tasks = 15
+
+# Resumo da carteira de ativos (0 = segunda, 2 = quarta, 4 = sexta).
+market_enabled = true
+market_days = [0, 2, 4]
+market_at = "12:00"
+market_until = "18:00"    # depois disso o resumo da bolsa não sai
 ```
 
 A rotina matinal é encontrada pelo nome (padrão: qualquer rotina que contenha
@@ -280,13 +308,72 @@ rotina ainda não existirem, ela usa o cadastro de rotinas como fallback.
 - **Áudio nunca sai da máquina**: o STT é local. Só o texto da resposta vai para
   o TTS `edge` — use `say` para ficar 100% offline.
 - **Chaves só em `.env`/ambiente**; o config é redigido ao ser exibido.
-- O servidor OpenCode escuta em `127.0.0.1`, com senha local e permissões
-  restritas.
 - Nada da transcrição é executado direto: tudo passa pelo agente e pelas
-  permissões do OpenCode.
-- `auto_approve` é opt-in e vem desligado.
+  permissões das ferramentas.
+- Escrita e shell pedem confirmação; `agent.auto_approve` é opt-in e vem
+  desligado.
+- `agent.allow_outside_project=false` restringe as ferramentas ao diretório do
+  projeto; por padrão ele fica livre para a Zaya alcançar o Second Brain.
 
-## Velocidade
+## Velocidade e consumo de tokens
+
+O prompt é montado em duas camadas:
+
+1. **prefixo estável** — persona, preferências e diretrizes fixas. Fica no
+   começo e é reutilizado pelo cache do provedor (nos provedores compatíveis
+   com OpenAI o cache é automático; a Anthropic recebe `cache_control`).
+2. **bloco dinâmico** — data/hora, pedido curto e modo rápido, sempre no fim.
+
+O contexto do Second Brain **não** entra em todo turno: a busca só acontece
+quando a mensagem tem pista de retomada ("lembra", "aquele projeto", "o que
+decidimos"). Quando acontece, vêm no máximo 2–3 trechos curtos, com teto total,
+e o contexto usado fica só naquele turno — no histórico fica apenas a mensagem
+original. Metas seguem a mesma regra. O histórico é comprimido num resumo
+quando passa de `max_history_messages` mensagens **ou** de
+`max_history_chars` caracteres, e o catálogo de ferramentas é filtrado por
+sessão (leitura sempre; escrita/shell entram quando o pedido pede ação e ficam
+disponíveis até trocar de sessão/modo — assim o prefixo não muda a cada turno).
+Resultados e argumentos grandes de ferramenta (um `read` de arquivo enorme ou
+um `write` com muito conteúdo, por exemplo) são vistos inteiros no turno atual,
+mas ficam limitados a `tool_result_chars` no histórico.
+
+O resumo do histórico tem dois modos:
+
+- `history_summary = "local"` — extrativo e determinístico: nunca falha, não
+  gasta chamada extra, mas pode perder nuance de decisões antigas.
+- `history_summary = "llm"` — pede um resumo semântico ao modelo (preservando
+  decisões, nomes, prazos e pendências), com fallback automático para o local
+  se a chamada falhar ou demorar mais de 20 s. O custo dessa chamada entra no
+  `/tokens` do turno.
+
+```toml
+[agent]
+fast_model = "deepseek-chat"      # pedidos curtos vão para o modelo pequeno
+tool_filter = true                # só as ferramentas que o turno precisa
+cache_prompt = true               # cacheia persona + preferências
+max_history_messages = 20         # depois disso, resumo do histórico
+max_history_chars = 24000         # teto de tamanho do histórico
+summary_chars = 1200
+usage = true                      # mede tokens e mostra no /status
+tool_result_chars = 4000          # resultado grande não fica no histórico
+history_summary = "local"         # local (extrativo) | llm (semântico)
+history_summary_model = ""        # vazio = modelo principal
+
+[secondbrain]
+context_results = 2               # 2–3 trechos bastam
+context_chars = 480               # por trecho
+context_max_chars = 1200          # teto do bloco inteiro
+```
+
+`/status` mostra a economia configurada e, quando o provedor informa usage,
+os tokens do último turno e o acumulado da sessão, incluindo quantos vieram
+de cache. `/tokens` lista os últimos 10 turnos e o total da sessão. Se o
+endpoint recusar `stream_options`, a Zaya repete a chamada sem medição em vez
+de falhar. Em endpoints que não reportam usage, o `/status` avisa que não há
+medição.
+
+Com tudo desligado, a Zaya volta ao comportamento antigo: contexto sempre que
+a palavra-chave aparece, histórico inteiro e catálogo completo de ferramentas.
 
 ```toml
 [interface]
@@ -310,7 +397,7 @@ zaya/
   audio/recorder.py      # microfone + VAD
   stt/faster_whisper.py  # transcrição local
   tts/                   # edge-tts + say, limpeza de Markdown
-  opencode/client.py     # sessões, prompts, SSE, permissões
+  agent/                 # loop, providers (OpenAI/Anthropic), ferramentas
   secondbrain/           # índice FTS5 + notas com backup
   memory/store.py        # conversas e turnos (SQLite)
   controller/            # intenções, personas, iniciativa
@@ -327,26 +414,26 @@ e variáveis `ZAYA_*`); o **nome dela** é Zaya.
 .venv/bin/python -m pytest
 ```
 
-Cobrem config, intenções, Second Brain, memória, eventos/payloads do OpenCode —
-sem microfone, download de modelo ou rede.
+Cobrem config, intenções, Second Brain, memória, provedores, ferramentas e
+eventos do agente — sem microfone, download de modelo ou rede.
 
 ## Se algo não funcionar
 
 - `zaya doctor` mostra o que falta.
-- **“Free usage limit reached”** → modelo `*-free` sem cota; conecte um provider
-  e ajuste `model` (ex.: `deepseek/deepseek-flash`). Reinicie com `/reiniciar`.
+- **“chave de API ausente”** → defina `ZAYA_AGENT_API_KEY` (ou a chave nativa do
+  provedor) em `~/.config/zaya/.env`.
+- **“modelo não listado”** → confira `agent.model` contra `zaya doctor --verbose`
+  e reinicie com `/reiniciar`.
 - **Microfone** → permissão de Microfone para o Terminal em Ajustes do Sistema.
 - **Voz robótica** → `/voz say`; natural → `/voz edge`.
-- **Servidor** → se houver um OpenCode de outra pasta na mesma porta, ajuste
-  `opencode.base_url` ou encerre o antigo.
 
 ## Roadmap
 
 - [x] Fase 1: diagnóstico + API real validada
-- [x] Fase 2: voz (push-to-talk, STT, OpenCode, resposta)
+- [x] Fase 2: voz (push-to-talk, STT, agente, resposta)
 - [x] Fase 3: Second Brain (FTS5, busca, criação, contexto)
 - [x] Fase 4: contexto automático + registro de decisões
 - [x] Fase 5: TTS com interrupção, `/interromper`, contexto persistente
 - [ ] Conversa contínua com wake word
-- [ ] Steering nativo (`delivery=steer`)
+- [ ] Steering nativo (mensagem no meio de um turno)
 - [ ] Busca semântica local (embeddings)

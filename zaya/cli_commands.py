@@ -7,10 +7,10 @@ import shutil
 import sys
 from pathlib import Path
 
+from zaya.agent import AgentClient, AgentError
 from zaya.audio.recorder import Recorder
 from zaya.config import Config, write_default_config
 from zaya.interface.terminal import TerminalUI
-from zaya.opencode.client import OpenCodeClient, OpenCodeError, load_provider_models
 from zaya.secondbrain.index import SecondBrainIndex
 from zaya.secondbrain.notes import SecondBrain
 
@@ -81,35 +81,38 @@ async def _doctor(cfg: Config, ui: TerminalUI, verbose: bool) -> None:
     )
     ui.check(cfg.resolved_data_dir().is_dir(), "diretório de dados", str(cfg.resolved_data_dir()))
 
-    binary = shutil.which("opencode")
-    ui.check(bool(binary), "binário opencode", binary or "não encontrado")
+    ui.check(
+        bool(cfg.agent.provider and cfg.agent.model),
+        "provedor do agente",
+        f"{cfg.agent.provider}/{cfg.agent.model}",
+    )
 
-    client = OpenCodeClient(cfg, cfg.project_directory())
+    client = AgentClient(cfg, cfg.project_directory())
     try:
         try:
-            await client.ensure_server()
+            await client.ensure_ready()
             health = await client.health()
-            ui.check(bool(health), "servidor OpenCode", f"{client.endpoint} · {health}")
-            info = await client.path_info()
-            if info:
-                same = Path(info.get("directory", "")).resolve() == cfg.project_directory()
-                ui.check(same, "diretório do servidor", info.get("directory", "?"))
+            ui.check(
+                bool(health),
+                f"API {cfg.agent.provider}",
+                f"{client.endpoint} · {health or 'sem resposta'}",
+            )
             try:
-                models = await load_provider_models(client)
-                configured = cfg.opencode.model
+                models = await client.list_models()
+                configured = cfg.agent.model
                 ui.check(
                     configured in models,
                     f"modelo {configured}",
                     "disponível" if configured in models else "não listado",
                 )
                 if verbose and models:
-                    sample = sorted(m for m in models if "deepseek" in m)
+                    sample = [model for model in models if cfg.agent.provider in model]
                     if sample:
-                        console.print(f"  modelos deepseek: {', '.join(sample)}")
-            except OpenCodeError as exc:
+                        console.print(f"  modelos: {', '.join(sorted(sample)[:20])}")
+            except AgentError as exc:
                 ui.check(False, "lista de modelos", str(exc))
-        except OpenCodeError as exc:
-            ui.check(False, "servidor OpenCode", str(exc))
+        except AgentError as exc:
+            ui.check(False, f"API {cfg.agent.provider}", str(exc))
     finally:
         await client.aclose()
 

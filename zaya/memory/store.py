@@ -16,7 +16,15 @@ from pathlib import Path
 from typing import Any
 
 # Versao atual do schema. Incremente ao adicionar novas migracoes em _migrate.
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 4
+
+# v3: modos renomeados e "conversa" fundida em "assistente".
+MODE_KEY_RENAMES = {
+    "academica": "pesquisadora",
+    "carreira": "trabalhadora",
+    "financas": "investidora",
+    "conversa": "assistente",
+}
 
 
 def _now() -> str:
@@ -46,7 +54,7 @@ class MemoryStore:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     project_path TEXT NOT NULL,
                     mode TEXT NOT NULL DEFAULT 'assistente',
-                    opencode_session_id TEXT,
+                    agent_session_id TEXT,
                     title TEXT,
                     is_current INTEGER NOT NULL DEFAULT 1,
                     created_at TEXT NOT NULL,
@@ -111,8 +119,53 @@ class MemoryStore:
                 "CREATE INDEX IF NOT EXISTS idx_conv_project "
                 "ON conversations(project_path, mode, is_current)"
             )
+        if version < 3:
+            self._rename_modes_v3()
+        if version < 4:
+            self._rename_session_column_v4()
         if version < SCHEMA_VERSION:
             self.set_meta("schema_version", str(SCHEMA_VERSION))
+
+    def _rename_modes_v3(self) -> None:
+        """Renomeia os modos e funde as conversas de 'conversa' em 'assistente'."""
+        with self._conn:
+            for old, new in MODE_KEY_RENAMES.items():
+                self._conn.execute("UPDATE conversations SET mode = ? WHERE mode = ?", (new, old))
+            row = self._conn.execute("SELECT value FROM meta WHERE key = 'mode'").fetchone()
+            if row and row["value"] in MODE_KEY_RENAMES:
+                self._conn.execute(
+                    "UPDATE meta SET value = ? WHERE key = 'mode'",
+                    (MODE_KEY_RENAMES[row["value"]],),
+                )
+            # A fusao pode deixar mais de uma conversa "atual" no mesmo
+            # projeto+modo; mantem como atual apenas a mais recente.
+            self._conn.execute(
+                """
+                UPDATE conversations
+                SET is_current = 0
+                WHERE is_current = 1
+                  AND id NOT IN (
+                      SELECT id FROM conversations AS newer
+                      WHERE newer.project_path = conversations.project_path
+                        AND newer.mode = conversations.mode
+                      ORDER BY newer.updated_at DESC, newer.id DESC
+                      LIMIT 1
+                  )
+                """
+            )
+
+    def _rename_session_column_v4(self) -> None:
+        """A sessao deixou de ser do OpenCode e passou a ser do agente proprio."""
+        columns = {
+            row["name"]
+            for row in self._conn.execute("PRAGMA table_info(conversations)").fetchall()
+        }
+        if "agent_session_id" in columns or "opencode_session_id" not in columns:
+            return
+        with self._conn:
+            self._conn.execute(
+                "ALTER TABLE conversations RENAME COLUMN opencode_session_id TO agent_session_id"
+            )
 
     def schema_version(self) -> int:
         with self._lock:
@@ -191,6 +244,72 @@ class MemoryStore:
                 ).fetchall()
             )
 
+    def project_has_turns(self, project_path: str) -> bool:
+        with self._lock:
+            row = self._conn.execute(
+                """
+                SELECT 1 FROM turns t
+                JOIN conversations c ON c.id = t.conversation_id
+                WHERE c.project_path = ?
+                LIMIT 1
+                """,
+                (project_path,),
+            ).fetchone()
+        return row is not None
+
+    def richest_mode(self, project_path: str) -> str | None:
+        """Modo com mais turnos no projeto (útil para retomar o histórico)."""
+        with self._lock:
+            row = self._conn.execute(
+                """
+                SELECT c.mode AS mode, COUNT(t.id) AS total
+                FROM conversations c
+                LEFT JOIN turns t ON t.conversation_id = c.id
+                WHERE c.project_path = ?
+                GROUP BY c.mode
+                ORDER BY total DESC, c.updated_at DESC
+                LIMIT 1
+                """,
+                (project_path,),
+            ).fetchone()
+        if row is None or int(row["total"]) == 0:
+            return None
+        return str(row["mode"])
+
+    def rehome_conversations(self, old_path: str, new_path: str) -> int:
+        """Move conversas de um projeto antigo para o atual e devolve quantas."""
+        if old_path == new_path:
+            return 0
+        with self._lock, self._conn:
+            rows = self._conn.execute(
+                "SELECT id, mode, updated_at FROM conversations WHERE project_path = ?",
+                (old_path,),
+            ).fetchall()
+            if not rows:
+                return 0
+            latest: dict[str, tuple[str, int]] = {}
+            for row in rows:
+                mode = str(row["mode"])
+                updated = str(row["updated_at"])
+                if mode not in latest or updated > latest[mode][0]:
+                    latest[mode] = (updated, int(row["id"]))
+            self._conn.execute(
+                "UPDATE conversations SET project_path = ? WHERE project_path = ?",
+                (new_path, old_path),
+            )
+            # A conversa mais recente de cada modo volta a ser a atual.
+            for mode, (_, conversation_id) in latest.items():
+                self._conn.execute(
+                    "UPDATE conversations SET is_current = 0 "
+                    "WHERE project_path = ? AND mode = ?",
+                    (new_path, mode),
+                )
+                self._conn.execute(
+                    "UPDATE conversations SET is_current = 1 WHERE id = ?",
+                    (conversation_id,),
+                )
+        return len(rows)
+
     def set_current(self, conversation_id: int) -> None:
         conv = self.get_conversation(conversation_id)
         with self._lock, self._conn:
@@ -206,7 +325,7 @@ class MemoryStore:
     def set_session(self, conversation_id: int, session_id: str) -> None:
         with self._lock, self._conn:
             self._conn.execute(
-                "UPDATE conversations SET opencode_session_id = ?, updated_at = ? WHERE id = ?",
+                "UPDATE conversations SET agent_session_id = ?, updated_at = ? WHERE id = ?",
                 (session_id, _now(), conversation_id),
             )
 

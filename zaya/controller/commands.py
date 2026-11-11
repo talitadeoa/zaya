@@ -10,9 +10,9 @@ from zaya.agenda.client import AgendaError
 from zaya.controller.contract import OrchestratorContract
 from zaya.controller.modes import PERSONAS, get_persona
 from zaya.controller.proactive import parse_reminder
+from zaya.controller.prompt import initial_tools
 from zaya.finance.quotes import FinanceError, fetch_quote, format_quote
 from zaya.focus import moon_details, period_label, principal_phase_today
-from zaya.opencode.events import assistant_text
 from zaya.tasks.store import Task
 
 
@@ -39,10 +39,12 @@ class CommandsMixin(OrchestratorContract):
             self.ui.help()
         elif command == "/status":
             await self._show_status()
+        elif command in {"/tokens", "/consumo"}:
+            await self._show_tokens()
         elif command == "/novo":
             await self._new_session()
         elif command == "/sessao":
-            self.ui.info(f"sessão OpenCode: {self.session_id}")
+            self.ui.info(f"sessão do agente: {self.session_id}")
         elif command == "/buscar":
             if not argument:
                 self.ui.warning("uso: /buscar <termo>")
@@ -151,11 +153,11 @@ class CommandsMixin(OrchestratorContract):
         self.ui.status(
             self.directory,
             self.session_id,
-            self.cfg.opencode.model,
+            self.cfg.agent.model_slug(),
             sb_stats["notes"],
             self.tts.provider,
         )
-        self.ui.info(f"servidor: {self.client.endpoint} · saudável={bool(health)}")
+        self.ui.info(f"provedor: {self.client.endpoint} · saudável={bool(health)}")
         self.ui.info(
             f"memória operacional: {mem['conversations']} conversa(s), "
             f"{mem['turns']} turno(s), {mem['records']} registro(s)"
@@ -167,6 +169,62 @@ class CommandsMixin(OrchestratorContract):
         )
         self.ui.info(f"second brain: {self.brain.root} · {sb_stats}")
         self.ui.info(f"modo ativo: {self.persona.name} ({self.persona.key})")
+        fast_model = self.cfg.agent.fast_model or "desligado"
+        self.ui.info(
+            "economia: "
+            f"contexto={self.cfg.secondbrain.context_results}x"
+            f"{self.cfg.secondbrain.context_chars} chars · "
+            f"histórico≤{self.cfg.agent.max_history_messages} msgs/"
+            f"{self.cfg.agent.max_history_chars} chars · "
+            f"ferramentas={'filtradas' if self.cfg.agent.tool_filter else 'todas'} · "
+            f"resultado≤{self.cfg.agent.tool_result_chars} chars · "
+            f"resumo={self.cfg.agent.history_summary} · "
+            f"cache={'on' if self.cfg.agent.cache_prompt else 'off'} · "
+            f"modelo rápido={fast_model}"
+        )
+        usage_fn = getattr(self.client, "usage", None)
+        usage = usage_fn(self.session_id) if callable(usage_fn) and self.session_id else {}
+        last = usage.get("last") or {}
+        total = usage.get("total") or {}
+        if last or total:
+            last_in = int(last.get("input_tokens", 0))
+            last_cached = int(last.get("cached_tokens", 0))
+            share = f", {round(100 * last_cached / last_in)}% do input" if last_in else ""
+            self.ui.info(
+                f"tokens: último turno {last_in} in "
+                f"({last_cached} em cache{share}) / "
+                f"{last.get('output_tokens', 0)} out · sessão "
+                f"{total.get('input_tokens', 0)} in / "
+                f"{total.get('output_tokens', 0)} out"
+            )
+        else:
+            self.ui.info("tokens: sem medição neste provedor/turno")
+
+    async def _show_tokens(self) -> None:
+        usage_fn = getattr(self.client, "usage", None)
+        usage = (
+            usage_fn(self.session_id)
+            if callable(usage_fn) and self.session_id
+            else {}
+        )
+        history = usage.get("history") or []
+        total = usage.get("total") or {}
+        if not history and not total:
+            self.ui.info("sem medição de tokens nesta sessão/provedor")
+            return
+        self.ui.info(f"tokens da sessão {self.session_id} (últimos turnos):")
+        start = max(1, len(history) - 9)
+        for number, item in enumerate(history[-10:], start=start):
+            cached = int(item.get("cached_tokens", 0))
+            self.ui.info(
+                f"  #{number}: {item.get('input_tokens', 0)} in "
+                f"({cached} em cache) / {item.get('output_tokens', 0)} out"
+            )
+        self.ui.info(
+            f"total: {total.get('input_tokens', 0)} in / "
+            f"{total.get('output_tokens', 0)} out · "
+            f"{total.get('cached_tokens', 0)} vieram de cache"
+        )
 
     async def _new_session(self) -> None:
         async with self._transition_lock:
@@ -181,6 +239,7 @@ class CommandsMixin(OrchestratorContract):
             self.store.set_session(conversation_id, session.id)
             self.conversation_id = conversation_id
             self.session_id = session.id
+            self._tool_scope = initial_tools(self.persona.key)
             self._last_assistant_message_id = None
             self._resume_context = ""
             self.store.set_meta("mode", self.persona.key)
@@ -190,14 +249,15 @@ class CommandsMixin(OrchestratorContract):
         if not argument:
             self.ui.warning("uso: /modelo <provider/model>")
             return
-        from zaya.opencode.models import ModelRef
+        from zaya.agent.types import ModelRef
 
         try:
             model = ModelRef.parse(argument)
         except ValueError as exc:
             self.ui.error(str(exc))
             return
-        self.cfg.opencode.model = model.slug
+        self.cfg.agent.provider = model.provider_id
+        self.cfg.agent.model = model.model_id
         self.store.set_meta("model", model.slug)
         self.ui.success(f"modelo da próxima mensagem: {model.slug}")
 
@@ -477,8 +537,7 @@ class CommandsMixin(OrchestratorContract):
                 ),
                 timeout=20.0,
             )
-            output = assistant_text(response) if isinstance(response, dict) else ""
-            output = " ".join(output.split()).strip()
+            output = " ".join(response.text.split()).strip()
             if output:
                 self._zh_cache[source] = output
                 return output
@@ -516,10 +575,10 @@ class CommandsMixin(OrchestratorContract):
     def _toggle_auto_approve(self, argument: str) -> None:
         arg = argument.lower().strip()
         if arg in {"on", "off"}:
-            self.cfg.opencode.auto_approve = arg == "on"
+            self.cfg.agent.auto_approve = arg == "on"
         else:
-            self.cfg.opencode.auto_approve = not self.cfg.opencode.auto_approve
-        if self.cfg.opencode.auto_approve:
+            self.cfg.agent.auto_approve = not self.cfg.agent.auto_approve
+        if self.cfg.agent.auto_approve:
             self.ui.warning(
                 "auto-aprovação de ferramentas ATIVA: o agente pode executar "
                 "comandos e editar arquivos sem perguntar."

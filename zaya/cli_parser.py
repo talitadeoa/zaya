@@ -10,7 +10,7 @@ from zaya import __version__
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="zaya",
-        description="Zaya: assistente pessoal de voz integrada ao OpenCode e ao Second Brain.",
+        description="Zaya: assistente pessoal de voz com agente próprio e Second Brain.",
     )
     parser.add_argument("--config", help="caminho do config TOML", default=None)
     parser.add_argument("--verbose", action="store_true", help="logs também no terminal")

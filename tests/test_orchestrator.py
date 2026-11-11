@@ -109,7 +109,7 @@ class FakeClient:
     async def health(self):
         return {}
 
-    async def ensure_server(self) -> None:
+    async def ensure_ready(self) -> None:
         pass
 
     async def aclose(self) -> None:
@@ -220,6 +220,44 @@ def test_is_short_prompt(orch):
 
 
 @pytest.mark.asyncio
+async def test_run_turn_repassa_a_mensagem_original(orch, monkeypatch):
+    captured: dict[str, object] = {}
+
+    async def fake_turn(text, system=None, session_id=None, **kwargs):
+        captured["text"] = text
+        captured.update(kwargs)
+        return "ok"
+
+    monkeypatch.setattr(orch, "_turn_impl", fake_turn)
+
+    await orch._run_turn("prompt com contexto", system="s", history_text="pergunta")
+
+    assert captured["text"] == "prompt com contexto"
+    assert captured["history_text"] == "pergunta"
+
+
+@pytest.mark.asyncio
+async def test_prompt_dinamico_vai_na_mensagem_nao_no_system(orch, monkeypatch):
+    orch._prepare_conversation()
+    captured: dict[str, object] = {}
+
+    async def fake_turn(text, system=None, session_id=None, **kwargs):
+        captured["text"] = text
+        captured["system"] = system
+        captured.update(kwargs)
+        return ""
+
+    monkeypatch.setattr(orch, "_run_turn", fake_turn)
+
+    await orch._handle_task_impl("qual a capital da França?", speak=False)
+
+    assert "[Agora:" not in captured["system"]
+    assert "[Agora:" in captured["text"]
+    assert captured["history_text"] == "qual a capital da França?"
+    assert "Diretriz da Zaya" in captured["system"]
+
+
+@pytest.mark.asyncio
 async def test_dispatch_silent_answers_smalltalk_locally(orch):
     orch._prepare_conversation()
     answer = await orch._dispatch_silent("oi")
@@ -288,7 +326,7 @@ async def test_comando_consolidar_usa_o_dia_pedido(orch, monkeypatch):
 @pytest.mark.asyncio
 async def test_auto_approve_warns(orch):
     await orch._handle_command("/autoaprovar on")
-    assert orch.cfg.opencode.auto_approve is True
+    assert orch.cfg.agent.auto_approve is True
     assert orch.ui.called("warning")
 
 
@@ -376,21 +414,47 @@ async def test_trocas_concorrentes_de_modo_nao_cruzam_sessoes(orch):
     client = RecordingClient()
     orch.client = client
 
-    await asyncio.gather(orch.select_mode("carreira"), orch.select_mode("academica"))
+    await asyncio.gather(orch.select_mode("trabalhadora"), orch.select_mode("pesquisadora"))
 
-    carreira = orch.store.get_or_create_conversation(str(orch.directory), "carreira")
-    academica = orch.store.get_or_create_conversation(str(orch.directory), "academica")
-    sid_carreira = carreira["opencode_session_id"]
-    sid_academica = academica["opencode_session_id"]
+    trabalhadora = orch.store.get_or_create_conversation(str(orch.directory), "trabalhadora")
+    pesquisadora = orch.store.get_or_create_conversation(str(orch.directory), "pesquisadora")
+    sid_trabalhadora = trabalhadora["agent_session_id"]
+    sid_pesquisadora = pesquisadora["agent_session_id"]
 
-    assert sid_carreira and sid_academica
-    assert sid_carreira != sid_academica
-    assert "Carreira" in client.created[sid_carreira]
-    assert "Acad" in client.created[sid_academica]
+    assert sid_trabalhadora and sid_pesquisadora
+    assert sid_trabalhadora != sid_pesquisadora
+    assert "Trabalhadora" in client.created[sid_trabalhadora]
+    assert "Pesquisadora" in client.created[sid_pesquisadora]
 
     atual = orch.store.get_conversation(orch.conversation_id)
     assert atual["mode"] == orch.persona.key
-    assert atual["opencode_session_id"] == orch.session_id
+    assert atual["agent_session_id"] == orch.session_id
+
+
+class ForeignDirectoryClient(FakeClient):
+    """Sessao viva, mas de outro diretorio (a API v2 responde 200 mesmo assim)."""
+
+    async def get_session(self, session_id: str):
+        return types.SimpleNamespace(id=session_id, directory="/Users/talita/zora")
+
+    async def create_session(self, title: str | None = None, **kwargs):
+        return types.SimpleNamespace(id="ses-nova")
+
+
+@pytest.mark.asyncio
+async def test_sessao_de_outro_diretorio_nao_e_retomada(orch):
+    orch._prepare_conversation()
+    conversation_id = orch.conversation_id
+    orch.store.add_turn(conversation_id, "user", "oi, tudo bem?")
+    orch.store.set_session(conversation_id, "ses_de_zora")
+
+    orch.client = ForeignDirectoryClient()
+    await orch._activate_conversation(conversation_id, orch.persona)
+
+    assert orch.session_id == "ses-nova"
+    conversa = orch.store.get_conversation(conversation_id)
+    assert conversa["agent_session_id"] == "ses-nova"
+    assert "Talita: oi, tudo bem?" in orch._take_resume_context()
 
 
 @pytest.mark.asyncio
@@ -404,7 +468,7 @@ async def test_sessao_ausente_reinjeta_o_historico_local(orch):
     await orch._activate_conversation(conversation_id, orch.persona)
 
     conversa = orch.store.get_conversation(conversation_id)
-    assert conversa["opencode_session_id"] != "ses_sumiu"
+    assert conversa["agent_session_id"] != "ses_sumiu"
     contexto = orch._take_resume_context()
     assert "Talita: quero vaga de suporte" in contexto
     assert "Zaya: vamos revisar seu curriculo" in contexto
@@ -488,7 +552,8 @@ async def test_briefing_envia_uma_vez_por_dia(orch):
     mensagem = orch.telegram.sent[0]
     assert "Bom dia" in mensagem
     assert "Responder a Stefanini" in mensagem
-    assert "alongar" in mensagem
+    assert "Rotina matinal" not in mensagem
+    assert "alongar" not in mensagem
 
     assert await orch._send_briefing("morning", dia) is False
     assert len(orch.telegram.sent) == 1
@@ -505,6 +570,5 @@ async def test_briefing_do_meio_dia_mostra_pendentes(orch):
     assert "Feito até agora" in mensagem
     assert "Ainda falta" in mensagem
     assert "☐ Responder a Stefanini" in mensagem
-    assert "Rotina matinal: 1/2" in mensagem
-
-
+    assert "Rotina matinal" not in mensagem
+    assert "alongar" not in mensagem

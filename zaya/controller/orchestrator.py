@@ -1,4 +1,4 @@
-"""Orquestrador da Zaya: voz -> STT -> contexto -> OpenCode -> resposta/voz.
+"""Orquestrador da Zaya: voz -> STT -> contexto -> agente -> resposta/voz.
 
 O comportamento concreto vive em mixins coesos (fala, turnos, voz, comandos,
 registro e iniciativa). Esta classe mantem o estado compartilhado, o ciclo de
@@ -12,9 +12,12 @@ import contextlib
 import logging
 import time
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from zaya.agenda.client import AgendaClient
+from zaya.agent import AgentClient, AgentError
+from zaya.agent.types import SessionInfo
 from zaya.audio.recorder import ContinuousListener, Recorder
 from zaya.config import Config
 from zaya.controller.briefing import BriefingMixin
@@ -24,6 +27,7 @@ from zaya.controller.goals import GoalTracker
 from zaya.controller.initiative import InitiativeMixin
 from zaya.controller.memory import MemoryMixin
 from zaya.controller.modes import PERSONAS, Persona, get_persona, resolve_mode
+from zaya.controller.prompt import initial_tools
 from zaya.controller.registration import RegistrationMixin
 from zaya.controller.speech import SpeechMixin
 from zaya.controller.turns import TurnMixin
@@ -32,8 +36,6 @@ from zaya.finance.watchlist import Watchlist
 from zaya.focus import FocusStore
 from zaya.interface.terminal import TerminalUI
 from zaya.memory.store import MemoryStore
-from zaya.opencode.client import OpenCodeClient, OpenCodeError
-from zaya.opencode.events import message_id
 from zaya.secondbrain.index import SecondBrainIndex
 from zaya.secondbrain.notes import SecondBrain
 from zaya.stt.faster_whisper import WhisperTranscriber
@@ -64,7 +66,7 @@ class Orchestrator(
         tts: TTSManager,
         transcriber: WhisperTranscriber,
         recorder: Recorder,
-        client: OpenCodeClient,
+        client: AgentClient,
     ):
         self.cfg = cfg
         self.logger = logger
@@ -78,9 +80,12 @@ class Orchestrator(
         self.client = client
         self.telegram = TelegramClient(cfg.telegram)
         self.directory = cfg.project_directory()
+        self._adopt_legacy_history()
         self.persona = resolve_mode(
             store.get_meta("mode") or cfg.interface.default_mode
         )
+        # Catalogo de ferramentas acumulado na sessao (estavel para o cache).
+        self._tool_scope = initial_tools(self.persona.key)
 
         self.conversation_id: int | None = None
         self.session_id: str = ""
@@ -91,6 +96,7 @@ class Orchestrator(
         self._last_activity = time.monotonic()
         self._busy = False
         self._restart_requested = False
+        self._last_error = ""
         self._recording = False
         self._listening = False
         self._voice_mode = bool(cfg.audio.continuous)
@@ -109,6 +115,7 @@ class Orchestrator(
         self._memory_task: asyncio.Task[None] | None = None
         self._briefing_task: asyncio.Task[None] | None = None
         self._briefing_last_attempt = 0.0
+        self._market_last_attempt = 0.0
         self._proactive_count = 0
         self._proactive_day = datetime.now().astimezone().date()
         self._last_proactive = 0.0
@@ -148,11 +155,36 @@ class Orchestrator(
         # nao existe mais (a conversa continua, o contexto do provedor nao).
         self._resume_context = ""
 
+    def _adopt_legacy_history(self) -> None:
+        """Traz conversas do nome antigo do repositório (zora) para o atual."""
+        legacy = self.directory.parent / "zora"
+        if legacy == self.directory:
+            return
+        try:
+            if self.store.project_has_turns(str(self.directory)):
+                return
+            if not self.store.project_has_turns(str(legacy)):
+                return
+            moved = self.store.rehome_conversations(str(legacy), str(self.directory))
+            if not moved:
+                return
+            self.logger.info(
+                "histórico de %s adotado em %s (%d conversas)",
+                legacy,
+                self.directory,
+                moved,
+            )
+            mode = self.store.richest_mode(str(self.directory))
+            if mode:
+                self.store.set_meta("mode", mode)
+        except Exception:
+            self.logger.exception("falha ao adotar o histórico antigo")
+
     async def _bootstrap(self) -> None:
-        await self.client.ensure_server()
-        if self.cfg.opencode.auto_approve:
+        await self.client.ensure_ready()
+        if self.cfg.agent.auto_approve:
             self.ui.warning(
-                "auto-aprovação de ferramentas do OpenCode está ATIVA (opencode.auto_approve=true)"
+                "auto-aprovação de ferramentas do agente está ATIVA (agent.auto_approve=true)"
             )
         self._prepare_conversation()
         assert self.conversation_id is not None
@@ -167,7 +199,7 @@ class Orchestrator(
         self._start_briefing_worker()
 
     def start_briefing(self) -> None:
-        """Liga o briefing sem depender do bootstrap do OpenCode."""
+        """Liga o briefing sem depender do bootstrap do agente."""
         self._start_briefing_worker()
 
     async def _warmup_stt(self) -> None:
@@ -268,6 +300,11 @@ class Orchestrator(
     def restart_requested(self) -> bool:
         return self._restart_requested
 
+    @property
+    def last_error(self) -> str:
+        """Ultimo erro do turno; o Telegram mostra isso em vez de 'Concluido.'."""
+        return self._last_error
+
     async def prepare(self) -> None:
         """Sobe servidor/sessão antes do primeiro uso (aquece a TUI)."""
         if not self.session_id:
@@ -295,7 +332,7 @@ class Orchestrator(
             self.ui.banner(
                 project=self.directory,
                 session_id=self.session_id,
-                model=self.cfg.opencode.model,
+                model=self.cfg.agent.model_slug(),
                 sb_notes=self.index.count(),
                 voice=self.tts.provider,
                 tts_enabled=self.tts.enabled,
@@ -304,7 +341,7 @@ class Orchestrator(
             self.ui.status(
                 self.directory,
                 self.session_id,
-                self.cfg.opencode.model,
+                self.cfg.agent.model_slug(),
                 self.index.count(),
                 self.tts.provider,
             )
@@ -379,22 +416,43 @@ class Orchestrator(
         o historico local no proximo turno.
         """
         conv = self.store.get_conversation(conversation_id)
-        sid = conv["opencode_session_id"]
-        if self.cfg.opencode.resume_session and sid:
+        sid = conv["agent_session_id"]
+        if self.cfg.agent.resume_session and sid:
             existing = await self.client.get_session(sid)
-            if existing:
+            if existing and self._session_in_directory(existing):
                 return sid, False
-            self.logger.warning(
-                "sessao %s da conversa %s nao existe mais; abrindo nova",
-                sid,
-                conversation_id,
-            )
+            if existing:
+                self.logger.warning(
+                    "sessao %s da conversa %s pertence a %s, nao a %s; abrindo nova",
+                    sid,
+                    conversation_id,
+                    existing.directory or "?",
+                    self.directory,
+                )
+                self.ui.warning(
+                    "a conversa apontava para uma sessão de outro diretório; abrindo nova"
+                )
+            else:
+                self.logger.warning(
+                    "sessao %s da conversa %s nao existe mais; abrindo nova",
+                    sid,
+                    conversation_id,
+                )
         session = await self.client.create_session(
             title=f"Zaya — {self.directory.name} · {persona.name}",
             model=self.client.model,
         )
         self.store.set_session(conversation_id, session.id)
         return session.id, True
+
+    def _session_in_directory(self, session: SessionInfo) -> bool:
+        """A API retoma sessao de qualquer diretorio; prompt so funciona no dono."""
+        if not session.directory:
+            return True
+        try:
+            return Path(session.directory).resolve() == self.directory.resolve()
+        except OSError:
+            return False
 
     async def _ensure_session(self) -> str:
         """Mantido para compatibilidade; le o estado atual."""
@@ -428,11 +486,12 @@ class Orchestrator(
             self.persona = persona
             self.conversation_id = conversation_id
             self.session_id = sid
+            self._tool_scope = initial_tools(persona.key)
             self._last_assistant_message_id = None
             self.store.set_meta("mode", persona.key)
             await self._clear_stale_session(sid)
 
-    def _history_context(self, conversation_id: int, limit: int = 24) -> str:
+    def _history_context(self, conversation_id: int, limit: int = 12) -> str:
         """Resume os ultimos turnos locais para reconstruir o contexto."""
         lines: list[str] = []
         for row in self.store.turns(conversation_id, limit=limit):
@@ -448,8 +507,8 @@ class Orchestrator(
         if not lines:
             return ""
         body = "\n".join(lines)
-        if len(body) > 6000:
-            body = body[-6000:].split("\n", 1)[-1]
+        if len(body) > 3000:
+            body = body[-3000:].split("\n", 1)[-1]
         return (
             "[Contexto de continuidade — histórico local recuperado porque a "
             "sessão anterior não estava disponível. Use apenas quando for "
@@ -467,7 +526,7 @@ class Orchestrator(
             return
         try:
             status = await self.client.session_status(sid)
-        except OpenCodeError:
+        except AgentError:
             return
         if status and isinstance(status, dict) and status.get("type") != "idle":
             self.logger.warning("sessao presa (%s); abortando antes do proximo turno", status)
@@ -479,11 +538,10 @@ class Orchestrator(
         """Cacheia o id da ultima resposta para evitar um GET a cada turno."""
         try:
             message = await self.client.latest_assistant(self.session_id)
-        except OpenCodeError:
+        except AgentError:
             return
-        current_id = message_id(message) if message else None
-        if current_id:
-            self._last_assistant_message_id = current_id
+        if message and message.id:
+            self._last_assistant_message_id = message.id
 
     async def _loop(self) -> None:
         while True:
@@ -555,7 +613,7 @@ class Orchestrator(
                     "title": row["title"] or "Sem título",
                     "updated_at": row["updated_at"],
                     "turns": int(row["turn_count"]),
-                    "session_id": row["opencode_session_id"] or "",
+                    "session_id": row["agent_session_id"] or "",
                     "current": int(row["id"]) == self.conversation_id,
                 }
             )

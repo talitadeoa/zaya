@@ -29,8 +29,8 @@ class SearchHit:
     score: float = 0.0
     section: str = ""
 
-    def as_context(self, max_chars: int = 1200) -> str:
-        snippet = self.snippet.strip()
+    def as_context(self, max_chars: int = 480) -> str:
+        snippet = re.sub(r"\s+", " ", self.snippet or "").strip()
         if len(snippet) > max_chars:
             snippet = snippet[:max_chars].rstrip() + "..."
         label = self.title

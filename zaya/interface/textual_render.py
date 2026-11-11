@@ -112,15 +112,21 @@ def _welcome_art(max_cols: int = 78) -> list[list[tuple[str, str]]]:
     return _add_shadow(rows, SHADOW)
 
 
-_SHORTCUTS = "i digitar · f falar · Tab modo · F1 comandos · F2 sessões · Esc parar"
+_SHORTCUTS = (
+    "i digitar · f falar · Tab modo · F1 comandos · F2 sessões · "
+    "F4 seleção · F5 painéis · Esc parar"
+)
 
 _HELP = (
     "Modo normal: i digitar · t texto · m mudo · v voz on/off · f falar · "
     "c escuta contínua · Tab alterna o modo · Esc interromper. No modo insert, "
     "Esc volta ao normal. F1 paleta · F2 sessões · F3 modo · Ctrl+L limpar. "
+    "F4 desliga o mouse para selecionar e copiar o texto (F4 religa). "
+    "F5 mostra ou oculta a lua e as metas. "
     "Cada modo tem o próprio histórico de sessões; /novo abre uma sessão nova. "
     "/consolidar [hoje|ontem|AAAA-MM-DD] salva a memória do dia no Second Brain. "
-    "/chines on|off mostra 中文 + pinyin de cada mensagem."
+    "/chines on|off mostra 中文 + pinyin de cada mensagem. "
+    "/tokens mostra o consumo de tokens por turno e o total da sessão."
 )
 
 
@@ -160,5 +166,6 @@ def card(
     title = label if isinstance(label, Text) else Text(label)
     title.stylize(f"bold {accent}")
     table.add_row(Text(" "), Padding(title, (0, 1, 0, 1)))
-    table.add_row(Text(" "), Padding(body, (0, 1, 0, 1)))
+    if body is not None:
+        table.add_row(Text(" "), Padding(body, (0, 1, 0, 1)))
     return table

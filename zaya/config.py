@@ -21,23 +21,55 @@ from pydantic import BaseModel, ConfigDict, Field
 APP_NAME = "zaya"
 
 
-class OpenCodeConfig(BaseModel):
+class AgentConfig(BaseModel):
+    """Motor proprio da Zaya: provedor, modelo e ferramentas."""
+
     model_config = ConfigDict(extra="ignore")
 
-    # Vazio => a Zaya escolhe uma porta estavel por diretorio de projeto.
+    # deepseek | openai | openrouter | ollama | anthropic | custom
+    provider: str = "deepseek"
+    model: str = "deepseek-flash"
+    # Vazio => usa o endpoint padrao do provider.
     base_url: str = ""
+    # Segredo: prefira ZAYA_AGENT_API_KEY no ambiente/.env.
+    api_key: str = ""
+    # Diretorio em que o agente trabalha (vazio = diretorio atual).
     directory: str = ""
-    model: str = "deepseek/deepseek-flash"
-    agent: str = "build"
-    auto_start: bool = True
-    managed: bool = True
-    server_password: str = ""
+    max_tokens: int = 4096
+    temperature: float | None = 0.3
+    max_steps: int = 32
     resume_session: bool = True
     request_timeout: float = 900.0
     # Sem nenhum evento nesse tempo (e ainda em execucao) => considera travado.
     stall_timeout: float = 90.0
-    startup_timeout: float = 30.0
     auto_approve: bool = False
+    # Ferramentas de leitura e escrita no computador.
+    tools: bool = True
+    allow_outside_project: bool = True
+    # Modelo pequeno para pedidos curtos (vazio = sempre o modelo principal).
+    fast_model: str = ""
+    # Envia so as ferramentas que o turno pode precisar.
+    tool_filter: bool = True
+    # Marca o prefixo estavel do prompt para cache (Anthropic).
+    cache_prompt: bool = True
+    # Depois desse numero de mensagens, o historico antigo vira um resumo.
+    max_history_messages: int = 20
+    # Teto de caracteres do historico que vai ao modelo (0 = sem teto).
+    max_history_chars: int = 24000
+    summary_chars: int = 1200
+    # Medir tokens por turno (usa stream_options em APIs compativeis).
+    usage: bool = True
+    # Teto de caracteres de um resultado de ferramenta guardado no historico.
+    # 0 = sem teto. O modelo ve o resultado inteiro no turno atual.
+    tool_result_chars: int = 4000
+    # Como resumir o historico antigo: local (extrativo) ou llm (semantico).
+    # O modo llm cai automaticamente no local se a chamada falhar.
+    history_summary: str = "local"
+    # Modelo do resumo (vazio = modelo principal).
+    history_summary_model: str = ""
+
+    def model_slug(self) -> str:
+        return f"{self.provider}/{self.model}"
 
 
 class STTConfig(BaseModel):
@@ -95,9 +127,12 @@ class SecondBrainConfig(BaseModel):
     path: str = "~/SecondBrain"
     index_db: str = ""
     auto_context: bool = True
-    context_results: int = 3
+    # 2 a 3 trechos curtos bastam: mais que isso infla o prompt sem ganho.
+    context_results: int = 2
     # Limite de caracteres por nota injetada no contexto.
-    context_chars: int = 600
+    context_chars: int = 480
+    # Teto total do bloco de contexto recuperado.
+    context_max_chars: int = 1200
     # Criar nota e aditivo: por padrao nao pergunta (mais rapido).
     confirm_create: bool = False
     # Editar/excluir sao destrutivos: por padrao continuam exigindo confirmacao.
@@ -130,12 +165,12 @@ class InterfaceConfig(BaseModel):
     ui: str = "textual"
     # Modo rápido: sem busca automática e respostas mais curtas.
     fast: bool = False
-    # Saudações/small talk respondem na hora, sem chamar o OpenCode.
+    # Saudações/small talk respondem na hora, sem chamar o modelo.
     fast_smalltalk: bool = True
     # Eco em chinês (caracteres + pinyin) para cada mensagem.
     chinese_echo: bool = False
-    # Modo inicial: academica | carreira | assistente | conversa | financas.
-    default_mode: str = "conversa"
+    # Modo inicial: pesquisadora | trabalhadora | investidora | assistente.
+    default_mode: str = "assistente"
 
 
 class MemoryConfig(BaseModel):
@@ -169,6 +204,13 @@ class BriefingConfig(BaseModel):
     max_tasks: int = 15
     check_interval_seconds: float = 30.0
     retry_minutes: float = 10.0
+    # Resumo da carteira (watchlist) nos dias escolhidos, sem usar o modelo.
+    market_enabled: bool = True
+    # Dias da semana com 0 = segunda (seg, qua, sex por padrao).
+    market_days: list[int] = Field(default_factory=lambda: [0, 2, 4])
+    market_at: str = "12:00"
+    # Depois desse horario o resumo da carteira nao e mais enviado.
+    market_until: str = "18:00"
 
 
 class ProactiveConfig(BaseModel):
@@ -253,7 +295,7 @@ class TelegramConfig(BaseModel):
 class Config(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
-    opencode: OpenCodeConfig = Field(default_factory=OpenCodeConfig)
+    agent: AgentConfig = Field(default_factory=AgentConfig)
     stt: STTConfig = Field(default_factory=STTConfig)
     tts: TTSConfig = Field(default_factory=TTSConfig)
     audio: AudioConfig = Field(default_factory=AudioConfig)
@@ -309,9 +351,6 @@ class Config(BaseModel):
     def log_dir(self) -> Path:
         return self.resolved_data_dir() / "logs"
 
-    def servers_dir(self) -> Path:
-        return self.resolved_data_dir() / "servers"
-
     def browser_profile_dir(self) -> Path:
         if self.browser.profile_dir:
             return Path(self.browser.profile_dir).expanduser().resolve()
@@ -326,18 +365,18 @@ class Config(BaseModel):
         return self.second_brain_path() / "preferences.md"
 
     def project_directory(self) -> Path:
-        if self.opencode.directory:
-            return Path(self.opencode.directory).expanduser().resolve()
+        if self.agent.directory:
+            return Path(self.agent.directory).expanduser().resolve()
         return Path.cwd().resolve()
 
     def ensure_dirs(self) -> None:
-        for p in (self.resolved_data_dir(), self.log_dir(), self.servers_dir()):
+        for p in (self.resolved_data_dir(), self.log_dir()):
             p.mkdir(parents=True, exist_ok=True)
 
     def public_dict(self) -> dict[str, Any]:
         data = self.model_dump()
-        if data.get("opencode", {}).get("server_password"):
-            data["opencode"]["server_password"] = "***"
+        if data.get("agent", {}).get("api_key"):
+            data["agent"]["api_key"] = "***"
         for field in ("access_token", "verify_token"):
             if data.get("whatsapp", {}).get(field):
                 data["whatsapp"][field] = "***"
@@ -350,8 +389,13 @@ class Config(BaseModel):
     def load(
         cls, config_path: str | Path | None = None, env: dict[str, str] | None = None
     ) -> Config:
+        real_env = env is None
         env = dict(os.environ if env is None else env)
         _load_dotenv(cls.default_dotenv_path(), env)
+        if real_env:
+            # Deixa o que veio do .env visivel para subprocessos (ferramenta
+            # de shell, CLIs filhas) sem sobrescrever o ambiente existente.
+            _export_env(env)
 
         path = Path(config_path).expanduser() if config_path else cls.default_config_path()
         raw: dict[str, Any] = {}
@@ -359,12 +403,19 @@ class Config(BaseModel):
             with path.open("rb") as fh:
                 raw = tomllib.load(fh)
 
+        _migrate_legacy_config(raw)
         _apply_env(raw, env)
 
         cfg = cls.model_validate(raw)
         cfg.config_file = str(path)
         cfg.ensure_dirs()
         return cfg
+
+
+def _export_env(env: dict[str, str]) -> None:
+    """Espelha o .env no ambiente do processo, sem sobrescrever o que ja existe."""
+    for key, value in env.items():
+        os.environ.setdefault(key, value)
 
 
 def _load_dotenv(path: Path, env: dict[str, str]) -> None:
@@ -411,13 +462,30 @@ _ENV_MAP: dict[str, tuple[str, str]] = {
     "ZAYA_UI_SHOW_METAS_ON_START": ("interface", "show_metas_on_start"),
     "ZAYA_UI_SHOW_REASONING": ("interface", "show_reasoning"),
     "ZAYA_UI": ("interface", "ui"),
-    "ZAYA_OPENCODE_AGENT": ("opencode", "agent"),
-    "ZAYA_OPENCODE_AUTO_APPROVE": ("opencode", "auto_approve"),
-    "ZAYA_OPENCODE_AUTO_START": ("opencode", "auto_start"),
-    "ZAYA_OPENCODE_BASE_URL": ("opencode", "base_url"),
-    "ZAYA_OPENCODE_DIRECTORY": ("opencode", "directory"),
-    "ZAYA_OPENCODE_MODEL": ("opencode", "model"),
-    "ZAYA_OPENCODE_PASSWORD": ("opencode", "server_password"),
+    "ZAYA_AGENT_ALLOW_OUTSIDE_PROJECT": ("agent", "allow_outside_project"),
+    "ZAYA_AGENT_API_KEY": ("agent", "api_key"),
+    "ZAYA_AGENT_AUTO_APPROVE": ("agent", "auto_approve"),
+    "ZAYA_AGENT_BASE_URL": ("agent", "base_url"),
+    "ZAYA_AGENT_CACHE_PROMPT": ("agent", "cache_prompt"),
+    "ZAYA_AGENT_DIRECTORY": ("agent", "directory"),
+    "ZAYA_AGENT_FAST_MODEL": ("agent", "fast_model"),
+    "ZAYA_AGENT_HISTORY_SUMMARY": ("agent", "history_summary"),
+    "ZAYA_AGENT_HISTORY_SUMMARY_MODEL": ("agent", "history_summary_model"),
+    "ZAYA_AGENT_MAX_HISTORY_CHARS": ("agent", "max_history_chars"),
+    "ZAYA_AGENT_MAX_HISTORY_MESSAGES": ("agent", "max_history_messages"),
+    "ZAYA_AGENT_MAX_STEPS": ("agent", "max_steps"),
+    "ZAYA_AGENT_MAX_TOKENS": ("agent", "max_tokens"),
+    "ZAYA_AGENT_MODEL": ("agent", "model"),
+    "ZAYA_AGENT_PROVIDER": ("agent", "provider"),
+    "ZAYA_AGENT_REQUEST_TIMEOUT": ("agent", "request_timeout"),
+    "ZAYA_AGENT_RESUME_SESSION": ("agent", "resume_session"),
+    "ZAYA_AGENT_STALL_TIMEOUT": ("agent", "stall_timeout"),
+    "ZAYA_AGENT_SUMMARY_CHARS": ("agent", "summary_chars"),
+    "ZAYA_AGENT_TEMPERATURE": ("agent", "temperature"),
+    "ZAYA_AGENT_TOOL_FILTER": ("agent", "tool_filter"),
+    "ZAYA_AGENT_TOOLS": ("agent", "tools"),
+    "ZAYA_AGENT_TOOL_RESULT_CHARS": ("agent", "tool_result_chars"),
+    "ZAYA_AGENT_USAGE": ("agent", "usage"),
     "ZAYA_MEMORY_AT": ("memory", "at"),
     "ZAYA_MEMORY_ENABLED": ("memory", "enabled"),
     "ZAYA_MEMORY_FOLDER": ("memory", "folder"),
@@ -429,6 +497,9 @@ _ENV_MAP: dict[str, tuple[str, str]] = {
     "ZAYA_BRIEFING_NOON_UNTIL": ("briefing", "noon_until"),
     "ZAYA_BRIEFING_MORNING_ROUTINE": ("briefing", "morning_routine"),
     "ZAYA_BRIEFING_MAX_TASKS": ("briefing", "max_tasks"),
+    "ZAYA_BRIEFING_MARKET_ENABLED": ("briefing", "market_enabled"),
+    "ZAYA_BRIEFING_MARKET_AT": ("briefing", "market_at"),
+    "ZAYA_BRIEFING_MARKET_UNTIL": ("briefing", "market_until"),
     "ZAYA_PROACTIVE_CHECK_INTERVAL_SECONDS": ("proactive", "check_interval_seconds"),
     "ZAYA_PROACTIVE_DAILY_MAX": ("proactive", "daily_max"),
     "ZAYA_PROACTIVE_ENABLED": ("proactive", "enabled"),
@@ -442,6 +513,7 @@ _ENV_MAP: dict[str, tuple[str, str]] = {
     "ZAYA_SB_AUTO_CONTEXT": ("secondbrain", "auto_context"),
     "ZAYA_SB_CONFIRM_CREATE": ("secondbrain", "confirm_create"),
     "ZAYA_SB_CONTEXT_CHARS": ("secondbrain", "context_chars"),
+    "ZAYA_SB_CONTEXT_MAX_CHARS": ("secondbrain", "context_max_chars"),
     "ZAYA_SB_CONTEXT_RESULTS": ("secondbrain", "context_results"),
     "ZAYA_SECOND_BRAIN_INDEX": ("secondbrain", "index_db"),
     "ZAYA_SECOND_BRAIN_PATH": ("secondbrain", "path"),
@@ -488,6 +560,61 @@ def _parse_bool(value: str) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on", "y"}
 
 
+# Variaveis do formato antigo (OpenCode). Continuam aceitas enquanto a
+# configuracao nao migra para ZAYA_AGENT_*.
+_LEGACY_ENV_MAP: dict[str, str] = {
+    "ZAYA_OPENCODE_AUTO_APPROVE": "auto_approve",
+    "ZAYA_OPENCODE_DIRECTORY": "directory",
+    "ZAYA_OPENCODE_MODEL": "model",
+}
+
+# Modelos do catalogo antigo que nao existem na API direta da DeepSeek.
+_PROVIDER_API_KEYS: dict[str, str] = {
+    "deepseek": "DEEPSEEK_API_KEY",
+    "openai": "OPENAI_API_KEY",
+    "openrouter": "OPENROUTER_API_KEY",
+    "anthropic": "ANTHROPIC_API_KEY",
+    "claude": "ANTHROPIC_API_KEY",
+}
+
+_LEGACY_MODEL_ALIASES: dict[str, tuple[str, str]] = {
+    "deepseek/deepseek-flash": ("deepseek", "deepseek-flash"),
+    "deepseek/deepseek-v4.1-flash": ("deepseek", "deepseek-flash"),
+}
+
+
+def _migrate_legacy_config(raw: dict[str, Any]) -> None:
+    """Move ``[opencode]`` para ``[agent]`` quando a config ainda e antiga."""
+    legacy = raw.pop("opencode", None)
+    if not isinstance(legacy, dict):
+        return
+    agent = raw.setdefault("agent", {})
+    if not isinstance(agent, dict):
+        return
+    for field in (
+        "auto_approve",
+        "directory",
+        "request_timeout",
+        "resume_session",
+        "stall_timeout",
+        "temperature",
+        "max_tokens",
+    ):
+        if field in legacy and field not in agent:
+            agent[field] = legacy[field]
+    slug = str(legacy.get("model") or "").strip()
+    if slug and "model" not in agent:
+        provider, _, model = slug.partition("/")
+        if provider and model:
+            alias = _LEGACY_MODEL_ALIASES.get(slug)
+            if alias:
+                provider, model = alias
+            agent.setdefault("provider", provider)
+            agent["model"] = model
+        else:
+            agent["model"] = slug
+
+
 def _apply_env(raw: dict[str, Any], env: dict[str, str]) -> None:
     for key, (section, field) in _ENV_MAP.items():
         value = env.get(key)
@@ -498,6 +625,40 @@ def _apply_env(raw: dict[str, Any], env: dict[str, str]) -> None:
         else:
             raw.setdefault(section, {})[field] = value
 
+    agent = raw.setdefault("agent", {})
+    if isinstance(agent, dict):
+        for key, field in _LEGACY_ENV_MAP.items():
+            value = env.get(key)
+            if value and field not in agent:
+                if field == "auto_approve":
+                    agent[field] = _parse_bool(value)
+                elif field == "model" and "/" in value:
+                    provider, _, model = value.partition("/")
+                    alias = _LEGACY_MODEL_ALIASES.get(value)
+                    if alias:
+                        provider, model = alias
+                    agent.setdefault("provider", provider)
+                    agent["model"] = model
+                else:
+                    agent[field] = value
+
+    # A chave lida do .env precisa chegar ao agente: `resolve_api_key` consulta
+    # o ambiente do processo, mas o .env e carregado numa copia local.
+    if isinstance(agent, dict) and not str(agent.get("api_key") or "").strip():
+        provider = str(agent.get("provider") or "deepseek").strip().lower()
+        provider_key = _PROVIDER_API_KEYS.get(provider, "")
+        for key in (
+            "ZAYA_AGENT_API_KEY",
+            provider_key,
+            "DEEPSEEK_API_KEY",
+            "OPENAI_API_KEY",
+            "OPENROUTER_API_KEY",
+            "ANTHROPIC_API_KEY",
+        ):
+            if key and env.get(key):
+                agent["api_key"] = env[key]
+                break
+
     if env.get("ZAYA_DATA_DIR"):
         raw["data_dir"] = env["ZAYA_DATA_DIR"]
 
@@ -505,18 +666,42 @@ def _apply_env(raw: dict[str, Any], env: dict[str, str]) -> None:
 _DEFAULT_CONFIG_TEMPLATE = """\
 # Configuracao da Zaya. Segredos NAO devem ficar aqui: use ~/.config/zaya/.env
 
-[opencode]
-# Vazio = a Zaya gerencia um servidor por diretorio de projeto.
+[agent]
+# deepseek | openai | openrouter | ollama | anthropic | custom
+provider = "deepseek"
+model = "deepseek-flash"
+# Vazio = endpoint padrao do provider.
 base_url = ""
+# Diretorio de trabalho (vazio = diretorio atual).
 directory = ""
-model = "deepseek/deepseek-flash"
-agent = "build"
-auto_start = true
-managed = true
+max_tokens = 4096
+temperature = 0.3
+max_steps = 32
 resume_session = true
 request_timeout = 900.0
-# Auto-aprovar ferramentas do OpenCode (perigoso; padrao false)
+# Auto-aprovar ferramentas (perigoso; padrao false).
 auto_approve = false
+tools = true
+allow_outside_project = true
+# Modelo pequeno para pedidos curtos (vazio = sempre o principal).
+fast_model = ""
+# So envia ao modelo as ferramentas que o turno pode precisar.
+tool_filter = true
+# Cacheia o prefixo estavel do prompt (persona + preferencias).
+cache_prompt = true
+# Depois disso o historico antigo vira um resumo compacto.
+max_history_messages = 20
+max_history_chars = 24000
+summary_chars = 1200
+# Mede tokens por turno (e mostra no /status).
+usage = true
+# Resultado de ferramenta no historico (o turno atual ve tudo; 0 = sem teto).
+tool_result_chars = 4000
+# Resumo do historico: local (extrativo) | llm (semantico, com fallback local).
+history_summary = "local"
+# Modelo do resumo (vazio = modelo principal).
+history_summary_model = ""
+# A chave da API NAO fica aqui: use ZAYA_AGENT_API_KEY em ~/.config/zaya/.env
 
 [stt]
 model = "small"
@@ -553,8 +738,9 @@ auto_mute_seconds = 30          # silencio que desliga o microfone (0 = nunca)
 
 [secondbrain]
 path = "~/SecondBrain"
-context_results = 3
-context_chars = 600
+context_results = 2            # 2-3 trechos curtos bastam
+context_chars = 480            # por trecho
+context_max_chars = 1200       # teto do bloco inteiro
 index_db = ""
 auto_context = true
 confirm_create = false          # criar nota nao pergunta (aditivo)
@@ -576,7 +762,7 @@ ui = "textual"             # textual (padrão) | terminal
 fast = false               # modo rápido: sem busca automática, respostas curtas
 fast_smalltalk = true      # saudações respondem na hora, sem chamar o modelo
 chinese_echo = false       # mostra chinês + pinyin de cada mensagem
-default_mode = "conversa"       # academica | carreira | assistente | conversa | financas
+default_mode = "assistente"     # pesquisadora | trabalhadora | investidora | assistente
 
 [whatsapp]
 enabled = false

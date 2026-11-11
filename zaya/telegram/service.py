@@ -96,6 +96,10 @@ class TelegramService:
             await self.client.send_message(answer, chat_id=chat_id)
             if self.cfg.telegram.voice_replies:
                 await self._send_voice(answer, chat_id)
+        elif self.orchestrator.last_error:
+            await self.client.send_message(
+                f"Não consegui responder: {self.orchestrator.last_error}", chat_id=chat_id
+            )
         else:
             await self.client.send_message("Concluído.", chat_id=chat_id)
 

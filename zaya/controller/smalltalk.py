@@ -1,6 +1,6 @@
 """Respostas locais instantaneas para conversa trivial (sem LLM).
 
-Saudacoes, "tudo bem?" e agradecimentos nao precisam de uma ida ao OpenCode.
+Saudacoes, "tudo bem?" e agradecimentos nao precisam de uma ida ao modelo.
 Aqui a Zaya responde na hora, mantendo o tom caloroso, e qualquer mensagem com
 conteudo real (pedido, duvida, tarefa) continua indo para o agente.
 """
@@ -221,7 +221,7 @@ def fast_reply(
     """Devolve uma resposta pronta para small talk, ou None para o agente.
 
     O casamento e pela mensagem inteira: "oi" responde na hora, mas
-    "oi, preciso de ajuda com o projeto" segue para o OpenCode.
+    "oi, preciso de ajuda com o projeto" segue para o agente.
     """
     normalized = _normalize(text)
     if not _is_pure_smalltalk(normalized):

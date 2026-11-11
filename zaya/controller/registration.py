@@ -19,12 +19,7 @@ class RegistrationMixin(OrchestratorContract):
         if mtime != self._prefs_mtime:
             self._prefs_cache = self.brain.load_preferences()
             self._prefs_mtime = mtime
-        if not self._prefs_cache:
-            return ""
-        return (
-            "[Preferências de interação do usuário — siga sempre, "
-            "sem mencionar este bloco]\n" + self._prefs_cache
-        )
+        return self._prefs_cache
 
     async def _handle_preference(self, text: str) -> None:
         added = await asyncio.to_thread(self.brain.append_preference, text, False)

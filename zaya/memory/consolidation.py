@@ -14,10 +14,9 @@ import re
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
 
+from zaya.agent import AgentClient
 from zaya.config import Config
 from zaya.memory.store import MemoryStore
-from zaya.opencode.client import OpenCodeClient
-from zaya.opencode.events import assistant_text
 from zaya.secondbrain.index import SecondBrainIndex
 from zaya.secondbrain.notes import SecondBrain
 
@@ -109,7 +108,7 @@ def _mode_label(key: str) -> str:
     persona = get_persona(key)
     if persona is None:
         return key
-    return persona.name.removeprefix("Parceira ")
+    return persona.name
 
 
 def _decisions(turns: list) -> list[str]:
@@ -190,7 +189,7 @@ class DailyMemory:
         store: MemoryStore,
         brain: SecondBrain,
         index: SecondBrainIndex,
-        client: OpenCodeClient,
+        client: AgentClient,
         directory: Path,
         logger: logging.Logger | None = None,
     ):
@@ -268,7 +267,7 @@ class DailyMemory:
                 self.client.prompt_sync(session_id, _SUMMARY_PROMPT + convo),
                 timeout=max(10.0, timeout_seconds),
             )
-            return assistant_text(message).strip()
+            return message.text.strip()
         except Exception as exc:  # pragma: no cover - depende do provedor
             self.logger.warning("resumo diário pelo modelo falhou: %s", exc)
             return ""

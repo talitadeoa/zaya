@@ -1,18 +1,24 @@
-"""Testa o consumidor de eventos do turno com o stream real do OpenCode."""
+"""Testa o consumidor de eventos do turno com os eventos tipados do agente."""
 
 from __future__ import annotations
 
 import asyncio
 import logging
-from pathlib import Path
 
 import pytest
 
+from zaya.agent.errors import AgentError
+from zaya.agent.events import (
+    PermissionAsked,
+    ReasoningDelta,
+    TextDelta,
+    ToolFinished,
+    ToolStarted,
+    TurnCompleted,
+    TurnFailed,
+    TurnStarted,
+)
 from zaya.controller.orchestrator import Orchestrator
-from zaya.opencode.client import OpenCodeError
-from zaya.opencode.events import iter_sse_json
-
-FIXTURES = Path(__file__).parent / "fixtures" / "opencode"
 
 
 class FakeUI:
@@ -23,6 +29,7 @@ class FakeUI:
         self.stream_started = False
         self.stream_ended = False
         self.warnings: list[str] = []
+        self.reasoning_text: list[str] = []
         self.permissions: list[tuple[str, list[str]]] = []
 
     def begin_stream(self) -> None:
@@ -41,7 +48,7 @@ class FakeUI:
         self.diffs.append((filename, patch))
 
     def reasoning(self, text: str) -> None:
-        pass
+        self.reasoning_text.append(text)
 
     def warning(self, text: str) -> None:
         self.warnings.append(text)
@@ -53,11 +60,8 @@ class FakeUI:
 
 class FakeClient:
     def __init__(self) -> None:
-        self.replies: list[tuple[str, str, str, bool]] = []
+        self.replies: list[tuple[str, str, str]] = []
         self.aborted: list[str] = []
-
-    async def session_status(self, session_id: str):
-        return {"type": "idle"}
 
     async def abort(self, session_id: str) -> None:
         self.aborted.append(session_id)
@@ -65,17 +69,7 @@ class FakeClient:
     async def reply_permission(
         self, session_id: str, permission_id: str, answer: str, v2: bool = False
     ) -> None:
-        self.replies.append((session_id, permission_id, answer, v2))
-
-
-async def _fixture_events(name: str = "stream.sse.txt") -> list[dict]:
-    path = FIXTURES / name
-
-    async def lines():
-        for line in path.read_text(encoding="utf-8").splitlines():
-            yield line
-
-    return [event async for event in iter_sse_json(lines())]
+        self.replies.append((session_id, permission_id, answer))
 
 
 def _make_orchestrator(cfg) -> tuple[Orchestrator, FakeUI, FakeClient]:
@@ -94,11 +88,37 @@ def _make_orchestrator(cfg) -> tuple[Orchestrator, FakeUI, FakeClient]:
     return orch, ui, client
 
 
+def _events() -> list:
+    return [
+        TurnStarted(session_id="ses_abc", message_id="msg_1"),
+        TextDelta(session_id="ses_abc", text="Olá", message_id="msg_1"),
+        ReasoningDelta(session_id="ses_abc", text="pensando", message_id="msg_1"),
+        TextDelta(session_id="ses_abc", text=", mundo", message_id="msg_1"),
+        ToolStarted(session_id="ses_abc", call_id="c1", name="edit", detail="a.py"),
+        ToolFinished(
+            session_id="ses_abc",
+            call_id="c1",
+            name="edit",
+            status="completed",
+            diff_name="a.py",
+            diff="--- a/a.py\n+++ b/a.py",
+        ),
+        PermissionAsked(
+            session_id="ses_abc",
+            request_id="per_1",
+            tool="edit",
+            detail="a.py",
+            resources=["a.py"],
+        ),
+        TurnCompleted(session_id="ses_abc", message_id="msg_1", text="Olá, mundo"),
+    ]
+
+
 @pytest.mark.asyncio
-async def test_consume_events_from_fixture(cfg):
+async def test_consume_events_tipados(cfg):
     orch, ui, client = _make_orchestrator(cfg)
-    queue: asyncio.Queue[dict] = asyncio.Queue()
-    for event in await _fixture_events():
+    queue: asyncio.Queue = asyncio.Queue()
+    for event in _events():
         queue.put_nowait(event)
 
     answer = await orch._consume_events(queue)
@@ -107,58 +127,40 @@ async def test_consume_events_from_fixture(cfg):
     assert "".join(ui.tokens) == "Olá, mundo"
     assert ui.stream_started and ui.stream_ended
     assert ui.tools == [("editando", "a.py")]
-    assert len(ui.diffs) == 1
-    assert ui.diffs[0][0] == "a.py" and "-x" in ui.diffs[0][1]
+    assert ui.diffs == [("a.py", "--- a/a.py\n+++ b/a.py")]
     assert ui.permissions == [("edit", ["a.py"])]
-    assert client.replies == [("ses_abc", "per_1", "once", False)]
+    assert ui.reasoning_text[-1] == "pensando"
+    assert client.replies == [("ses_abc", "per_1", "once")]
     assert orch._last_assistant_message_id == "msg_1"
 
 
 @pytest.mark.asyncio
-async def test_consume_events_raises_on_session_error(cfg):
-    orch, _ui, _client = _make_orchestrator(cfg)
-    queue: asyncio.Queue[dict] = asyncio.Queue()
-    queue.put_nowait(
-        {"type": "session.error", "properties": {"error": {"name": "APIError"}}}
-    )
+async def test_consume_events_falha_do_turno(cfg):
+    orch, ui, _client = _make_orchestrator(cfg)
+    queue: asyncio.Queue = asyncio.Queue()
+    queue.put_nowait(TurnFailed(session_id="ses_abc", message="provedor fora do ar"))
 
-    with pytest.raises(OpenCodeError):
+    with pytest.raises(AgentError, match="provedor fora do ar"):
         await orch._consume_events(queue)
+    assert not ui.stream_started
 
 
 @pytest.mark.asyncio
-async def test_consume_events_from_v2_fixture(cfg):
+async def test_auto_approve_nao_pergunta(cfg):
+    cfg.agent.auto_approve = True
     orch, ui, client = _make_orchestrator(cfg)
-    queue: asyncio.Queue[dict] = asyncio.Queue()
-    for event in await _fixture_events("stream.v2.sse.txt"):
-        queue.put_nowait(event)
-
-    answer = await orch._consume_events(queue)
-
-    assert answer == "Olá, mundo"
-    assert "".join(ui.tokens) == "Olá, mundo"
-    assert ui.stream_started and ui.stream_ended
-    assert ui.tools == [("editando", "a.py")]
-    assert len(ui.diffs) == 1
-    assert ui.diffs[0][0] == "a.py" and "-x" in ui.diffs[0][1]
-    assert ui.permissions == [("edit", ["a.py"])]
-    assert client.replies == [("ses_abc", "per_1", "once", True)]
-    assert orch._last_assistant_message_id == "msg_2"
-
-
-@pytest.mark.asyncio
-async def test_consume_events_v2_execution_failed(cfg):
-    orch, _ui, _client = _make_orchestrator(cfg)
-    queue: asyncio.Queue[dict] = asyncio.Queue()
+    queue: asyncio.Queue = asyncio.Queue()
     queue.put_nowait(
-        {
-            "type": "session.execution.failed",
-            "data": {
-                "sessionID": "ses_abc",
-                "error": {"type": "provider.no-route", "message": "Model unavailable"},
-            },
-        }
+        PermissionAsked(
+            session_id="ses_abc",
+            request_id="per_1",
+            tool="bash",
+            detail="ls",
+            resources=["ls"],
+        )
     )
+    queue.put_nowait(TurnCompleted(session_id="ses_abc", message_id="m", text="ok"))
 
-    with pytest.raises(OpenCodeError, match=r"provider\.no-route"):
-        await orch._consume_events(queue)
+    assert await orch._consume_events(queue) == "ok"
+    assert ui.permissions == []
+    assert client.replies == [("ses_abc", "per_1", "once")]

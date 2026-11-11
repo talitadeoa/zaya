@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Protocol
 
 from zaya.agenda.client import AgendaClient
+from zaya.agent import AgentClient
 from zaya.audio.recorder import ContinuousListener, Recorder
 from zaya.config import Config
 from zaya.controller.goals import GoalTracker
@@ -30,7 +31,6 @@ from zaya.finance.watchlist import Watchlist
 from zaya.focus import FocusStore
 from zaya.interface.terminal import TerminalUI
 from zaya.memory.store import MemoryStore
-from zaya.opencode.client import OpenCodeClient
 from zaya.secondbrain.index import SecondBrainIndex
 from zaya.secondbrain.notes import SecondBrain
 from zaya.stt.faster_whisper import WhisperTranscriber
@@ -62,7 +62,7 @@ class OrchestratorContract(ABC):
     tts: TTSManager
     transcriber: WhisperTranscriber
     recorder: Recorder
-    client: OpenCodeClient
+    client: AgentClient
     telegram: TelegramClient
     directory: Path
     persona: Persona
@@ -83,6 +83,7 @@ class OrchestratorContract(ABC):
     _last_activity: float
     _busy: bool
     _restart_requested: bool
+    _last_error: str
     _recording: bool
     _listening: bool
     _voice_mode: bool
@@ -102,6 +103,7 @@ class OrchestratorContract(ABC):
     _memory_task: asyncio.Task[None] | None
     _briefing_task: asyncio.Task[None] | None
     _briefing_last_attempt: float
+    _market_last_attempt: float
     _proactive_count: int
     _proactive_day: date
     _last_proactive: float
@@ -132,6 +134,7 @@ class OrchestratorContract(ABC):
     _last_assistant_message_id: str | None
     _transition_lock: asyncio.Lock
     _resume_context: str
+    _tool_scope: set[str]
 
     # --- memoria diaria ---
     @abstractmethod

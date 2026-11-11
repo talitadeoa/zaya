@@ -8,13 +8,13 @@ import sys
 import time
 from pathlib import Path
 
+from zaya.agent import AgentClient
 from zaya.audio.recorder import Recorder
 from zaya.config import Config
 from zaya.controller.orchestrator import Orchestrator
 from zaya.interface.terminal import TerminalUI
 from zaya.logging_setup import setup_logging
 from zaya.memory.store import MemoryStore
-from zaya.opencode.client import OpenCodeClient
 from zaya.secondbrain.index import SecondBrainIndex
 from zaya.secondbrain.notes import SecondBrain
 from zaya.stt.faster_whisper import WhisperTranscriber
@@ -32,7 +32,7 @@ def _build_app(cfg: Config, verbose: bool, voice: bool = True, quiet: bool = Fal
     tts = TTSManager(cfg.tts, logger, cfg.resolved_data_dir() / "tmp")
     transcriber = WhisperTranscriber(cfg.stt)
     recorder = Recorder(cfg.audio)
-    client = OpenCodeClient(cfg, cfg.project_directory())
+    client = AgentClient(cfg, cfg.project_directory())
 
     orchestrator = Orchestrator(
         cfg=cfg,
@@ -76,7 +76,7 @@ async def _run_textual(cfg: Config, verbose: bool) -> None:
         await orchestrator.aclose()
 
     app = ZayaTextualApp(
-        answer, cleanup=cleanup, subtitle=cfg.opencode.model, voice=orchestrator
+        answer, cleanup=cleanup, subtitle=cfg.agent.model_slug(), voice=orchestrator
     )
     result = None
     try:

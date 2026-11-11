@@ -138,3 +138,39 @@ def test_service_adota_primeiro_chat_quando_vazio():
     assert service._allowed(7) is True
     assert service._allowed(7) is True
     assert service._allowed(8) is False
+
+
+class _FakeOrchestrator:
+    last_error = "Location not found: /Users/talita/zora"
+
+    async def answer_once(self, text, speak=False, close=False):
+        return ""
+
+
+class _FakeTelegramClient:
+    def __init__(self) -> None:
+        self.sent: list[str] = []
+
+    async def send_chat_action(self, *args, **kwargs) -> None:
+        pass
+
+    async def send_message(self, text, chat_id=None, **kwargs) -> None:
+        self.sent.append(text)
+
+
+@pytest.mark.asyncio
+async def test_erro_do_agente_chega_no_telegram():
+    import logging
+
+    cfg = Config()
+    cfg.telegram.allowed_chat_id = "42"
+    tg = _FakeTelegramClient()
+    service = TelegramService(
+        cfg, _FakeOrchestrator(), tg, None, TerminalUI(quiet=True), logging.getLogger("t")
+    )
+
+    await service._handle_update({"message": {"chat": {"id": 42}, "text": "oi"}})
+
+    assert any("Location not found" in text for text in tg.sent)
+    assert "Concluído." not in tg.sent
+

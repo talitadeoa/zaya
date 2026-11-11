@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
 from typing import Any, ClassVar
@@ -35,16 +36,47 @@ from zaya.interface.textual_render import (
     _welcome_art,
     card,
 )
-from zaya.interface.textual_screens import CommandPalette, SessionPicker
+from zaya.interface.textual_screens import (
+    CommandPalette,
+    ModePicker,
+    PermissionScreen,
+    SessionPicker,
+)
 from zaya.interface.textual_sink import TextualSink
 
 
 class ModeBar(Static):
-    """Barra do modo: clique troca de modo, sem abrir modal."""
+    """Barra do modo: clique abre o modal de escolha de modo."""
 
     async def on_click(self, event) -> None:
         event.stop()
-        await self.app.run_action("cycle_mode")
+        await self.app.run_action("modes")
+
+
+class SessionButton(Static):
+    """Atalho clicável para o modal de sessões."""
+
+    def __init__(self) -> None:
+        super().__init__("Sessões", id="session-button")
+
+    async def on_click(self, event) -> None:
+        event.stop()
+        await self.app.run_action("sessions")
+
+
+class CollapsibleCard(Static):
+    """Card de painel: clique recolhe/expande o conteúdo."""
+
+    def __init__(self, expanded_view, collapsed_view, **kwargs) -> None:
+        super().__init__(expanded_view, **kwargs)
+        self._expanded_view = expanded_view
+        self._collapsed_view = collapsed_view
+        self.expanded = True
+
+    def on_click(self, event) -> None:
+        event.stop()
+        self.expanded = not self.expanded
+        self.update(self._expanded_view if self.expanded else self._collapsed_view)
 
 
 class MenuButton(Static):
@@ -52,7 +84,6 @@ class MenuButton(Static):
 
     def __init__(self) -> None:
         super().__init__("⭘", id="menu-button")
-        self.tooltip = "Atalhos (F1)"
 
     async def on_click(self, event) -> None:
         await self.app.run_action("command_palette")
@@ -68,10 +99,12 @@ class ZayaTextualApp(App):
         Binding("f", "push_to_talk", "Falar"),
         Binding("c", "toggle_listen", "Contínua"),
         Binding("escape", "escape", "Voltar"),
-        Binding("tab", "cycle_mode", "Modo", priority=True),
+        Binding("tab", "modes", "Modo", priority=True),
         Binding("f1", "command_palette", "Comandos"),
         Binding("f2", "sessions", "Sessões"),
-        Binding("f3", "cycle_mode", "Modo"),
+        Binding("f3", "modes", "Modo"),
+        Binding("f4", "toggle_mouse", "Seleção"),
+        Binding("f5", "toggle_dashboard", "Painéis"),
         Binding("ctrl+l", "clear_chat", "Limpar"),
     ]
 
@@ -102,17 +135,19 @@ class ZayaTextualApp(App):
         color: #c9bce8;
         content-align: center middle;
     }
-    #menu-button:hover {
-        background: #b3a1e0;
-        color: #0f1115;
-        text-style: bold;
-    }
     #modebar {
-        width: 1fr;
+        width: auto;
         height: 1;
         background: #12151b;
         color: #c9bce8;
-        padding: 0 1 0 0;
+        padding: 0;
+    }
+    #session-button {
+        width: auto;
+        height: 1;
+        background: #12151b;
+        color: #8fb0c9;
+        padding: 0 1 0 1;
     }
     #status {
         height: 1;
@@ -156,6 +191,8 @@ class ZayaTextualApp(App):
         self._listener: ContinuousListener | None = None
         self._listen_task: asyncio.Task | None = None
         self._insert_mode = False
+        self._mouse_enabled = True
+        self._show_dashboard = True
         self._turn_running = False
         self._status_base = ""
         self._dot_phase = 0
@@ -170,6 +207,7 @@ class ZayaTextualApp(App):
             Horizontal(
                 MenuButton(),
                 ModeBar("", id="modebar"),
+                SessionButton(),
                 id="topbar",
             ),
             VerticalScroll(id="chat"),
@@ -189,6 +227,29 @@ class ZayaTextualApp(App):
         self._normal_mode()
         self._update_modebar()
         self.set_interval(0.4, self._tick_status)
+        ui = getattr(self._voice, "ui", None)
+        if ui is not None and hasattr(ui, "permission_callback"):
+            ui.permission_callback = self.request_permission
+
+    def request_permission(self, tool: str, resources: list[str]) -> str:
+        """Chamado de uma thread pelo orchestrator (asyncio.to_thread)."""
+        result = {"value": "reject"}
+        done = threading.Event()
+
+        def show() -> None:
+            def finish(value: str | None) -> None:
+                result["value"] = value or "reject"
+                done.set()
+
+            self.push_screen(PermissionScreen(tool, list(resources)), finish)
+
+        try:
+            self.call_from_thread(show)
+        except Exception:
+            return "reject"
+        if not done.wait(timeout=300):
+            return "reject"
+        return result["value"]
 
     def _render_banner(self) -> None:
         width = 78
@@ -255,36 +316,42 @@ class ZayaTextualApp(App):
         else:
             bar.append("sem sessão", style=MUTED)
         bar.append("  ·  ", style=MUTED)
-        bar.append("F2 sessões · Tab modo", style=MUTED)
         self._modebar.update(bar)
         self.sub_title = f"{self._subtitle} · {name}" if self._subtitle else name
 
-    def action_cycle_mode(self) -> None:
-        """Alterna para o próximo modo (Tab/F3), sem abrir modal."""
-        modes = self._mode_list()
-        if not modes:
+    def action_modes(self) -> None:
+        """Abre o modal para a usuária escolher o modo (Tab/F3/clique)."""
+        stack = self.screen_stack
+        if stack and self.screen is not stack[0]:
+            # Um modal já está aberto: Tab/F3 não devem empilhar outro.
             return
-        keys = [persona.key for persona in modes]
-        try:
-            index = keys.index(self._mode_key())
-        except ValueError:
-            index = -1
-        self.run_worker(
-            self._apply_mode(keys[(index + 1) % len(keys)]),
-            group="modo",
-            exclusive=True,
+        if self._voice is None:
+            self._set_status("modos indisponíveis")
+            return
+        self.push_screen(
+            ModePicker(self._mode_list(), self._mode_key()),
+            self._on_mode_chosen,
         )
+
+    def _on_mode_chosen(self, key: str | None) -> None:
+        if not key:
+            self._update_modebar()
+            return
+        self._switch_mode(key)
+
+    def _switch_mode(self, key: str) -> None:
+        self.run_worker(self._apply_mode(key), group="modo", exclusive=True)
 
     def _handle_modo_command(self, text: str) -> None:
         argument = text.partition(" ")[2].strip()
         if not argument:
-            self.action_cycle_mode()
+            self.action_modes()
             return
         persona = get_persona(argument)
         if persona is None:
             self._set_status(f"modo desconhecido: {argument}")
             return
-        self.run_worker(self._apply_mode(persona.key), group="modo", exclusive=True)
+        self._switch_mode(persona.key)
 
     async def _apply_mode(self, key: str) -> None:
         if self._voice is None:
@@ -407,9 +474,9 @@ class ZayaTextualApp(App):
         for goal in goals:
             table.add_row(escape(goal.label), escape(goal.next_step or "—"))
         available = max(60, self.size.width - 8)
-        self._mount(
-            card("🎯 Metas", table, ACCENT, ZAYA_BG, max_width=available)
-        )
+        expanded = card("🎯 Metas  ▾", table, ACCENT, ZAYA_BG, max_width=available)
+        collapsed = card("🎯 Metas  ▸", None, ACCENT, ZAYA_BG, max_width=available)
+        self._mount_panel(expanded, collapsed)
 
     async def _write_moon_note(self) -> None:
         detail = moon_details()
@@ -434,7 +501,9 @@ class ZayaTextualApp(App):
             if manifestation:
                 line += f" — manifestações na Agenda: {manifestation}"
             body.append("\n" + line, style=MUTED)
-        self._mount(card("🌙 Lua", body, LILAC, MINT_BG))
+        expanded = card("🌙 Lua  ▾", body, LILAC, MINT_BG)
+        collapsed = card("🌙 Lua  ▸", None, LILAC, MINT_BG)
+        self._mount_panel(expanded, collapsed)
 
     async def _shutdown(self) -> None:
         # O Textual limpa o contextvar ``active_app`` antes do shutdown final.
@@ -488,7 +557,7 @@ class ZayaTextualApp(App):
             self._handle_modo_command(text)
             return
         if text in {"/modos", "/perfil", "/persona"}:
-            self.action_cycle_mode()
+            self.action_modes()
             return
         if text in {"/sessoes", "/sessões", "/sessao", "/sessão"}:
             self.action_sessions()
@@ -743,18 +812,22 @@ class ZayaTextualApp(App):
         self._set_status("mudo")
 
     # --------------------------------------------------------------- palette
-    def palette_labels(self) -> list[str]:
+    def palette_entries(self) -> list[tuple[str, str, str]]:
         return [
-            "Ajuda",
-            "Trocar modo",
-            "Sessões",
-            "Nova sessão",
-            "Limpar conversa",
-            "Focar entrada",
-            "Chinês on/off",
-            "Reiniciar Zaya",
-            "Sair",
+            ("Ajuda", "?", "atalhos e comandos"),
+            ("Trocar modo", "◈", "escolher a persona"),
+            ("Sessões", "▤", "abrir o histórico"),
+            ("Nova sessão", "+", "começar do zero"),
+            ("Limpar conversa", "⌫", "limpar a tela"),
+            ("Lua e metas on/off", "☾", "mostrar ou ocultar painéis"),
+            ("Focar entrada", "▸", "ir para o campo de texto"),
+            ("Chinês on/off", "中", "eco em chinês"),
+            ("Reiniciar Zaya", "⟳", "recarregar o código"),
+            ("Sair", "✕", "fechar a Zaya"),
         ]
+
+    def palette_labels(self) -> list[str]:
+        return [label for label, _, _ in self.palette_entries()]
 
     def action_command_palette(self) -> None:
         self.push_screen(CommandPalette(), self._run_palette_action)
@@ -765,13 +838,15 @@ class ZayaTextualApp(App):
         if label == "Ajuda":
             self._write_note(_HELP)
         elif label == "Trocar modo":
-            self.action_cycle_mode()
+            self.action_modes()
         elif label == "Sessões":
             self.action_sessions()
         elif label == "Nova sessão":
             self.run_worker(self._new_session_ui(), group="modo", exclusive=True)
         elif label == "Limpar conversa":
             self.action_clear_chat()
+        elif label == "Lua e metas on/off":
+            self.action_toggle_dashboard()
         elif label == "Focar entrada":
             field = self._input_widget()
             if field is not None:
@@ -785,6 +860,35 @@ class ZayaTextualApp(App):
 
     def action_clear_chat(self) -> None:
         self._clear_messages()
+
+    def action_toggle_dashboard(self) -> None:
+        """Mostra ou oculta os painéis de lua e metas."""
+        self._show_dashboard = not self._show_dashboard
+        for widget in self._chat().query(".dashboard-panel"):
+            widget.display = self._show_dashboard
+        self._set_status(
+            "lua e metas visíveis" if self._show_dashboard else "lua e metas ocultas"
+        )
+
+    def action_toggle_mouse(self) -> None:
+        """Desliga o mouse para permitir selecionar o texto nativamente."""
+        driver = getattr(self, "_driver", None)
+        enable = getattr(driver, "_enable_mouse_support", None)
+        disable = getattr(driver, "_disable_mouse_support", None)
+        if enable is None or disable is None:
+            self._set_status("este terminal não permite alternar o mouse")
+            return
+        try:
+            if self._mouse_enabled:
+                disable()
+                self._mouse_enabled = False
+                self._set_status("seleção ligada: arraste e copie · F4 religa o mouse")
+            else:
+                enable()
+                self._mouse_enabled = True
+                self._set_status("mouse ligado")
+        except Exception as exc:
+            self._set_status(f"erro ao alternar o mouse: {exc}")
 
     # ------------------------------------------------------------------ helpers
     def _scroll_chat(self) -> None:
@@ -802,6 +906,16 @@ class ZayaTextualApp(App):
     def _mount(self, renderable, message: bool = False) -> None:
         classes = "card msg" if message else "card"
         self._chat().mount(Static(renderable, classes=classes))
+        self.call_after_refresh(self._scroll_chat)
+
+    def _mount_panel(self, expanded_view, collapsed_view) -> None:
+        self._chat().mount(
+            CollapsibleCard(
+                expanded_view,
+                collapsed_view,
+                classes="card dashboard-panel",
+            )
+        )
         self.call_after_refresh(self._scroll_chat)
 
     def update_stream(self, text: str) -> None:

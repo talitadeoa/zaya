@@ -1,7 +1,7 @@
 [project]
 name = "zaya-assistant"
 version = "0.1.0"
-description = "Zaya: assistente pessoal de voz integrada ao OpenCode e a um Second Brain em Markdown."
+description = "Zaya: assistente pessoal de voz com agente proprio e Second Brain em Markdown."
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 license = { text = "MIT" }
@@ -64,7 +64,7 @@ target-version = "py312"
 select = ["E4", "E7", "E9", "F", "I", "UP", "B", "ASYNC", "RUF"]
 ignore = [
   "ASYNC109", # timeout e repassado ao httpx, nao e um cancelamento manual
-  "ASYNC220", # subprocess para iniciar o servidor OpenCode e intencional
+  "ASYNC220", # subprocess das ferramentas (bash) e intencional
   "ASYNC240", # operacoes locais de pathlib sao triviais neste CLI
   "E501",     # largura tratada pelo formatador
 ]

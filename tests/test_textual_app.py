@@ -6,16 +6,17 @@ from types import SimpleNamespace
 
 import numpy as np
 import pytest
-from textual.widgets import Input
+from textual.widgets import Input, OptionList
 
 from zaya.controller.modes import PERSONAS
 from zaya.interface import textual_app
 from zaya.interface.textual_app import (
     _HELP,
+    CollapsibleCard,
     TextualSink,
     ZayaTextualApp,
 )
-from zaya.interface.textual_screens import CommandPalette
+from zaya.interface.textual_screens import CommandPalette, ModePicker, SessionPicker
 
 
 class _FakeListener:
@@ -93,7 +94,7 @@ class _FakeVoice:
                 preroll_ms=300.0,
             ),
             interface=SimpleNamespace(chinese_echo=False),
-            opencode=SimpleNamespace(model="x/y"),
+            agent=SimpleNamespace(model_slug=lambda: "x/y"),
         )
         self.tts = _FakeTTS()
         self.client = _FakeClient()
@@ -308,26 +309,36 @@ async def test_startup_sem_modal_de_modo():
 
 
 @pytest.mark.asyncio
-async def test_tab_alterna_o_modo_sem_modal():
+async def test_tab_abre_modal_de_modo_sem_trocar():
     voice = _FakeVoice()
     app = ZayaTextualApp(_answer, voice=voice)
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
         await pilot.press("tab")
         await pilot.pause()
-        assert voice.mode_key == "conversa"
-        assert voice.selected_modes == ["conversa"]
+        assert isinstance(app.screen, ModePicker)
+        assert voice.mode_key == "assistente"
+        assert voice.selected_modes == []
+        await pilot.press("escape")
+        await pilot.pause()
         assert len(app.screen_stack) == 1
+        assert voice.mode_key == "assistente"
 
 
 @pytest.mark.asyncio
-async def test_modebar_mostra_modo_e_atalho():
+async def test_modebar_mostra_modo_e_sessoes_clicavel():
     app = ZayaTextualApp(_answer, voice=_FakeVoice())
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
-        texto = str(app._modebar.render())
-        assert "Tab modo" in texto
-        assert "Zaya" in texto
+        texto = app._modebar.renderable
+        assert "Zaya" in str(texto)
+        assert "Tab modo" not in str(texto)
+        assert "Sessões" not in str(texto)
+        assert "Sessões" in str(app.query_one("#session-button").renderable)
+
+        await pilot.click("#session-button")
+        await pilot.pause()
+        assert isinstance(app.screen, SessionPicker)
 
 
 @pytest.mark.asyncio
@@ -392,6 +403,46 @@ async def test_palette_escape_closes_without_submitting():
 
 
 @pytest.mark.asyncio
+async def test_paleta_busca_e_enter_abre_o_comando():
+    app = ZayaTextualApp(_answer, voice=_FakeVoice())
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        await pilot.press("f1")
+        await pilot.pause()
+        assert isinstance(app.screen, CommandPalette)
+
+        field = app.screen.query_one("#palette-input", Input)
+        field.value = "modo"
+        await pilot.pause()
+        options = app.screen.query_one("#palette-list", OptionList)
+        assert options.option_count == 1
+
+        await pilot.press("enter")
+        await pilot.pause()
+        assert isinstance(app.screen, ModePicker)
+
+
+@pytest.mark.asyncio
+async def test_paleta_setas_escolhem_comando():
+    app = ZayaTextualApp(_answer, voice=_FakeVoice())
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        await pilot.press("f1")
+        await pilot.pause()
+        assert isinstance(app.screen, CommandPalette)
+        options = app.screen.query_one("#palette-list", OptionList)
+        assert options.highlighted == 0
+
+        await pilot.press("down")
+        await pilot.pause()
+        assert options.highlighted == 1
+
+        await pilot.press("up")
+        await pilot.pause()
+        assert options.highlighted == 0
+
+
+@pytest.mark.asyncio
 async def test_push_to_talk_submits_transcribed_text(monkeypatch):
     monkeypatch.setattr(textual_app, "ContinuousListener", _FakeListener)
     voice = _FakeVoice()
@@ -400,9 +451,7 @@ async def test_push_to_talk_submits_transcribed_text(monkeypatch):
             1600, dtype=np.float32
         )
     )
-    voice.transcriber = SimpleNamespace(
-        transcribe=lambda audio, vad_filter=None: "olá por voz"
-    )
+    voice.transcriber = SimpleNamespace(transcribe=lambda audio, vad_filter=None: "olá por voz")
     app = ZayaTextualApp(_answer, voice=voice)
 
     async with app.run_test() as pilot:
@@ -434,9 +483,7 @@ async def test_palette_input_does_not_submit_chat():
             received.append(text)
 
         app.submit_text = fake_submit
-        event = SimpleNamespace(
-            value="oi", input=SimpleNamespace(value="", id="palette-input")
-        )
+        event = SimpleNamespace(value="oi", input=SimpleNamespace(value="", id="palette-input"))
         await app.on_input_submitted(event)
         await asyncio.sleep(0)
         await pilot.pause()
@@ -459,7 +506,7 @@ async def test_troca_de_modo_usa_worker_serializado(monkeypatch):
             return None
 
         monkeypatch.setattr(app, "run_worker", fake_run_worker)
-        app.action_cycle_mode()
+        app._switch_mode("investidora")
         await pilot.pause()
 
     assert captured.get("group") == "modo"
@@ -477,7 +524,7 @@ async def test_menu_button_abre_paleta_de_atalhos():
 
 
 @pytest.mark.asyncio
-async def test_tab_troca_modo_mesmo_digitando():
+async def test_tab_abre_modal_mesmo_digitando():
     voice = _FakeVoice()
     app = ZayaTextualApp(_answer, voice=voice)
     async with app.run_test(size=(110, 40)) as pilot:
@@ -485,17 +532,102 @@ async def test_tab_troca_modo_mesmo_digitando():
         await pilot.press("i")
         await pilot.press("tab")
         await pilot.pause()
-        assert voice.mode_key == "conversa"
-        assert not isinstance(app.screen, CommandPalette)
+        assert isinstance(app.screen, ModePicker)
+        assert voice.mode_key == "assistente"
+        assert voice.selected_modes == []
 
 
 @pytest.mark.asyncio
-async def test_click_modebar_troca_modo_sem_modal():
+async def test_click_modebar_abre_modal_de_modo():
     voice = _FakeVoice()
     app = ZayaTextualApp(_answer, voice=voice)
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
         await pilot.click("#modebar")
         await pilot.pause()
-        assert voice.mode_key == "conversa"
-        assert not isinstance(app.screen, CommandPalette)
+        assert isinstance(app.screen, ModePicker)
+        assert voice.mode_key == "assistente"
+        assert voice.selected_modes == []
+
+
+@pytest.mark.asyncio
+async def test_clicar_painel_recolhe_e_expande():
+    app = ZayaTextualApp(_answer, voice=_FakeVoice())
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        painel = app.query_one(".dashboard-panel", CollapsibleCard)
+        assert painel.expanded is True
+
+        await pilot.click(".dashboard-panel")
+        await pilot.pause()
+        assert painel.expanded is False
+
+        await pilot.click(".dashboard-panel")
+        await pilot.pause()
+        assert painel.expanded is True
+
+
+@pytest.mark.asyncio
+async def test_f5_mostra_e_oculta_lua_e_metas():
+    app = ZayaTextualApp(_answer, voice=_FakeVoice())
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        paineis = list(app.query(".dashboard-panel"))
+        assert paineis
+        assert all(widget.display for widget in paineis)
+
+        await pilot.press("f5")
+        await pilot.pause()
+        assert not any(widget.display for widget in paineis)
+        assert "ocultas" in app._status_base
+
+        await pilot.press("f5")
+        await pilot.pause()
+        assert all(widget.display for widget in paineis)
+
+
+@pytest.mark.asyncio
+async def test_f4_alterna_mouse_para_selecionar_texto():
+    app = ZayaTextualApp(_answer, voice=_FakeVoice())
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        original = app._driver
+        calls = {"disable": 0, "enable": 0}
+
+        class _FakeDriver:
+            def _disable_mouse_support(self) -> None:
+                calls["disable"] += 1
+
+            def _enable_mouse_support(self) -> None:
+                calls["enable"] += 1
+
+        app._driver = _FakeDriver()
+        try:
+            app.action_toggle_mouse()
+            assert calls["disable"] == 1
+            assert app._mouse_enabled is False
+            assert "seleção ligada" in app._status_base
+
+            app.action_toggle_mouse()
+            assert calls["enable"] == 1
+            assert app._mouse_enabled is True
+        finally:
+            app._driver = original
+        await pilot.pause()
+
+
+@pytest.mark.asyncio
+async def test_modal_de_modo_aplica_modo_escolhido():
+    voice = _FakeVoice()
+    app = ZayaTextualApp(_answer, voice=voice)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        await pilot.press("tab")
+        await pilot.pause()
+        assert isinstance(app.screen, ModePicker)
+        await pilot.press("up")
+        await pilot.press("enter")
+        await pilot.pause()
+        assert len(app.screen_stack) == 1
+        assert voice.mode_key == "investidora"
+        assert voice.selected_modes == ["investidora"]

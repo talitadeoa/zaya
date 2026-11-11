@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from zaya.agent.types import AssistantMessage
 from zaya.config import Config, SecondBrainConfig
 from zaya.memory.consolidation import (
     DailyMemory,
@@ -34,7 +35,7 @@ class _FakeClient:
         self.prompts.append(text)
         if self.falhar:
             raise RuntimeError("provedor indisponível")
-        return {"content": [{"type": "text", "text": self.resumo}]}
+        return AssistantMessage(id="msg_memoria", text=self.resumo)
 
     async def delete_session(self, session_id: str) -> None:
         self.deleted.append(session_id)
@@ -59,7 +60,7 @@ def memoria(tmp_path, isolated_env):
 
 
 def _adicionar_dia(store: MemoryStore, proj: Path, textos: list[tuple[str, str]]) -> None:
-    conv = store.create_conversation(str(proj), mode="conversa")
+    conv = store.create_conversation(str(proj), mode="assistente")
     for role, text in textos:
         store.add_turn(int(conv["id"]), role, text)
 
@@ -80,9 +81,9 @@ def test_day_bounds_cobre_24_horas():
 
 def test_format_turns_ignora_contexto_e_limita():
     turns = [
-        {"role": "user", "text": "olá", "mode": "conversa"},
-        {"role": "context", "text": "Notas usadas: x", "mode": "conversa"},
-        {"role": "assistant", "text": "oi", "mode": "conversa"},
+        {"role": "user", "text": "olá", "mode": "assistente"},
+        {"role": "context", "text": "Notas usadas: x", "mode": "assistente"},
+        {"role": "assistant", "text": "oi", "mode": "assistente"},
     ]
     texto = format_turns(turns, max_turns=10, max_chars=500)
     assert "Talita: olá" in texto
@@ -92,8 +93,8 @@ def test_format_turns_ignora_contexto_e_limita():
 
 def test_compose_note_tem_secoes_e_decisoes():
     turns = [
-        {"role": "user", "text": "decidimos usar OpenCode", "mode": "conversa"},
-        {"role": "assistant", "text": "combinado", "mode": "conversa"},
+        {"role": "user", "text": "decidimos usar OpenCode", "mode": "assistente"},
+        {"role": "assistant", "text": "combinado", "mode": "assistente"},
     ]
     nota = compose_note(date(2026, 11, 9), turns, [])
     assert "## Síntese do dia" in nota
@@ -104,7 +105,7 @@ def test_compose_note_tem_secoes_e_decisoes():
 
 def test_compose_note_nao_duplica_sintese_nem_decisoes():
     turns = [
-        {"role": "user", "text": "decidimos usar OpenCode", "mode": "conversa"},
+        {"role": "user", "text": "decidimos usar OpenCode", "mode": "assistente"},
     ]
     nota = compose_note(
         date(2026, 11, 9),
@@ -116,6 +117,7 @@ def test_compose_note_nao_duplica_sintese_nem_decisoes():
     assert nota.count("## Decisões") == 1
     # A mensagem aparece em Conversas, mas nao como bullet de Decisoes.
     assert "\n- decidimos usar OpenCode" not in nota
+
 
 async def test_consolida_dia_cria_nota_e_nao_duplica(memoria):
     cfg, store, brain, index, proj = memoria
@@ -143,7 +145,7 @@ async def test_consolidar_de_novo_com_forcar_atualiza_nota(memoria):
     dm = DailyMemory(cfg, store, brain, index, _FakeClient(), proj)
     caminho = await dm.consolidate(date.today())
 
-    conv = store.current_conversation(str(proj), mode="conversa")
+    conv = store.current_conversation(str(proj), mode="assistente")
     assert conv is not None
     store.add_turn(int(conv["id"]), "user", "segunda conversa")
 

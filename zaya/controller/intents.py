@@ -30,10 +30,24 @@ TITLE_RE = re.compile(
     re.IGNORECASE,
 )
 
-CONTEXT_KEYWORDS = re.compile(
-    r"\b(projeto[s]?|decidim\w*|decis\w+|lembr\w+|mem[óo]ria|"
-    r"second\s*brain|nota[s]?|ideia[s]?|reuni[ãa]o|reuni[õo]es|aprendi\w*|"
-    r"hist[óo]rico|j[áa]\s+falamos|falamos\s+sobre)\b",
+# Pistas fortes: sem elas, o pedido provavelmente nao precisa de memoria.
+CONTEXT_STRONG = re.compile(
+    r"\b(lembr\w*|mem[óo]ria|second\s*brain|decidim\w*|decis[ãa]o|"
+    r"decis[õo]es|j[áa]\s+falamos|falamos\s+sobre|fal(?:ou|amos|ei)|"
+    r"convers(?:ou|amos|ei)|hist[óo]rico|continue|retom\w*|retome)\b",
+    re.IGNORECASE,
+)
+
+# Pistas fracas: so valem junto de um demonstrativo/possessivo ("aquele
+# projeto", "do deploy", "minha nota"), evitando disparos como "nota fiscal".
+CONTEXT_WEAK = re.compile(
+    r"\b(projeto[s]?|nota[s]?|ideia[s]?|reuni[ãa]o|reuni[õo]es|"
+    r"aprendi\w*|deploy|pesquisa)\b",
+    re.IGNORECASE,
+)
+CONTEXT_DEICTIC = re.compile(
+    r"\b(aquele|aquela|aquilo|esse|essa|isso|este|esta|nosso|nossa|"
+    r"meu|minha|do|da|dos|das|sobre)\b",
     re.IGNORECASE,
 )
 
@@ -131,17 +145,39 @@ def parse_preference(text: str) -> str | None:
 
 
 def needs_second_brain_context(text: str) -> bool:
-    return bool(CONTEXT_KEYWORDS.search(text))
+    """Busca memoria so quando ha pista de retomada/referencia ao passado."""
+    if not text or not text.strip():
+        return False
+    if CONTEXT_STRONG.search(text):
+        return True
+    return bool(CONTEXT_WEAK.search(text) and CONTEXT_DEICTIC.search(text))
 
 
 def format_context(
-    hits, header: str = "## Contexto do Second Brain", max_chars: int = 1200
+    hits,
+    header: str = "## Contexto do Second Brain",
+    max_chars: int = 480,
+    max_total_chars: int = 1200,
+    max_items: int = 3,
 ) -> str:
+    """Monta um bloco curto: poucos trechos e com teto total de caracteres."""
     if not hits:
         return ""
     lines = [header, ""]
-    for hit in hits:
-        lines.append(hit.as_context(max_chars))
+    total = 0
+    for hit in hits[:max_items]:
+        piece = hit.as_context(max_chars)
+        if not piece:
+            continue
+        if total + len(piece) > max_total_chars:
+            remaining = max_total_chars - total
+            if remaining < 80:
+                break
+            piece = piece[:remaining].rstrip() + "..."
+        lines.append(piece)
+        total += len(piece)
+    if len(lines) == 2:
+        return ""
     return "\n".join(lines)
 
 
