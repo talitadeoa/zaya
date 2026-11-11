@@ -5,14 +5,32 @@ from __future__ import annotations
 import asyncio
 import logging
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from zaya.config import Config
+from zaya.config import Config, TelegramConfig
 from zaya.controller.orchestrator import Orchestrator
 from zaya.interface.terminal import TerminalUI
 from zaya.stt.faster_whisper import STTError, WhisperTranscriber
 from zaya.telegram.client import TelegramClient, TelegramError
+
+
+def telegram_permission(cfg: TelegramConfig) -> Callable[[str, list[str]], str]:
+    """Política de permissão para o canal do Telegram.
+
+    O serviço sobe com ``TerminalUI(quiet=True)``; sem terminal interativo o
+    prompt de permissão responde "reject" e write/edit/bash nunca funcionariam.
+    Esta política substitui o prompt. Ela só aprova com ``auto_approve`` ligado
+    e ``allowed_chat_id`` fixado: sem isso o bot adota o primeiro chat que falar
+    com ele, e auto-aprovar daria shell a qualquer desconhecido.
+    """
+    enabled = bool(cfg.auto_approve and str(cfg.allowed_chat_id or "").strip())
+
+    def decide(tool: str, resources: list[str]) -> str:
+        return "always" if enabled else "reject"
+
+    return decide
 
 
 class TelegramService:

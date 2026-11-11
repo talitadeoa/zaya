@@ -161,9 +161,11 @@ class InterfaceConfig(BaseModel):
     show_diffs: bool = True
     # Mostrar o painel de metas ao iniciar.
     show_metas_on_start: bool = True
+    # Painéis de metas e lua começam recolhidos (F5 continua ocultando).
+    dashboard_collapsed: bool = True
     # Interface: terminal (padrão) ou textual.
     ui: str = "textual"
-    # Comeca com o mouse desligado para selecionar/copiar texto nativamente.
+    # Comeca no modo selecao: arrastar no chat copia, sem desligar os botoes.
     selection_mode: bool = False
     # Modo rápido: sem busca automática e respostas mais curtas.
     fast: bool = False
@@ -292,6 +294,10 @@ class TelegramConfig(BaseModel):
     poll_timeout: int = 25
     # Responder também com áudio (gera mp3 local e envia como áudio).
     voice_replies: bool = False
+    # O Telegram não tem terminal interativo para aprovar ferramentas. Com
+    # isto ligado, write/edit/bash são aprovados automaticamente (exige
+    # allowed_chat_id fixado). Desligado, essas ferramentas são negadas.
+    auto_approve: bool = False
 
 
 class Config(BaseModel):
@@ -460,6 +466,7 @@ _ENV_MAP: dict[str, tuple[str, str]] = {
     "ZAYA_CHINESE": ("interface", "chinese_echo"),
     "ZAYA_FAST": ("interface", "fast"),
     "ZAYA_FAST_SMALLTALK": ("interface", "fast_smalltalk"),
+    "ZAYA_UI_DASHBOARD_COLLAPSED": ("interface", "dashboard_collapsed"),
     "ZAYA_UI_SHOW_DIFFS": ("interface", "show_diffs"),
     "ZAYA_UI_SHOW_METAS_ON_START": ("interface", "show_metas_on_start"),
     "ZAYA_UI_SHOW_REASONING": ("interface", "show_reasoning"),
@@ -531,6 +538,7 @@ _ENV_MAP: dict[str, tuple[str, str]] = {
     "ZAYA_STT_PARTIAL_WINDOW_SECONDS": ("stt", "partial_window_seconds"),
     "ZAYA_TELEGRAM_ALLOWED_CHAT_ID": ("telegram", "allowed_chat_id"),
     "ZAYA_TELEGRAM_API_BASE_URL": ("telegram", "api_base_url"),
+    "ZAYA_TELEGRAM_AUTO_APPROVE": ("telegram", "auto_approve"),
     "ZAYA_TELEGRAM_BOT_TOKEN": ("telegram", "bot_token"),
     "ZAYA_TELEGRAM_ENABLED": ("telegram", "enabled"),
     "ZAYA_TELEGRAM_POLL_TIMEOUT": ("telegram", "poll_timeout"),
@@ -761,8 +769,9 @@ concise = true
 show_reasoning = true
 show_diffs = true
 show_metas_on_start = true
+dashboard_collapsed = true   # metas e lua começam recolhidos
 ui = "textual"             # textual (padrão) | terminal
-selection_mode = false     # true = mouse desligado; seleciona/copia com o mouse
+selection_mode = false     # true = abre no modo seleção (arrasta copia; botões ativos)
 fast = false               # modo rápido: sem busca automática, respostas curtas
 fast_smalltalk = true      # saudações respondem na hora, sem chamar o modelo
 chinese_echo = false       # mostra chinês + pinyin de cada mensagem
@@ -802,6 +811,7 @@ allowed_chat_id = ""
 api_base_url = "https://api.telegram.org"
 poll_timeout = 25
 voice_replies = false
+auto_approve = false      # true = aprova write/edit/bash no chat autorizado
 # bot_token vai apenas no .env/ambiente.
 
 [memory]

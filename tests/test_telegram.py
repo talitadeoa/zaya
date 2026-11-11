@@ -8,7 +8,7 @@ import pytest
 from zaya.config import Config, TelegramConfig
 from zaya.interface.terminal import TerminalUI
 from zaya.telegram.client import TelegramClient, TelegramError, _split_text
-from zaya.telegram.service import TelegramService
+from zaya.telegram.service import TelegramService, telegram_permission
 
 
 def _cfg(**overrides) -> TelegramConfig:
@@ -118,6 +118,18 @@ def test_config_redige_token_do_telegram():
     cfg = Config()
     cfg.telegram.bot_token = "segredo"
     assert cfg.public_dict()["telegram"]["bot_token"] == "***"
+
+
+def test_permissao_do_telegram_segue_o_flag():
+    assert telegram_permission(_cfg(auto_approve=True))("write", ["a.txt"]) == "always"
+    assert telegram_permission(_cfg(auto_approve=True))("bash", ["pytest"]) == "always"
+    assert telegram_permission(_cfg())("write", ["a.txt"]) == "reject"
+    assert telegram_permission(_cfg())("bash", ["pytest"]) == "reject"
+
+
+def test_permissao_do_telegram_exige_chat_fixado():
+    cfg = _cfg(auto_approve=True, allowed_chat_id="")
+    assert telegram_permission(cfg)("bash", ["pytest"]) == "reject"
 
 
 def test_service_restringe_chat_configurado():

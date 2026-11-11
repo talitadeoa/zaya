@@ -149,8 +149,8 @@ def test_app_pode_iniciar_no_modo_selecao():
     normal = ZayaTextualApp(_answer)
     selecao = ZayaTextualApp(_answer, start_selecting=True)
 
-    assert normal._mouse_enabled is True
-    assert selecao._mouse_enabled is False
+    assert normal._selection_mode is False
+    assert selecao._selection_mode is True
 
 
 @pytest.mark.asyncio
@@ -567,14 +567,25 @@ async def test_clicar_painel_recolhe_e_expande():
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
         painel = app.query_one(".dashboard-panel", CollapsibleCard)
+        assert painel.expanded is False
+
+        await pilot.click(".dashboard-panel")
+        await pilot.pause()
         assert painel.expanded is True
 
         await pilot.click(".dashboard-panel")
         await pilot.pause()
         assert painel.expanded is False
 
-        await pilot.click(".dashboard-panel")
+
+@pytest.mark.asyncio
+async def test_painel_abre_expandido_quando_configurado():
+    voice = _FakeVoice()
+    voice.cfg.interface.dashboard_collapsed = False
+    app = ZayaTextualApp(_answer, voice=voice)
+    async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
+        painel = app.query_one(".dashboard-panel", CollapsibleCard)
         assert painel.expanded is True
 
 
@@ -598,33 +609,69 @@ async def test_f5_mostra_e_oculta_lua_e_metas():
 
 
 @pytest.mark.asyncio
-async def test_f4_alterna_mouse_para_selecionar_texto():
+async def test_f4_alterna_modo_selecao_sem_desligar_mouse():
     app = ZayaTextualApp(_answer, voice=_FakeVoice())
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
+        assert app._selection_mode is False
+
         original = app._driver
-        calls = {"disable": 0, "enable": 0}
+        calls: list[str] = []
 
         class _FakeDriver:
             def _disable_mouse_support(self) -> None:
-                calls["disable"] += 1
+                calls.append("disable")
 
             def _enable_mouse_support(self) -> None:
-                calls["enable"] += 1
+                calls.append("enable")
 
         app._driver = _FakeDriver()
         try:
             app.action_toggle_mouse()
-            assert calls["disable"] == 1
-            assert app._mouse_enabled is False
+            assert app._selection_mode is True
             assert "seleção ligada" in app._status_base
 
             app.action_toggle_mouse()
-            assert calls["enable"] == 1
-            assert app._mouse_enabled is True
+            assert app._selection_mode is False
+            assert "mouse normal" in app._status_base
         finally:
             app._driver = original
+        assert calls == []
         await pilot.pause()
+
+
+@pytest.mark.asyncio
+async def test_selecao_extrai_texto_do_chat():
+    app = ZayaTextualApp(_answer, voice=_FakeVoice())
+    async with app.run_test(size=(90, 30)) as pilot:
+        await pilot.pause()
+        app._clear_messages()
+        app._mount("linha de teste para copiar")
+        await pilot.pause()
+        widget = list(app._chat().children)[-1]
+        region = widget.region
+        texto = app._selected_text(
+            (region.x, region.y),
+            (region.x + region.width - 1, region.y + region.height - 1),
+        )
+        assert "linha de teste para copiar" in texto
+
+
+@pytest.mark.asyncio
+async def test_modo_selecao_preserva_botoes_e_nao_recolhe_painel():
+    app = ZayaTextualApp(_answer, voice=_FakeVoice(), start_selecting=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        painel = app.query_one(".dashboard-panel", CollapsibleCard)
+        assert painel.expanded is False
+
+        await pilot.click(".dashboard-panel")
+        await pilot.pause()
+        assert painel.expanded is False
+
+        await pilot.click("#menu-button")
+        await pilot.pause()
+        assert isinstance(app.screen, CommandPalette)
 
 
 @pytest.mark.asyncio

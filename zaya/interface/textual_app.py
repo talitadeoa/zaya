@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import subprocess
+import sys
 import threading
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
@@ -67,13 +69,20 @@ class SessionButton(Static):
 class CollapsibleCard(Static):
     """Card de painel: clique recolhe/expande o conteúdo."""
 
-    def __init__(self, expanded_view, collapsed_view, **kwargs) -> None:
-        super().__init__(expanded_view, **kwargs)
+    def __init__(
+        self, expanded_view, collapsed_view, *, start_expanded: bool = True, **kwargs
+    ) -> None:
+        super().__init__(
+            expanded_view if start_expanded else collapsed_view, **kwargs
+        )
         self._expanded_view = expanded_view
         self._collapsed_view = collapsed_view
-        self.expanded = True
+        self.expanded = start_expanded
 
     def on_click(self, event) -> None:
+        # No modo seleção o clique é para marcar texto, não para recolher.
+        if getattr(self.app, "_selection_mode", False):
+            return
         event.stop()
         self.expanded = not self.expanded
         self.update(self._expanded_view if self.expanded else self._collapsed_view)
@@ -192,7 +201,10 @@ class ZayaTextualApp(App):
         self._listener: ContinuousListener | None = None
         self._listen_task: asyncio.Task | None = None
         self._insert_mode = False
-        self._mouse_enabled = not start_selecting
+        self._selection_mode = bool(start_selecting)
+        self._selection_start: tuple[int, int] | None = None
+        self._selection_end: tuple[int, int] | None = None
+        self._selection_moved = False
         self._show_dashboard = True
         self._turn_running = False
         self._status_base = ""
@@ -227,7 +239,7 @@ class ZayaTextualApp(App):
         await self._render_welcome()
         self._normal_mode()
         self._update_modebar()
-        if not self._mouse_enabled:
+        if self._selection_mode:
             self.call_after_refresh(self._start_with_selection)
         self.set_interval(0.4, self._tick_status)
         ui = getattr(self._voice, "ui", None)
@@ -874,38 +886,119 @@ class ZayaTextualApp(App):
         )
 
     def _start_with_selection(self) -> None:
-        """Aplica o modo seleção definido na configuração ao abrir a TUI."""
-        driver = getattr(self, "_driver", None)
-        disable = getattr(driver, "_disable_mouse_support", None)
-        if disable is None:
-            self._mouse_enabled = True
-            return
-        try:
-            disable()
-            self._set_status("seleção ligada: arraste e copie · F4 religa o mouse")
-        except Exception:
-            # Se o terminal não suportar, volta ao mouse normal em silêncio.
-            self._mouse_enabled = True
+        """Abre no modo seleção sem desligar o mouse: os botões seguem ativos."""
+        self._set_status(
+            "seleção ligada: arraste no chat para copiar · botões ativos · F4 desliga"
+        )
 
     def action_toggle_mouse(self) -> None:
-        """Desliga o mouse para permitir selecionar o texto nativamente."""
-        driver = getattr(self, "_driver", None)
-        enable = getattr(driver, "_enable_mouse_support", None)
-        disable = getattr(driver, "_disable_mouse_support", None)
-        if enable is None or disable is None:
-            self._set_status("este terminal não permite alternar o mouse")
+        """Alterna o modo seleção sem desligar o mouse."""
+        self._selection_mode = not self._selection_mode
+        self._selection_start = None
+        self._selection_end = None
+        self._selection_moved = False
+        if self._selection_mode:
+            self._set_status(
+                "seleção ligada: arraste no chat para copiar · botões ativos · F4 desliga"
+            )
+        else:
+            self._set_status("mouse normal: clique nos botões e painéis · F4 seleciona")
+
+    # ---------------------------------------------------------------- seleção
+    def _chat_region(self):
+        return self._chat().region
+
+    def _inside_chat(self, x: int, y: int) -> bool:
+        region = self._chat_region()
+        # A última coluna é a barra de rolagem: deixa ela para o scroll.
+        right = region.x + max(1, region.width - 1)
+        return (
+            region.x <= x < right
+            and region.y <= y < region.y + region.height
+        )
+
+    def _clamp_to_chat(self, x: int, y: int) -> tuple[int, int]:
+        region = self._chat_region()
+        right = region.x + max(1, region.width - 1) - 1
+        bottom = region.y + region.height - 1
+        return (
+            min(max(x, region.x), right),
+            min(max(y, region.y), bottom),
+        )
+
+    def _selected_text(
+        self, start: tuple[int, int], end: tuple[int, int]
+    ) -> str:
+        """Texto visível entre dois pontos da tela (coordenadas de células)."""
+        x1, x2 = sorted((start[0], end[0]))
+        y1, y2 = sorted((start[1], end[1]))
+        strips = self.screen._compositor.render_strips()
+        lines: list[str] = []
+        for y in range(y1, y2 + 1):
+            if 0 <= y < len(strips):
+                lines.append(strips[y].crop(x1, x2 + 1).text.rstrip())
+        return "\n".join(lines).strip("\n")
+
+    def _copy_text(self, text: str) -> None:
+        try:
+            self.copy_to_clipboard(text)
+        except Exception:
+            pass
+        # OSC 52 não funciona no Terminal.app do macOS; pbcopy cobre esse caso.
+        if sys.platform != "darwin":
             return
         try:
-            if self._mouse_enabled:
-                disable()
-                self._mouse_enabled = False
-                self._set_status("seleção ligada: arraste e copie · F4 religa o mouse")
-            else:
-                enable()
-                self._mouse_enabled = True
-                self._set_status("mouse ligado")
-        except Exception as exc:
-            self._set_status(f"erro ao alternar o mouse: {exc}")
+            subprocess.run(
+                ["pbcopy"], input=text.encode("utf-8"), timeout=3, check=False
+            )
+        except (OSError, subprocess.SubprocessError):
+            pass
+
+    def on_mouse_down(self, event) -> None:
+        if not self._selection_mode:
+            return
+        point = (event.screen_x, event.screen_y)
+        if not self._inside_chat(*point):
+            return
+        event.stop()
+        self._selection_start = point
+        self._selection_end = point
+        self._selection_moved = False
+        self.screen.capture_mouse()
+
+    def on_mouse_move(self, event) -> None:
+        if not self._selection_mode or self._selection_start is None:
+            return
+        point = self._clamp_to_chat(event.screen_x, event.screen_y)
+        if point != self._selection_start:
+            self._selection_moved = True
+        self._selection_end = point
+        if self._selection_moved:
+            self._set_status("selecionando… solte para copiar")
+        event.stop()
+
+    def on_mouse_up(self, event) -> None:
+        if not self._selection_mode or self._selection_start is None:
+            return
+        event.stop()
+        start = self._selection_start
+        end = self._selection_end or start
+        moved = self._selection_moved
+        self._selection_start = None
+        self._selection_end = None
+        self._selection_moved = False
+        try:
+            self.screen.release_mouse()
+        except Exception:
+            pass
+        if not moved:
+            return
+        text = self._selected_text(start, end)
+        if not text:
+            self._set_status("nada selecionado")
+            return
+        self._copy_text(text)
+        self._set_status(f"copiado: {len(text)} caracteres · F4 desliga a seleção")
 
     # ------------------------------------------------------------------ helpers
     def _scroll_chat(self) -> None:
@@ -925,11 +1018,17 @@ class ZayaTextualApp(App):
         self._chat().mount(Static(renderable, classes=classes))
         self.call_after_refresh(self._scroll_chat)
 
+    def _dashboard_start_expanded(self) -> bool:
+        cfg = getattr(self._voice, "cfg", None)
+        interface = getattr(cfg, "interface", None)
+        return not bool(getattr(interface, "dashboard_collapsed", True))
+
     def _mount_panel(self, expanded_view, collapsed_view) -> None:
         self._chat().mount(
             CollapsibleCard(
                 expanded_view,
                 collapsed_view,
+                start_expanded=self._dashboard_start_expanded(),
                 classes="card dashboard-panel",
             )
         )

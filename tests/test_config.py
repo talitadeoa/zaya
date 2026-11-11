@@ -93,6 +93,8 @@ def test_chave_do_ambiente_chega_ao_agente(isolated_env):
 def test_env_types_are_inferred_from_model(isolated_env):
     env = {
         "ZAYA_UI": "terminal",  # string, antes era tratado como bool
+        "ZAYA_UI_DASHBOARD_COLLAPSED": "false",
+        "ZAYA_TELEGRAM_AUTO_APPROVE": "true",
         "ZAYA_AUDIO_SILENCE_MS": "1500",
         "ZAYA_SB_AUTO_CONTEXT": "yes",
         "ZAYA_FAST": "off",
@@ -100,6 +102,8 @@ def test_env_types_are_inferred_from_model(isolated_env):
     }
     cfg = Config.load(config_path=isolated_env / "missing.toml", env=env)
     assert cfg.interface.ui == "terminal"
+    assert cfg.interface.dashboard_collapsed is False
+    assert cfg.telegram.auto_approve is True
     assert cfg.audio.silence_ms == 1500
     assert cfg.secondbrain.auto_context is True
     assert cfg.interface.fast is False

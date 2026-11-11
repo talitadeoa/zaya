@@ -219,6 +219,16 @@ zaya telegram me
 zaya telegram serve          # responde texto e áudio
 ```
 
+Por padrão o Telegram só lê arquivos: como o serviço roda sem terminal
+interativo, `write`/`edit`/`bash` são negados. Para a Zaya editar e executar
+pelo chat, ligue `auto_approve` (exige `ZAYA_TELEGRAM_ALLOWED_CHAT_ID` fixado,
+para o bot não dar acesso ao primeiro chat que falar com ele):
+
+```bash
+# ~/.config/zaya/.env
+ZAYA_TELEGRAM_AUTO_APPROVE=true
+```
+
 **WhatsApp Cloud API** — envio e webhook:
 
 ```bash
@@ -378,7 +388,7 @@ a palavra-chave aparece, histórico inteiro e catálogo completo de ferramentas.
 ```toml
 [interface]
 concise = true              # respostas diretas, menos exploração
-selection_mode = true       # abre com o mouse desligado para selecionar/copiar
+selection_mode = true       # abre no modo seleção: arraste copia; botões ativos
 
 [secondbrain]
 confirm_create = false

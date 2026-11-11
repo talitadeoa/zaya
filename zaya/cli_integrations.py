@@ -12,7 +12,7 @@ from zaya.interface.terminal import TerminalUI
 from zaya.spotify.controller import SpotifyCommand, SpotifyError
 from zaya.spotify.controller import execute as execute_spotify
 from zaya.telegram.client import TelegramClient
-from zaya.telegram.service import TelegramService
+from zaya.telegram.service import TelegramService, telegram_permission
 from zaya.whatsapp.client import WhatsAppClient
 from zaya.whatsapp.webhook import IncomingMessage, WebhookServer
 
@@ -115,6 +115,7 @@ async def _telegram_poll(client: TelegramClient, ui: TerminalUI, echo: bool = Fa
 
 async def _telegram_serve(cfg: Config, ui: TerminalUI, args, client: TelegramClient) -> None:
     orchestrator, store, index = _build_app(cfg, args.verbose, voice=True, quiet=True)
+    orchestrator.ui.permission_callback = telegram_permission(cfg.telegram)
     service = TelegramService(
         cfg,
         orchestrator,
