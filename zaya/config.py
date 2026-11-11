@@ -217,6 +217,25 @@ class BriefingConfig(BaseModel):
     market_until: str = "18:00"
 
 
+class CareerConfig(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    # Rotina semanal de vagas: busca nas fontes abertas, filtra, pontua e
+    # entrega no Telegram. O metodo vive em ~/SecondBrain/cv/playbook-vagas.md.
+    enabled: bool = True
+    # Dias da semana com 0 = segunda (segunda por padrao).
+    days: list[int] = Field(default_factory=lambda: [0])
+    at: str = "09:00"
+    # Depois desse horario a rotina nao e mais enviada.
+    until: str = "18:00"
+    check_interval_seconds: float = 30.0
+    retry_minutes: float = 10.0
+    # Vagas por mensagem; o resto fica registrado no estado.
+    max_items: int = 8
+    # Vazio => <data_dir>/career/state.json
+    state_file: str = ""
+
+
 class ProactiveConfig(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
@@ -312,6 +331,7 @@ class Config(BaseModel):
     proactive: ProactiveConfig = Field(default_factory=ProactiveConfig)
     memory: MemoryConfig = Field(default_factory=MemoryConfig)
     briefing: BriefingConfig = Field(default_factory=BriefingConfig)
+    career: CareerConfig = Field(default_factory=CareerConfig)
     whatsapp: WhatsAppConfig = Field(default_factory=WhatsAppConfig)
     telegram: TelegramConfig = Field(default_factory=TelegramConfig)
     agenda: AgendaConfig = Field(default_factory=AgendaConfig)
@@ -510,6 +530,11 @@ _ENV_MAP: dict[str, tuple[str, str]] = {
     "ZAYA_BRIEFING_MARKET_ENABLED": ("briefing", "market_enabled"),
     "ZAYA_BRIEFING_MARKET_AT": ("briefing", "market_at"),
     "ZAYA_BRIEFING_MARKET_UNTIL": ("briefing", "market_until"),
+    "ZAYA_CAREER_ENABLED": ("career", "enabled"),
+    "ZAYA_CAREER_AT": ("career", "at"),
+    "ZAYA_CAREER_UNTIL": ("career", "until"),
+    "ZAYA_CAREER_MAX_ITEMS": ("career", "max_items"),
+    "ZAYA_CAREER_STATE_FILE": ("career", "state_file"),
     "ZAYA_PROACTIVE_CHECK_INTERVAL_SECONDS": ("proactive", "check_interval_seconds"),
     "ZAYA_PROACTIVE_DAILY_MAX": ("proactive", "daily_max"),
     "ZAYA_PROACTIVE_ENABLED": ("proactive", "enabled"),
@@ -830,6 +855,15 @@ noon_at = "12:00"
 noon_until = "18:00"
 morning_routine = "matinal"
 max_tasks = 15
+
+[career]
+# Rotina semanal de vagas: busca nas fontes abertas, filtra, pontua e
+# entrega no Telegram. O metodo esta em ~/SecondBrain/cv/playbook-vagas.md.
+enabled = true
+days = [0]                  # 0=seg, 1=ter, 2=qua, 3=qui, 4=sex
+at = "09:00"
+until = "18:00"             # depois disso nao envia mais (recupera na proxima)
+max_items = 8               # vagas por mensagem; o resto fica no estado
 
 [proactive]
 enabled = true

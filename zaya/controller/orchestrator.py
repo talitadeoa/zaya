@@ -21,6 +21,7 @@ from zaya.agent.types import SessionInfo
 from zaya.audio.recorder import ContinuousListener, Recorder
 from zaya.config import Config
 from zaya.controller.briefing import BriefingMixin
+from zaya.controller.career import CareerMixin
 from zaya.controller.commands import CommandsMixin
 from zaya.controller.contract import StreamSink
 from zaya.controller.goals import GoalTracker
@@ -51,6 +52,7 @@ class Orchestrator(
     CommandsMixin,
     MemoryMixin,
     BriefingMixin,
+    CareerMixin,
     RegistrationMixin,
     InitiativeMixin,
 ):
@@ -116,6 +118,8 @@ class Orchestrator(
         self._briefing_task: asyncio.Task[None] | None = None
         self._briefing_last_attempt = 0.0
         self._market_last_attempt = 0.0
+        self._career_task: asyncio.Task[None] | None = None
+        self._career_last_attempt = 0.0
         self._proactive_count = 0
         self._proactive_day = datetime.now().astimezone().date()
         self._last_proactive = 0.0
@@ -197,6 +201,7 @@ class Orchestrator(
     def _start_background_workers(self) -> None:
         self._start_memory_worker()
         self._start_briefing_worker()
+        self._start_career_worker()
 
     def start_briefing(self) -> None:
         """Liga o briefing sem depender do bootstrap do agente."""

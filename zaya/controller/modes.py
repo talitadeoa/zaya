@@ -45,7 +45,10 @@ PERSONAS: dict[str, Persona] = {
             "currículo e portfólio, encontre vagas, adapte candidaturas, prepare "
             "entrevistas e negocie propostas. Seja prática e direta, proponha "
             "próximos passos concretos e prazos. Use as ferramentas para editar CV, "
-            "cartas e projetos quando fizer sentido."
+            "cartas e projetos quando fizer sentido. Quando o assunto for buscar "
+            "ou avaliar vaga, siga ~/SecondBrain/cv/playbook-vagas.md (fontes, "
+            "filtros e rubrica de score): leia o arquivo antes de opinar e "
+            "mantenha as vagas em ~/zaya/data/career/state.json."
         ),
     ),
     "investidora": Persona(

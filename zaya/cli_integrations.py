@@ -217,3 +217,120 @@ def _serve_whatsapp(cfg: Config, ui: TerminalUI, args) -> None:
         server.serve_forever()
     except KeyboardInterrupt:
         server.shutdown()
+
+
+async def _career_command(cfg: Config, args, ui: TerminalUI) -> None:
+    """Rotina de vagas: status, busca (sem enviar) e entrega no Telegram."""
+    from zaya.career.service import (
+        collect,
+        compose_message,
+        load_state,
+        mark_delivered,
+        pending_jobs,
+        record_results,
+        save_state,
+        state_path,
+        summary_line,
+    )
+
+    path = state_path(cfg.resolved_data_dir(), cfg.career.state_file)
+    try:
+        state = load_state(path)
+    except ValueError as exc:
+        ui.error(str(exc))
+        return
+
+    command = args.career_command or "status"
+    if command == "status":
+        vagas = [item for item in state.get("vagas") or [] if isinstance(item, dict)]
+        novas = [item for item in vagas if item.get("status") == "nova"]
+        pendentes = pending_jobs(state)
+        ui.info(f"estado: {path}")
+        ui.info(
+            f"{len(vagas)} vagas registradas · {len(novas)} sem aplicação · "
+            f"{len(pendentes)} aguardando entrega"
+        )
+        if state.get("updated_at"):
+            ui.hint(f"atualizado em {state['updated_at']}")
+        perfil = state.get("perfil") or {}
+        if perfil.get("cargos_alvo"):
+            ui.hint("cargos: " + ", ".join(str(c) for c in perfil["cargos_alvo"]))
+        for item in novas[:12]:
+            score = item.get("score")
+            extra = f" · score {score}" if score is not None else ""
+            ui.info(
+                f"{item.get('id', '?')} {item.get('cargo', '?')} — {item.get('empresa', '?')}{extra}"
+            )
+        return
+
+    ui.info("buscando nas fontes abertas…")
+    result = await collect(state)
+    ui.info(summary_line(result))
+    if result.falhas:
+        ui.warning("fontes com problema: " + ", ".join(result.falhas))
+
+    if result.novas:
+        record_results(state, result)
+        try:
+            save_state(path, state)
+        except OSError as exc:
+            ui.error(f"não consegui gravar o estado: {exc}")
+            return
+        ui.success(f"estado atualizado: {path}")
+
+    if getattr(args, "json", False):
+        import json
+
+        payload = [
+            {
+                "cargo": vaga.job.title,
+                "empresa": vaga.job.company,
+                "local": vaga.job.location,
+                "salario": vaga.job.salary,
+                "fonte": vaga.job.source,
+                "link": vaga.job.url,
+                "score": vaga.score,
+                "motivo": vaga.reason,
+            }
+            for vaga in result.novas
+        ]
+        ui.console.print_json(json.dumps(payload, ensure_ascii=False))
+        return
+
+    pendentes = pending_jobs(state)
+    if command == "enviar":
+        if not pendentes:
+            ui.hint("nada pendente de entrega")
+            return
+        from zaya.telegram.client import TelegramClient
+
+        client = TelegramClient(cfg.telegram)
+        if not client.enabled:
+            ui.error("Telegram desativado ou sem token.")
+            ui.hint(
+                "defina ZAYA_TELEGRAM_ENABLED=true e ZAYA_TELEGRAM_BOT_TOKEN em ~/.config/zaya/.env"
+            )
+            return
+        text = compose_message(state, result=result, limit=cfg.career.max_items)
+        try:
+            await client.send_message(text)
+        finally:
+            await client.aclose()
+        mark_delivered(state, [str(item.get("id")) for item in pendentes])
+        try:
+            save_state(path, state)
+        except OSError as exc:
+            ui.warning(f"enviado, mas não consegui registrar a entrega: {exc}")
+        ui.success(f"{len(pendentes)} vagas enviadas no Telegram")
+        return
+
+    if not pendentes:
+        ui.hint("nenhuma vaga nova passou nos filtros")
+        return
+    for index, item in enumerate(pendentes, start=1):
+        ui.info(
+            f"{index}. {item.get('cargo', '?')} — {item.get('empresa', '?')}"
+            f" · score {item.get('score')}"
+        )
+        ui.hint(f"   {item.get('link', '')}")
+    ui.hint("nada foi enviado; use `zaya career enviar` para mandar no Telegram")

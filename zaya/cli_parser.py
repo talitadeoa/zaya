@@ -109,4 +109,13 @@ def build_parser() -> argparse.ArgumentParser:
     browser_login = browser_sub.add_parser("login", help="abre o navegador para login persistente")
     browser_login.add_argument("url")
 
+    career_parser = sub.add_parser("career", help="rotina de vagas (busca, lista, envia)")
+    career_sub = career_parser.add_subparsers(dest="career_command")
+    career_sub.add_parser("status", help="mostra o estado e as vagas registradas")
+    career_search = career_sub.add_parser("buscar", help="busca agora, sem enviar")
+    career_search.add_argument(
+        "--json", action="store_true", help="imprime as novas em JSON"
+    )
+    career_sub.add_parser("enviar", help="busca agora e envia no Telegram")
+
     return parser

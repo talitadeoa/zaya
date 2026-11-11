@@ -104,6 +104,8 @@ class OrchestratorContract(ABC):
     _briefing_task: asyncio.Task[None] | None
     _briefing_last_attempt: float
     _market_last_attempt: float
+    _career_task: asyncio.Task[None] | None
+    _career_last_attempt: float
     _proactive_count: int
     _proactive_day: date
     _last_proactive: float

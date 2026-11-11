@@ -46,6 +46,12 @@ def test_persona_block_menciona_modo_e_idioma():
     assert "Parceira" not in block
 
 
+def test_trabalhadora_aponta_para_o_playbook_de_vagas():
+    directive = PERSONAS["trabalhadora"].directive
+    assert "playbook-vagas.md" in directive
+    assert "state.json" in directive
+
+
 def test_parse_mode_switch_falas_naturais():
     assert parse_mode_switch("muda para o modo trabalhadora") == "trabalhadora"
     assert parse_mode_switch("Zaya, entra no modo pesquisadora") == "pesquisadora"

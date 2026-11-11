@@ -9,6 +9,8 @@ from pathlib import Path
 import pytest
 
 import zaya.controller.orchestrator as orchestrator_module
+from zaya.controller.briefing import BriefingMixin
+from zaya.controller.career import CareerMixin
 from zaya.controller.commands import CommandsMixin
 from zaya.controller.contract import OrchestratorContract
 from zaya.controller.goals import GoalTracker
@@ -178,6 +180,8 @@ def test_mixins_share_the_explicit_contract():
         VoiceMixin,
         CommandsMixin,
         MemoryMixin,
+        BriefingMixin,
+        CareerMixin,
         RegistrationMixin,
         InitiativeMixin,
     )
@@ -499,6 +503,20 @@ class FakeTelegram:
         self.sent.append(text)
 
 
+class FalhaUmaVezTelegram(FakeTelegram):
+    """Falha na primeira entrega e funciona depois (Telegram fora do ar)."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.falhas = 1
+
+    async def send_message(self, text: str) -> None:
+        if self.falhas:
+            self.falhas -= 1
+            raise RuntimeError("Telegram fora do ar")
+        await super().send_message(text)
+
+
 def _notas_briefing() -> list[dict]:
     return [
         {
@@ -572,3 +590,142 @@ async def test_briefing_do_meio_dia_mostra_pendentes(orch):
     assert "☐ Responder a Stefanini" in mensagem
     assert "Rotina matinal" not in mensagem
     assert "alongar" not in mensagem
+
+
+@pytest.mark.asyncio
+async def test_career_envia_uma_vez_por_dia_e_grava_o_estado(orch, monkeypatch):
+    from zaya.career.models import Job
+    from zaya.career.service import load_state
+
+    jobs = [
+        Job(
+            title="Analista de Suporte N1",
+            company="Stefanini",
+            url="https://exemplo.test/1",
+            source="Remotive",
+            location="Brazil",
+            salary="R$ 2.800",
+            seniority="Júnior",
+            description="troubleshooting, windows e redes",
+            remote=True,
+        )
+    ]
+
+    async def fake_fetch_all(sources=()):
+        return jobs, []
+
+    monkeypatch.setattr("zaya.career.service.fetch_all", fake_fetch_all)
+    orch.telegram = FakeTelegram()
+    dia = datetime.now().astimezone().date()
+
+    assert await orch._send_career(dia) is True
+    assert len(orch.telegram.sent) == 1
+    assert "Vagas novas" in orch.telegram.sent[0]
+    assert "Stefanini" in orch.telegram.sent[0]
+
+    state = load_state(orch._career_state_path())
+    assert state["vagas"][0]["empresa"] == "Stefanini"
+    assert state["vagas"][0]["status"] == "nova"
+
+    # Segundo disparo no mesmo dia nao busca nem envia de novo.
+    assert await orch._send_career(dia) is False
+    assert len(orch.telegram.sent) == 1
+
+
+@pytest.mark.asyncio
+async def test_career_deduplica_na_segunda_rodada(orch, monkeypatch):
+    from zaya.career.models import Job
+    from zaya.career.service import load_state
+
+    jobs = [
+        Job(
+            title="Técnico de Suporte",
+            company="Acme",
+            url="https://exemplo.test/a",
+            source="Remotive",
+            location="Brazil",
+            remote=True,
+        )
+    ]
+
+    async def fake_fetch_all(sources=()):
+        return jobs, []
+
+    monkeypatch.setattr("zaya.career.service.fetch_all", fake_fetch_all)
+    orch.telegram = FakeTelegram()
+    dia = datetime.now().astimezone().date()
+
+    assert await orch._send_career(dia) is True
+    state = load_state(orch._career_state_path())
+    assert len(state["vagas"]) == 1
+
+    # Rodada seguinte (outro dia) ve a mesma vaga: nao registra de novo.
+    outra = dia + timedelta(days=1)
+    orch._career_last_attempt = 0.0
+    assert await orch._send_career(outra) is True
+    state = load_state(orch._career_state_path())
+    assert len(state["vagas"]) == 1
+    assert "Sem vagas novas" in orch.telegram.sent[-1]
+
+
+@pytest.mark.asyncio
+async def test_career_nao_roda_sem_telegram(orch):
+    orch.telegram = types.SimpleNamespace(enabled=False)
+
+    orch._start_career_worker()
+
+    assert orch._career_task is None
+
+
+@pytest.mark.asyncio
+async def test_career_reenvia_o_que_o_telegram_nao_entregou(orch, monkeypatch):
+    from zaya.career.models import Job
+    from zaya.career.service import load_state, pending_jobs
+
+    jobs = [
+        Job(
+            title="Analista de Suporte N1",
+            company="Stefanini",
+            url="https://exemplo.test/1",
+            source="Remotive",
+            location="Brazil",
+            remote=True,
+        )
+    ]
+
+    async def fake_fetch_all(sources=()):
+        return jobs, []
+
+    monkeypatch.setattr("zaya.career.service.fetch_all", fake_fetch_all)
+    orch.telegram = FalhaUmaVezTelegram()
+    dia = datetime.now().astimezone().date()
+
+    # Primeira tentativa: a vaga e gravada e continua pendente.
+    assert await orch._send_career(dia) is False
+    state = load_state(orch._career_state_path())
+    assert len(state["vagas"]) == 1
+    assert len(pending_jobs(state)) == 1
+    assert state["vagas"][0]["status"] == "nova"
+
+    # Segunda tentativa no mesmo dia: entrega sem precisar buscar vaga nova.
+    orch._career_last_attempt = 0.0
+    assert await orch._send_career(dia) is True
+    assert len(orch.telegram.sent) == 1
+    assert "Stefanini" in orch.telegram.sent[0]
+
+    state = load_state(orch._career_state_path())
+    assert pending_jobs(state) == []
+    assert state["vagas"][0]["entrega"] == "entregue"
+    assert state["vagas"][0]["entregue_em"]
+
+
+def test_career_due_respeita_config(orch):
+    from datetime import date as _date
+
+    from zaya.career.service import career_due
+
+    cfg = orch.cfg.career
+    dia = _date(2026, 11, 9)  # segunda
+
+    assert career_due(cfg.at, cfg.at, cfg.until, dia.weekday(), cfg.days) is True
+    assert career_due(cfg.until, cfg.at, cfg.until, dia.weekday(), cfg.days) is False
