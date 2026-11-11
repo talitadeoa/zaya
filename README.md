@@ -120,6 +120,9 @@ zaya --watch    # reinicia sozinha quando o código muda
 - Diga **"parar"**, **"modo texto"** ou **"sair"** — ou use os atalhos.
 - **M** também desliga o microfone sozinho após 30 s de silêncio
   (`ZAYA_AUDIO_AUTO_MUTE_SECONDS`; `0` desativa).
+- **Markdown:** as respostas são renderizadas com títulos, ênfase e blocos de
+  código destacados. Desligue com `ZAYA_UI_MARKDOWN=false` ou
+  `interface.markdown_render=false` para ver o texto cru.
 
 ### Execução única
 
@@ -418,7 +421,8 @@ a palavra-chave aparece, histórico inteiro e catálogo completo de ferramentas.
 ```toml
 [interface]
 concise = true              # respostas diretas, menos exploração
-selection_mode = true       # abre no modo seleção: arraste copia; botões ativos
+selection_mode = true       # seleção de texto ligada: arraste destaca e copia
+markdown_render = true      # respostas com títulos, ênfase e código destacados
 
 [secondbrain]
 confirm_create = false

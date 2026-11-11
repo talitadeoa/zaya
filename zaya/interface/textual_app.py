@@ -23,6 +23,7 @@ from textual.widgets import Input, Static
 from zaya.audio.recorder import ContinuousListener
 from zaya.controller.modes import PERSONAS, get_persona
 from zaya.focus import moon_details, period_label, principal_phase_today
+from zaya.interface.textual_markdown import CODE_THEME, MARKDOWN_THEME, markdown_body
 from zaya.interface.textual_render import (
     _HELP,
     _SHORTCUTS,
@@ -231,6 +232,9 @@ class ZayaTextualApp(App):
     async def on_mount(self) -> None:
         self.title = "Zaya"
         self.sub_title = self._subtitle
+        # Tema do Rich Markdown (títulos, ênfase, código) no console do app:
+        # widgets renderizam com este console, então as cores valem no chat.
+        self.console.push_theme(MARKDOWN_THEME)
         self._modebar = self.query_one("#modebar", Static)
         self._status_ref = self.query_one("#status", Static)
         self._input_ref = self.query_one("#input", Input)
@@ -985,15 +989,25 @@ class ZayaTextualApp(App):
         )
         self.call_after_refresh(self._scroll_chat)
 
+    def _markdown_enabled(self) -> bool:
+        cfg = getattr(self._voice, "cfg", None)
+        interface = getattr(cfg, "interface", None)
+        return bool(getattr(interface, "markdown_render", True))
+
+    def _body(self, text: str, *, streaming: bool = False):
+        """Corpo da resposta: Markdown rico ou texto puro (configurável)."""
+        if self._markdown_enabled():
+            return markdown_body(text, streaming=streaming)
+        if streaming and len(text) > _STREAM_PREVIEW_CHARS:
+            text = "… " + text[-_STREAM_PREVIEW_CHARS:]
+        return Text(text)
+
     def update_stream(self, text: str) -> None:
         if self._stream_widget is None:
             self._stream_widget = Static(classes="card msg")
             self._chat().mount(self._stream_widget)
-        preview = text
-        if len(preview) > _STREAM_PREVIEW_CHARS:
-            preview = "… " + preview[-_STREAM_PREVIEW_CHARS:]
         self._stream_widget.update(
-            card("✦ Zaya", Text(preview), ACCENT, ZAYA_BG)
+            card("✦ Zaya", self._body(text, streaming=True), ACCENT, ZAYA_BG)
         )
         self.call_after_refresh(self._scroll_chat)
 
@@ -1003,7 +1017,7 @@ class ZayaTextualApp(App):
                 self._write_zaya(answer)
             return
         self._stream_widget.update(
-            card("✦ Zaya", Text(answer), ACCENT, ZAYA_BG)
+            card("✦ Zaya", self._body(answer), ACCENT, ZAYA_BG)
         )
         self._stream_widget = None
         self.call_after_refresh(self._scroll_chat)
@@ -1016,7 +1030,7 @@ class ZayaTextualApp(App):
         self._mount(
             card(
                 f"diff · {filename}",
-                Syntax(patch, "diff", theme="monokai", word_wrap=True),
+                Syntax(patch, "diff", theme=CODE_THEME, word_wrap=True),
                 MINT,
                 MINT_BG,
             ),
@@ -1042,7 +1056,7 @@ class ZayaTextualApp(App):
             self.run_worker(self._echo_zh(text), exclusive=False)
 
     def _write_zaya(self, text: str) -> None:
-        self._mount(card("✦ Zaya", Text(text), ACCENT, ZAYA_BG), message=True)
+        self._mount(card("✦ Zaya", self._body(text), ACCENT, ZAYA_BG), message=True)
 
     async def _echo_zh(self, text: str) -> None:
         if self._voice is None:

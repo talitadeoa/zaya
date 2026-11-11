@@ -98,6 +98,7 @@ def test_env_types_are_inferred_from_model(isolated_env):
         "ZAYA_AUDIO_SILENCE_MS": "1500",
         "ZAYA_SB_AUTO_CONTEXT": "yes",
         "ZAYA_FAST": "off",
+        "ZAYA_UI_MARKDOWN": "false",
         "ZAYA_DATA_DIR": str(isolated_env / "data"),
     }
     cfg = Config.load(config_path=isolated_env / "missing.toml", env=env)
@@ -107,6 +108,7 @@ def test_env_types_are_inferred_from_model(isolated_env):
     assert cfg.audio.silence_ms == 1500
     assert cfg.secondbrain.auto_context is True
     assert cfg.interface.fast is False
+    assert cfg.interface.markdown_render is False
 
 
 def test_dotenv_fica_visivel_para_subprocessos(tmp_path, monkeypatch):

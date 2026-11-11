@@ -27,7 +27,8 @@ INPUT_BG = "#151922"
 INPUT_BG_FOCUS = "#1b202a"
 
 # Durante o streaming renderizamos so a cauda para o custo por frame ficar
-# limitado (o card inteiro e montado uma vez no finish_stream).
+# limitado (o card inteiro e montado uma vez no finish_stream). Vale apenas
+# para o modo texto puro; o Markdown usa _STREAM_LIMIT de textual_markdown.
 _STREAM_PREVIEW_CHARS = 4000
 
 # Wordmark compacto: seis linhas. A arte braille gigante empurrava o conteudo

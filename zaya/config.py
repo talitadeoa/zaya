@@ -173,6 +173,8 @@ class InterfaceConfig(BaseModel):
     fast_smalltalk: bool = True
     # Eco em chinês (caracteres + pinyin) para cada mensagem.
     chinese_echo: bool = False
+    # Respostas renderizadas como Markdown (títulos, ênfase, código).
+    markdown_render: bool = True
     # Modo inicial: pesquisadora | trabalhadora | investidora | assistente.
     default_mode: str = "assistente"
 
@@ -491,6 +493,7 @@ _ENV_MAP: dict[str, tuple[str, str]] = {
     "ZAYA_UI_SHOW_METAS_ON_START": ("interface", "show_metas_on_start"),
     "ZAYA_UI_SHOW_REASONING": ("interface", "show_reasoning"),
     "ZAYA_UI_SELECTION_MODE": ("interface", "selection_mode"),
+    "ZAYA_UI_MARKDOWN": ("interface", "markdown_render"),
     "ZAYA_UI": ("interface", "ui"),
     "ZAYA_AGENT_ALLOW_OUTSIDE_PROJECT": ("agent", "allow_outside_project"),
     "ZAYA_AGENT_API_KEY": ("agent", "api_key"),
@@ -796,10 +799,11 @@ show_diffs = true
 show_metas_on_start = true
 dashboard_collapsed = true   # metas e lua começam recolhidos
 ui = "textual"             # textual (padrão) | terminal
-selection_mode = false     # true = abre no modo seleção (arrasta copia; botões ativos)
+selection_mode = false     # true = seleção de texto ligada: arraste destaca e copia
 fast = false               # modo rápido: sem busca automática, respostas curtas
 fast_smalltalk = true      # saudações respondem na hora, sem chamar o modelo
 chinese_echo = false       # mostra chinês + pinyin de cada mensagem
+markdown_render = true     # respostas em Markdown (títulos, ênfase, código)
 default_mode = "assistente"     # pesquisadora | trabalhadora | investidora | assistente
 
 [whatsapp]

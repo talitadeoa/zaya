@@ -719,3 +719,24 @@ async def test_modal_de_modo_aplica_modo_escolhido():
         assert len(app.screen_stack) == 1
         assert voice.mode_key == "investidora"
         assert voice.selected_modes == ["investidora"]
+
+
+@pytest.mark.asyncio
+async def test_resposta_usa_markdown_por_padrao():
+    from zaya.interface.textual_markdown import ZayaMarkdown
+
+    app = ZayaTextualApp(_answer, voice=_FakeVoice())
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        assert isinstance(app._body("# Título\n\n**forte**"), ZayaMarkdown)
+
+
+@pytest.mark.asyncio
+async def test_markdown_pode_ser_desligado_na_config():
+    app = ZayaTextualApp(_answer, voice=_FakeVoice())
+    app._voice.cfg.interface.markdown_render = False
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        body = app._body("# Título\n\n**forte**")
+        assert not hasattr(body, "elements")
+        assert "# Título" in body.plain
