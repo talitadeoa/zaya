@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 
 import httpx
@@ -157,6 +158,56 @@ class _FakeOrchestrator:
 
     async def answer_once(self, text, speak=False, close=False):
         return ""
+
+
+class _BootOrchestrator:
+    """Orquestrador minimo para provar o que o `serve` liga ao subir."""
+
+    last_error = ""
+
+    def __init__(self) -> None:
+        self.ligados: list[str] = []
+
+    def start_briefing(self) -> None:
+        self.ligados.append("briefing")
+
+    def start_career(self) -> None:
+        self.ligados.append("career")
+
+    async def answer_once(self, text, speak=False, close=False):
+        return ""
+
+
+class _GetMeClient:
+    async def get_me(self):
+        return {"username": "teste"}
+
+    async def get_updates(self, offset=None):
+        # Dorme ate o teste cancelar, sem girar em loop.
+        await asyncio.sleep(3600)
+        return []
+
+
+@pytest.mark.asyncio
+async def test_serve_liga_briefing_e_rotina_de_vagas_ao_subir():
+    """`telegram serve` nao chama bootstrap; os workers sobem no boot."""
+    import asyncio
+    import logging
+
+    cfg = Config()
+    cfg.telegram.allowed_chat_id = "42"
+    orch = _BootOrchestrator()
+    service = TelegramService(
+        cfg, orch, _GetMeClient(), None, TerminalUI(quiet=True), logging.getLogger("t")
+    )
+
+    task = asyncio.create_task(service.run())
+    await asyncio.sleep(0.05)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert orch.ligados == ["briefing", "career"]
 
 
 class _FakeTelegramClient:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import types
 from datetime import datetime, timedelta
@@ -675,6 +676,24 @@ async def test_career_nao_roda_sem_telegram(orch):
     orch._start_career_worker()
 
     assert orch._career_task is None
+
+
+@pytest.mark.asyncio
+async def test_start_career_liga_a_rotina_sem_bootstrap(orch):
+    """O `telegram serve` so chama start_briefing/start_career no boot."""
+    orch.telegram = FakeTelegram()
+
+    orch.start_career()
+
+    assert orch._career_task is not None
+    # Idempotente: chamar de novo nao duplica a tarefa.
+    task = orch._career_task
+    orch.start_career()
+    assert orch._career_task is task
+    orch._career_task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await orch._career_task
+    orch._career_task = None
 
 
 @pytest.mark.asyncio

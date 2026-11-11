@@ -313,6 +313,36 @@ A rotina matinal é encontrada pelo nome (padrão: qualquer rotina que contenha
 "matinal"), usando as subtarefas geradas pela Agenda no dia. Se as notas da
 rotina ainda não existirem, ela usa o cadastro de rotinas como fallback.
 
+### Rotina semanal de vagas no Telegram
+
+Mesmo desenho do briefing: determinístico, sem gastar token. Toda segunda às
+09:00 ela busca as fontes abertas de vaga, aplica os filtros do playbook,
+deduplica contra o `state.json`, pontua e manda as novas no Telegram.
+
+```bash
+zaya career status          # o que já está registrado
+zaya career buscar          # busca agora, sem enviar (--json para processar)
+zaya career enviar          # busca e manda no Telegram
+```
+
+O método (fontes, filtros, rubrica de score, pipeline do CV) está em
+`~/SecondBrain/cv/playbook-vagas.md`; o estado fica em `data/career/state.json`.
+Vaga sem link não entra.
+
+```toml
+[career]
+enabled = true
+days = [0]                # 0=seg, 1=ter, 2=qua, 3=qui, 4=sex
+at = "09:00"
+until = "18:00"           # depois disso não envia mais
+max_items = 8             # vagas por mensagem; o resto fica no estado
+```
+
+Semana sem vaga nova também gera mensagem. A entrega é marcada por vaga
+(`entrega: "entregue"`), então se o Telegram falhar a próxima rodada reenvia em
+vez de perder. O slot do dia fica reservado no SQLite e TUI, terminal e serviço
+do Telegram não duplicam a rodada.
+
 ## Privacidade e segurança
 
 - **Áudio nunca sai da máquina**: o STT é local. Só o texto da resposta vai para

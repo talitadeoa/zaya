@@ -207,6 +207,10 @@ class Orchestrator(
         """Liga o briefing sem depender do bootstrap do agente."""
         self._start_briefing_worker()
 
+    def start_career(self) -> None:
+        """Liga a rotina de vagas sem depender do bootstrap do agente."""
+        self._start_career_worker()
+
     async def _warmup_stt(self) -> None:
         try:
             await asyncio.to_thread(self.transcriber.warmup)
@@ -230,6 +234,11 @@ class Orchestrator(
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 await self._briefing_task
             self._briefing_task = None
+        if self._career_task is not None:
+            self._career_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await self._career_task
+            self._career_task = None
         if (
             self.cfg.memory.enabled
             and self.cfg.memory.on_exit

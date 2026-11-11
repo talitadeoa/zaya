@@ -58,6 +58,9 @@ class TelegramService:
         self.ui.hint("enviando mensagens; Ctrl+C encerra")
         # Briefings diarios rodam mesmo sem mensagem recebida.
         self.orchestrator.start_briefing()
+        # A rotina semanal de vagas tambem: sem isso ela so acordaria depois
+        # da primeira mensagem, e a segunda-feira passaria em branco.
+        self.orchestrator.start_career()
         offset: int | None = None
         while True:
             try:
