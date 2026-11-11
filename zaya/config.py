@@ -163,6 +163,8 @@ class InterfaceConfig(BaseModel):
     show_metas_on_start: bool = True
     # Interface: terminal (padrão) ou textual.
     ui: str = "textual"
+    # Comeca com o mouse desligado para selecionar/copiar texto nativamente.
+    selection_mode: bool = False
     # Modo rápido: sem busca automática e respostas mais curtas.
     fast: bool = False
     # Saudações/small talk respondem na hora, sem chamar o modelo.
@@ -461,6 +463,7 @@ _ENV_MAP: dict[str, tuple[str, str]] = {
     "ZAYA_UI_SHOW_DIFFS": ("interface", "show_diffs"),
     "ZAYA_UI_SHOW_METAS_ON_START": ("interface", "show_metas_on_start"),
     "ZAYA_UI_SHOW_REASONING": ("interface", "show_reasoning"),
+    "ZAYA_UI_SELECTION_MODE": ("interface", "selection_mode"),
     "ZAYA_UI": ("interface", "ui"),
     "ZAYA_AGENT_ALLOW_OUTSIDE_PROJECT": ("agent", "allow_outside_project"),
     "ZAYA_AGENT_API_KEY": ("agent", "api_key"),
@@ -759,6 +762,7 @@ show_reasoning = true
 show_diffs = true
 show_metas_on_start = true
 ui = "textual"             # textual (padrão) | terminal
+selection_mode = false     # true = mouse desligado; seleciona/copia com o mouse
 fast = false               # modo rápido: sem busca automática, respostas curtas
 fast_smalltalk = true      # saudações respondem na hora, sem chamar o modelo
 chinese_echo = false       # mostra chinês + pinyin de cada mensagem

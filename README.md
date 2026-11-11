@@ -378,6 +378,7 @@ a palavra-chave aparece, histórico inteiro e catálogo completo de ferramentas.
 ```toml
 [interface]
 concise = true              # respostas diretas, menos exploração
+selection_mode = true       # abre com o mouse desligado para selecionar/copiar
 
 [secondbrain]
 confirm_create = false

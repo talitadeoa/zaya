@@ -142,6 +142,17 @@ async def _answer(text: str, sink) -> str:
     return f"eco: {text}"
 
 
+def test_app_pode_iniciar_no_modo_selecao():
+    async def _answer(text, sink):
+        return "ok"
+
+    normal = ZayaTextualApp(_answer)
+    selecao = ZayaTextualApp(_answer, start_selecting=True)
+
+    assert normal._mouse_enabled is True
+    assert selecao._mouse_enabled is False
+
+
 @pytest.mark.asyncio
 async def test_app_textual_responde_sem_erro():
     app = ZayaTextualApp(_answer)

@@ -76,7 +76,11 @@ async def _run_textual(cfg: Config, verbose: bool) -> None:
         await orchestrator.aclose()
 
     app = ZayaTextualApp(
-        answer, cleanup=cleanup, subtitle=cfg.agent.model_slug(), voice=orchestrator
+        answer,
+        cleanup=cleanup,
+        subtitle=cfg.agent.model_slug(),
+        voice=orchestrator,
+        start_selecting=cfg.interface.selection_mode,
     )
     result = None
     try:

@@ -180,6 +180,7 @@ class ZayaTextualApp(App):
         cleanup: Callable[[], Awaitable[None]] | None = None,
         subtitle: str = "",
         voice: Any | None = None,
+        start_selecting: bool = False,
     ):
         super().__init__()
         self._answer = answer
@@ -191,7 +192,7 @@ class ZayaTextualApp(App):
         self._listener: ContinuousListener | None = None
         self._listen_task: asyncio.Task | None = None
         self._insert_mode = False
-        self._mouse_enabled = True
+        self._mouse_enabled = not start_selecting
         self._show_dashboard = True
         self._turn_running = False
         self._status_base = ""
@@ -226,6 +227,8 @@ class ZayaTextualApp(App):
         await self._render_welcome()
         self._normal_mode()
         self._update_modebar()
+        if not self._mouse_enabled:
+            self.call_after_refresh(self._start_with_selection)
         self.set_interval(0.4, self._tick_status)
         ui = getattr(self._voice, "ui", None)
         if ui is not None and hasattr(ui, "permission_callback"):
@@ -869,6 +872,20 @@ class ZayaTextualApp(App):
         self._set_status(
             "lua e metas visíveis" if self._show_dashboard else "lua e metas ocultas"
         )
+
+    def _start_with_selection(self) -> None:
+        """Aplica o modo seleção definido na configuração ao abrir a TUI."""
+        driver = getattr(self, "_driver", None)
+        disable = getattr(driver, "_disable_mouse_support", None)
+        if disable is None:
+            self._mouse_enabled = True
+            return
+        try:
+            disable()
+            self._set_status("seleção ligada: arraste e copie · F4 religa o mouse")
+        except Exception:
+            # Se o terminal não suportar, volta ao mouse normal em silêncio.
+            self._mouse_enabled = True
 
     def action_toggle_mouse(self) -> None:
         """Desliga o mouse para permitir selecionar o texto nativamente."""
