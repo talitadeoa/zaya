@@ -650,6 +650,9 @@ class AgentClient:
             self._trim_history_payloads(
                 session, self.cfg.agent.tool_result_chars
             )
+            # Uma interrupcao no meio das ferramentas deixa `tool_calls` sem
+            # resultado; o provedor recusaria todos os turnos seguintes.
+            session.repair_tool_pairs()
             session.busy = False
             session.cancel.clear()
             session.task = None

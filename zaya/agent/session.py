@@ -140,6 +140,48 @@ class AgentSession:
             merged = trimmed[position + 1 :] if position >= 0 else trimmed
         return merged.strip()
 
+    def repair_tool_pairs(self) -> bool:
+        """Remove pares de ferramenta incompletos do historico.
+
+        Um turno interrompido (Ctrl+C, abort, queda de rede) pode gravar o
+        ``assistant`` que pediu a ferramenta sem a mensagem ``tool`` com o
+        resultado. A API recusa o turno seguinte inteiro com
+        "an assistant message with 'tool_calls' must be followed by tool
+        messages", e a conversa fica muda para sempre. Aqui o bloco orfao sai
+        do historico e a sessao volta a responder.
+        """
+        messages = self.messages
+        kept: list[ChatMessage] = []
+        changed = False
+        index = 0
+        while index < len(messages):
+            message = messages[index]
+            if message.role == "assistant" and message.tool_calls:
+                call_ids = [call.id for call in message.tool_calls]
+                results: dict[str, ChatMessage] = {}
+                following = index + 1
+                while following < len(messages) and messages[following].role == "tool":
+                    tool_message = messages[following]
+                    results.setdefault(tool_message.tool_call_id, tool_message)
+                    following += 1
+                if all(call_id in results for call_id in call_ids):
+                    kept.append(message)
+                    kept.extend(results[call_id] for call_id in call_ids)
+                else:
+                    changed = True
+                index = following
+                continue
+            if message.role == "tool":
+                # Resultado sem o assistant que pediu: nao tem como enviar.
+                changed = True
+                index += 1
+                continue
+            kept.append(message)
+            index += 1
+        if changed:
+            self.messages = kept
+        return changed
+
     def apply_compaction(self, cutoff: int, summary: str) -> None:
         self.summary = summary.strip()
         self.messages = self.messages[cutoff:]
@@ -178,7 +220,13 @@ class SessionStore:
         if not isinstance(data, dict):
             return None
         session = AgentSession.from_dict(data)
-        return session if session.id else None
+        if not session.id:
+            return None
+        # Sessoes gravadas por um turno interrompido podem ter chamadas sem
+        # resultado; o provedor recusa o historico inteiro e a conversa emudece.
+        if session.repair_tool_pairs():
+            self.save(session)
+        return session
 
     def save(self, session: AgentSession) -> None:
         try:

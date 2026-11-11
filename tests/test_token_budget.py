@@ -704,3 +704,83 @@ async def test_runtime_usa_modelo_pequeno_e_filtra_ferramentas(tmp_path, isolate
         assert [tool["name"] for tool in request.tools] == ["read"]
     finally:
         await client.aclose()
+
+
+def test_session_repara_tool_call_sem_resultado():
+    session = AgentSession(id="ses_teste")
+    session.messages = [
+        ChatMessage("user", "faça algo"),
+        ChatMessage(
+            "assistant",
+            content="",
+            tool_calls=[ToolCall("call_1", "bash", {"command": "ls"})],
+        ),
+        ChatMessage("user", "e agora?"),
+    ]
+
+    assert session.repair_tool_pairs() is True
+    assert [message.role for message in session.messages] == ["user", "user"]
+    assert session.repair_tool_pairs() is False
+
+
+def test_session_store_corrige_historico_ao_carregar(tmp_path):
+    from zaya.agent.session import SessionStore
+
+    store = SessionStore(tmp_path / "sessions")
+    session = AgentSession(id="ses_quebrada")
+    session.messages = [
+        ChatMessage("user", "faça algo"),
+        ChatMessage(
+            "assistant",
+            content="",
+            tool_calls=[ToolCall("call_1", "bash", {"command": "ls"})],
+        ),
+        ChatMessage("user", "e agora?"),
+    ]
+    store.save(session)
+
+    carregada = store.load("ses_quebrada")
+
+    assert carregada is not None
+    assert [message.role for message in carregada.messages] == ["user", "user"]
+    # O arquivo em disco também fica limpo: a correção é persistente.
+    recarregada = store.load("ses_quebrada")
+    assert [message.role for message in recarregada.messages] == ["user", "user"]
+
+
+async def test_runtime_remove_tool_call_orfa_ao_abortar(tmp_path, isolated_env):
+    """Abortar no meio das ferramentas nao pode envenenar o historico."""
+    client = _client(tmp_path, isolated_env)
+    provider = ScriptedProvider(
+        [
+            [
+                ToolCallDelta(index=0, id="call_1", name="bash", arguments='{"command": "sleep 30"}'),
+                Finish("tool_calls"),
+            ]
+        ]
+    )
+    client._provider = provider
+    info = await client.create_session("teste")
+
+    try:
+        await client.prompt_async(info.id, "rode algo demorado")
+        # Espera a ferramenta comecar: a partir dai o assistant com tool_calls
+        # ja esta no historico e o resultado ainda nao chegou.
+        while True:
+            event = await asyncio.wait_for(client._events.get(), timeout=5)
+            if type(event).__name__ == "ToolStarted":
+                break
+        await client.abort(info.id)
+        session = client._sessions[info.id]
+        for _ in range(50):
+            if not session.busy:
+                break
+            await asyncio.sleep(0.1)
+
+        assert [message.role for message in session.messages] == ["user"]
+        assert not any(
+            message.role == "assistant" and message.tool_calls
+            for message in session.messages
+        )
+    finally:
+        await client.aclose()
