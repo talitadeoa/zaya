@@ -341,11 +341,11 @@ async def test_modebar_mostra_modo_e_sessoes_clicavel():
     app = ZayaTextualApp(_answer, voice=_FakeVoice())
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
-        texto = app._modebar.renderable
+        texto = app._modebar.content
         assert "Zaya" in str(texto)
         assert "Tab modo" not in str(texto)
         assert "Sessões" not in str(texto)
-        assert "Sessões" in str(app.query_one("#session-button").renderable)
+        assert "Sessões" in str(app.query_one("#session-button").content)
 
         await pilot.click("#session-button")
         await pilot.pause()
@@ -609,40 +609,58 @@ async def test_f5_mostra_e_oculta_lua_e_metas():
 
 
 @pytest.mark.asyncio
-async def test_f4_alterna_modo_selecao_sem_desligar_mouse():
+async def test_f4_liga_e_desliga_selecao_de_texto():
     app = ZayaTextualApp(_answer, voice=_FakeVoice())
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
         assert app._selection_mode is False
+        assert app.ALLOW_SELECT is False
 
-        original = app._driver
-        calls: list[str] = []
+        app.action_toggle_mouse()
+        assert app._selection_mode is True
+        assert app.ALLOW_SELECT is True
+        assert "seleção ligada" in app._status_base
 
-        class _FakeDriver:
-            def _disable_mouse_support(self) -> None:
-                calls.append("disable")
-
-            def _enable_mouse_support(self) -> None:
-                calls.append("enable")
-
-        app._driver = _FakeDriver()
-        try:
-            app.action_toggle_mouse()
-            assert app._selection_mode is True
-            assert "seleção ligada" in app._status_base
-
-            app.action_toggle_mouse()
-            assert app._selection_mode is False
-            assert "mouse normal" in app._status_base
-        finally:
-            app._driver = original
-        assert calls == []
+        app.action_toggle_mouse()
+        assert app._selection_mode is False
+        assert app.ALLOW_SELECT is False
+        assert "seleção desligada" in app._status_base
         await pilot.pause()
 
 
 @pytest.mark.asyncio
-async def test_selecao_extrai_texto_do_chat():
-    app = ZayaTextualApp(_answer, voice=_FakeVoice())
+async def test_abre_com_selecao_quando_configurado():
+    app = ZayaTextualApp(_answer, voice=_FakeVoice(), start_selecting=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        assert app.ALLOW_SELECT is True
+        assert "seleção ligada" in app._status_base
+
+
+@pytest.mark.asyncio
+async def test_arrastar_seleciona_texto_e_copia():
+    app = ZayaTextualApp(_answer, voice=_FakeVoice(), start_selecting=True)
+    async with app.run_test(size=(90, 30)) as pilot:
+        await pilot.pause()
+        copiados: list[str] = []
+        app._copy_text = copiados.append  # evita pbcopy no teste
+        app._clear_messages()
+        app._mount("linha de teste para copiar")
+        await pilot.pause()
+        widget = list(app._chat().children)[-1]
+        region = widget.region
+        await pilot.mouse_down(offset=(region.x + 1, region.y))
+        await pilot.mouse_up(offset=(region.x + 20, region.y))
+        await pilot.pause()
+        texto = app.screen.get_selected_text()
+        assert "teste" in texto
+        assert copiados == [texto]
+        assert "copiado" in app._status_base
+
+
+@pytest.mark.asyncio
+async def test_ctrl_c_copia_selecao():
+    app = ZayaTextualApp(_answer, voice=_FakeVoice(), start_selecting=True)
     async with app.run_test(size=(90, 30)) as pilot:
         await pilot.pause()
         app._clear_messages()
@@ -650,24 +668,36 @@ async def test_selecao_extrai_texto_do_chat():
         await pilot.pause()
         widget = list(app._chat().children)[-1]
         region = widget.region
-        texto = app._selected_text(
-            (region.x, region.y),
-            (region.x + region.width - 1, region.y + region.height - 1),
-        )
-        assert "linha de teste para copiar" in texto
+        await pilot.mouse_down(offset=(region.x + 1, region.y))
+        await pilot.mouse_up(offset=(region.x + 20, region.y))
+        await pilot.pause()
+        texto = app.screen.get_selected_text()
+        assert texto
+        app._clipboard = ""  # type: ignore[misc]
+        await pilot.press("ctrl+c")
+        await pilot.pause()
+        assert app.clipboard == texto
 
 
 @pytest.mark.asyncio
-async def test_modo_selecao_preserva_botoes_e_nao_recolhe_painel():
+async def test_arrastar_no_painel_nao_recolhe_e_clique_recolhe():
     app = ZayaTextualApp(_answer, voice=_FakeVoice(), start_selecting=True)
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
         painel = app.query_one(".dashboard-panel", CollapsibleCard)
         assert painel.expanded is False
 
+        region = painel.region
+        await pilot.mouse_down(offset=(region.x + 2, region.y))
+        await pilot.mouse_up(offset=(region.x + 20, region.y))
+        await pilot.pause()
+        assert app.screen.selections
+        assert painel.expanded is False
+
+        # Um clique simples depois do arrasto volta a funcionar.
         await pilot.click(".dashboard-panel")
         await pilot.pause()
-        assert painel.expanded is False
+        assert painel.expanded is True
 
         await pilot.click("#menu-button")
         await pilot.pause()

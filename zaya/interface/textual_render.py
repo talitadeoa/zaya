@@ -114,14 +114,15 @@ def _welcome_art(max_cols: int = 78) -> list[list[tuple[str, str]]]:
 
 _SHORTCUTS = (
     "i digitar · f falar · Tab modo · F1 comandos · F2 sessões · "
-    "F4 seleção · F5 painéis · Esc parar"
+    "F4 seleção · Ctrl+C copiar · F5 painéis · Esc parar"
 )
 
 _HELP = (
     "Modo normal: i digitar · t texto · m mudo · v voz on/off · f falar · "
     "c escuta contínua · Tab alterna o modo · Esc interromper. No modo insert, "
     "Esc volta ao normal. F1 paleta · F2 sessões · F3 modo · Ctrl+L limpar. "
-    "F4 desliga o mouse para selecionar e copiar o texto (F4 religa). "
+    "F4 liga ou desliga a seleção: arraste sobre o texto para destacar e copiar; "
+    "Ctrl+C copia de novo o que estiver selecionado. "
     "F5 mostra ou oculta a lua e as metas. "
     "Cada modo tem o próprio histórico de sessões; /novo abre uma sessão nova. "
     "/consolidar [hoje|ontem|AAAA-MM-DD] salva a memória do dia no Second Brain. "

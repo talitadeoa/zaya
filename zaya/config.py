@@ -165,7 +165,7 @@ class InterfaceConfig(BaseModel):
     dashboard_collapsed: bool = True
     # Interface: terminal (padrão) ou textual.
     ui: str = "textual"
-    # Comeca no modo selecao: arrastar no chat copia, sem desligar os botoes.
+    # Selecao de texto ligada ao abrir: arrastar destaca e copia (F4 alterna).
     selection_mode: bool = False
     # Modo rápido: sem busca automática e respostas mais curtas.
     fast: bool = False

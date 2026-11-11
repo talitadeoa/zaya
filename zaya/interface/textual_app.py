@@ -14,7 +14,7 @@ from rich import box
 from rich.markup import escape
 from rich.syntax import Syntax
 from rich.text import Text
-from textual.app import App, ComposeResult
+from textual.app import App, ComposeResult, ScreenStackError
 from textual.binding import Binding, BindingType
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.css.query import NoMatches
@@ -80,8 +80,8 @@ class CollapsibleCard(Static):
         self.expanded = start_expanded
 
     def on_click(self, event) -> None:
-        # No modo seleção o clique é para marcar texto, não para recolher.
-        if getattr(self.app, "_selection_mode", False):
+        # Um arrasto para copiar texto não deve recolher o painel.
+        if self.app.screen.selections:
             return
         event.stop()
         self.expanded = not self.expanded
@@ -114,6 +114,7 @@ class ZayaTextualApp(App):
         Binding("f3", "modes", "Modo"),
         Binding("f4", "toggle_mouse", "Seleção"),
         Binding("f5", "toggle_dashboard", "Painéis"),
+        Binding("ctrl+c", "copy_selection", "Copiar", show=False, priority=True),
         Binding("ctrl+l", "clear_chat", "Limpar"),
     ]
 
@@ -202,9 +203,7 @@ class ZayaTextualApp(App):
         self._listen_task: asyncio.Task | None = None
         self._insert_mode = False
         self._selection_mode = bool(start_selecting)
-        self._selection_start: tuple[int, int] | None = None
-        self._selection_end: tuple[int, int] | None = None
-        self._selection_moved = False
+        self.ALLOW_SELECT = self._selection_mode
         self._show_dashboard = True
         self._turn_running = False
         self._status_base = ""
@@ -760,7 +759,7 @@ class ZayaTextualApp(App):
             return self._status_ref
         try:
             return self.query_one("#status", Static)
-        except NoMatches:
+        except (NoMatches, ScreenStackError):
             return None
 
     def _set_status(self, text: str) -> None:
@@ -810,6 +809,11 @@ class ZayaTextualApp(App):
         self._set_status("")
 
     async def action_escape(self) -> None:
+        if self.screen.selections:
+            self.clear_selection()
+            if self._insert_mode:
+                self._normal_mode()
+            return
         if self._insert_mode:
             self._normal_mode()
         else:
@@ -886,58 +890,51 @@ class ZayaTextualApp(App):
         )
 
     def _start_with_selection(self) -> None:
-        """Abre no modo seleção sem desligar o mouse: os botões seguem ativos."""
-        self._set_status(
-            "seleção ligada: arraste no chat para copiar · botões ativos · F4 desliga"
-        )
-
-    def action_toggle_mouse(self) -> None:
-        """Alterna o modo seleção sem desligar o mouse."""
-        self._selection_mode = not self._selection_mode
-        self._selection_start = None
-        self._selection_end = None
-        self._selection_moved = False
+        """Liga a seleção nativa de texto ao abrir (se configurada)."""
+        self.ALLOW_SELECT = self._selection_mode
         if self._selection_mode:
             self._set_status(
-                "seleção ligada: arraste no chat para copiar · botões ativos · F4 desliga"
+                "seleção ligada: arraste no chat para copiar · Ctrl+C copia · F4 desliga"
+            )
+
+    def action_toggle_mouse(self) -> None:
+        """Liga/desliga a seleção de texto com destaque."""
+        self._selection_mode = not self._selection_mode
+        self.ALLOW_SELECT = self._selection_mode
+        if not self._selection_mode:
+            self.clear_selection()
+        if self._selection_mode:
+            self._set_status(
+                "seleção ligada: arraste no chat para copiar · Ctrl+C copia · F4 desliga"
             )
         else:
-            self._set_status("mouse normal: clique nos botões e painéis · F4 seleciona")
+            self._set_status("seleção desligada: arraste não marca texto · F4 liga")
 
     # ---------------------------------------------------------------- seleção
-    def _chat_region(self):
-        return self._chat().region
+    def on_text_selected(self) -> None:
+        """Arrastar para selecionar já copia, sem precisar de Ctrl+C."""
+        text = self.screen.get_selected_text()
+        if not text:
+            return
+        self._copy_selection(text)
 
-    def _inside_chat(self, x: int, y: int) -> bool:
-        region = self._chat_region()
-        # A última coluna é a barra de rolagem: deixa ela para o scroll.
-        right = region.x + max(1, region.width - 1)
-        return (
-            region.x <= x < right
-            and region.y <= y < region.y + region.height
-        )
+    def action_copy_selection(self) -> None:
+        # Ctrl+C é prioritário para o pbcopy do Terminal.app; no campo de
+        # texto ele ainda copia a seleção do próprio input.
+        focused = self.focused
+        if isinstance(focused, Input) and focused.selected_text:
+            self._copy_selection(focused.selected_text)
+            return
+        text = self.screen.get_selected_text()
+        if not text:
+            if not self._insert_mode:
+                self._set_status("nada selecionado: arraste sobre o texto do chat")
+            return
+        self._copy_selection(text)
 
-    def _clamp_to_chat(self, x: int, y: int) -> tuple[int, int]:
-        region = self._chat_region()
-        right = region.x + max(1, region.width - 1) - 1
-        bottom = region.y + region.height - 1
-        return (
-            min(max(x, region.x), right),
-            min(max(y, region.y), bottom),
-        )
-
-    def _selected_text(
-        self, start: tuple[int, int], end: tuple[int, int]
-    ) -> str:
-        """Texto visível entre dois pontos da tela (coordenadas de células)."""
-        x1, x2 = sorted((start[0], end[0]))
-        y1, y2 = sorted((start[1], end[1]))
-        strips = self.screen._compositor.render_strips()
-        lines: list[str] = []
-        for y in range(y1, y2 + 1):
-            if 0 <= y < len(strips):
-                lines.append(strips[y].crop(x1, x2 + 1).text.rstrip())
-        return "\n".join(lines).strip("\n")
+    def _copy_selection(self, text: str) -> None:
+        self._copy_text(text)
+        self._set_status(f"copiado: {len(text)} caracteres")
 
     def _copy_text(self, text: str) -> None:
         try:
@@ -953,52 +950,6 @@ class ZayaTextualApp(App):
             )
         except (OSError, subprocess.SubprocessError):
             pass
-
-    def on_mouse_down(self, event) -> None:
-        if not self._selection_mode:
-            return
-        point = (event.screen_x, event.screen_y)
-        if not self._inside_chat(*point):
-            return
-        event.stop()
-        self._selection_start = point
-        self._selection_end = point
-        self._selection_moved = False
-        self.screen.capture_mouse()
-
-    def on_mouse_move(self, event) -> None:
-        if not self._selection_mode or self._selection_start is None:
-            return
-        point = self._clamp_to_chat(event.screen_x, event.screen_y)
-        if point != self._selection_start:
-            self._selection_moved = True
-        self._selection_end = point
-        if self._selection_moved:
-            self._set_status("selecionando… solte para copiar")
-        event.stop()
-
-    def on_mouse_up(self, event) -> None:
-        if not self._selection_mode or self._selection_start is None:
-            return
-        event.stop()
-        start = self._selection_start
-        end = self._selection_end or start
-        moved = self._selection_moved
-        self._selection_start = None
-        self._selection_end = None
-        self._selection_moved = False
-        try:
-            self.screen.release_mouse()
-        except Exception:
-            pass
-        if not moved:
-            return
-        text = self._selected_text(start, end)
-        if not text:
-            self._set_status("nada selecionado")
-            return
-        self._copy_text(text)
-        self._set_status(f"copiado: {len(text)} caracteres · F4 desliga a seleção")
 
     # ------------------------------------------------------------------ helpers
     def _scroll_chat(self) -> None:

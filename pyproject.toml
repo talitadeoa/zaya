@@ -16,7 +16,7 @@ dependencies = [
   "faster-whisper>=1.0,<2",
   "edge-tts>=6.1,<8",
   "astronomy-engine>=2.1,<3",
-  "textual>=0.60,<2",
+  "textual>=8.2,<9",
 ]
 
 [project.optional-dependencies]
