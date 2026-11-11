@@ -23,6 +23,8 @@ dist/
 # Dados locais e pessoais (nunca versionar)
 .zaya/
 data/
+config/
+config.toml.bak-*
 zaya.db
 zaya.db-*
 sb_index.db
