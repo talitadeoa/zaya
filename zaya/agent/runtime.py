@@ -659,6 +659,7 @@ class AgentClient:
             session.permissions.clear()
             # Mantem o catalogo permitido entre turnos: a capacidade nao muda
             # por turno, so o conjunto de ferramentas registradas.
+            session.allowed_tools = set(self.tools.names()) if self.tools else None
             # Nao ressuscita uma sessao apagada durante o turno.
             if self._sessions.get(session.id) is session:
                 self._save(session)
