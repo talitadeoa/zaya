@@ -208,12 +208,6 @@ class BriefingConfig(BaseModel):
     max_tasks: int = 15
     check_interval_seconds: float = 30.0
     retry_minutes: float = 10.0
-    # Resumo da carteira (watchlist) nos dias escolhidos, sem usar o modelo.
-    market_enabled: bool = True
-    # Dias da semana com 0 = segunda (seg, qua, sex por padrao).
-    market_days: list[int] = Field(default_factory=lambda: [0, 2, 4])
-    market_at: str = "12:00"
-    # Depois desse horario o resumo da carteira nao e mais enviado.
     # Fecho da noite no Telegram: o que foi feito, o que nao foi e um insight.
     evening_enabled: bool = True
     evening_at: str = "18:00"
@@ -222,6 +216,12 @@ class BriefingConfig(BaseModel):
     # Insight curto gerado pelo modelo junto com a lista (false = so a lista).
     evening_insight: bool = True
     evening_timeout_seconds: float = 60.0
+    # Resumo da carteira (watchlist) nos dias escolhidos, sem usar o modelo.
+    market_enabled: bool = True
+    # Dias da semana com 0 = segunda (seg, qua, sex por padrao).
+    market_days: list[int] = Field(default_factory=lambda: [0, 2, 4])
+    market_at: str = "12:00"
+    # Depois desse horario o resumo da carteira nao e mais enviado.
     market_until: str = "18:00"
 
 
@@ -535,16 +535,16 @@ _ENV_MAP: dict[str, tuple[str, str]] = {
     "ZAYA_BRIEFING_NOON_UNTIL": ("briefing", "noon_until"),
     "ZAYA_BRIEFING_MORNING_ROUTINE": ("briefing", "morning_routine"),
     "ZAYA_BRIEFING_MAX_TASKS": ("briefing", "max_tasks"),
+    "ZAYA_BRIEFING_EVENING_AT": ("briefing", "evening_at"),
+    "ZAYA_BRIEFING_EVENING_ENABLED": ("briefing", "evening_enabled"),
+    "ZAYA_BRIEFING_EVENING_INSIGHT": ("briefing", "evening_insight"),
+    "ZAYA_BRIEFING_EVENING_UNTIL": ("briefing", "evening_until"),
     "ZAYA_BRIEFING_MARKET_ENABLED": ("briefing", "market_enabled"),
     "ZAYA_BRIEFING_MARKET_AT": ("briefing", "market_at"),
     "ZAYA_BRIEFING_MARKET_UNTIL": ("briefing", "market_until"),
     "ZAYA_CAREER_ENABLED": ("career", "enabled"),
     "ZAYA_CAREER_AT": ("career", "at"),
     "ZAYA_CAREER_UNTIL": ("career", "until"),
-    "ZAYA_BRIEFING_EVENING_AT": ("briefing", "evening_at"),
-    "ZAYA_BRIEFING_EVENING_ENABLED": ("briefing", "evening_enabled"),
-    "ZAYA_BRIEFING_EVENING_INSIGHT": ("briefing", "evening_insight"),
-    "ZAYA_BRIEFING_EVENING_UNTIL": ("briefing", "evening_until"),
     "ZAYA_CAREER_MAX_ITEMS": ("career", "max_items"),
     "ZAYA_CAREER_STATE_FILE": ("career", "state_file"),
     "ZAYA_PROACTIVE_CHECK_INTERVAL_SECONDS": ("proactive", "check_interval_seconds"),
@@ -866,17 +866,17 @@ noon_at = "12:00"
 noon_until = "18:00"
 morning_routine = "matinal"
 max_tasks = 15
+# Fecho da noite: o que foi feito, o que ficou e um insight seu.
+evening_enabled = true
+evening_at = "18:00"
+evening_until = "23:00"
+evening_insight = true
 
 [career]
 # Rotina semanal de vagas: busca nas fontes abertas, filtra, pontua e
 # entrega no Telegram. O metodo esta em ~/SecondBrain/cv/playbook-vagas.md.
 enabled = true
 days = [0]                  # 0=seg, 1=ter, 2=qua, 3=qui, 4=sex
-# Fecho da noite: o que foi feito, o que ficou e um insight seu.
-evening_enabled = true
-evening_at = "18:00"
-evening_until = "23:00"
-evening_insight = true
 at = "09:00"
 until = "18:00"             # depois disso nao envia mais (recupera na proxima)
 max_items = 8               # vagas por mensagem; o resto fica no estado
