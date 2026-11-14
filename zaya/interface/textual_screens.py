@@ -297,6 +297,91 @@ class SessionPicker(ModalScreen[object]):
         self.dismiss(self._targets[event.option_index])
 
 
+class ModelPicker(ModalScreen[str | None]):
+    """Escolha do modelo que a Zaya usa no próximo turno."""
+
+    CSS = """
+    ModelPicker {
+        align: center middle;
+        background: #05070acc;
+    }
+    #model-box {
+        width: 84;
+        height: auto;
+        max-height: 26;
+        border: round #8fbfae;
+        background: #12171f;
+        padding: 1 2;
+    }
+    #model-title {
+        color: #8fbfae;
+        text-style: bold;
+        margin-bottom: 1;
+    }
+    #model-hint {
+        color: #7b8494;
+        margin-top: 1;
+    }
+    #model-list {
+        border: none;
+        background: #12171f;
+        padding: 0;
+    }
+    #model-list > .option-list--option-highlighted {
+        background: #8fbfae;
+        color: #0f1115;
+        text-style: bold;
+    }
+    """
+
+    BINDINGS: ClassVar[list[BindingType]] = [Binding("escape", "cancel", "Voltar")]
+
+    def __init__(self, options: list, current: str = ""):
+        super().__init__()
+        self._options = list(options)
+        self._current = current
+        self._slugs: list[str] = []
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="model-box"):
+            yield Static("Escolha o modelo", id="model-title")
+            yield OptionList(id="model-list")
+            yield Static("↑↓ escolher · Enter confirmar · Esc manter", id="model-hint")
+
+    def on_mount(self) -> None:
+        options = self.query_one("#model-list", OptionList)
+        options.clear_options()
+        self._slugs.clear()
+        highlighted = 0
+        for index, option in enumerate(self._options):
+            slug = option.slug
+            self._slugs.append(slug)
+            mark = "●" if slug == self._current or option.current else "○"
+            options.add_option(f"{mark} {slug}")
+            if mark == "●":
+                highlighted = index
+        if not self._slugs:
+            options.add_option(
+                OptionItem(
+                    Text("nenhum modelo listado — use /modelo provider/model", style="italic"),
+                    disabled=True,
+                )
+            )
+        else:
+            title = self.query_one("#model-title", Static)
+            title.update(f"Escolha o modelo · {len(self._slugs)} disponíveis")
+        options.highlighted = highlighted if self._slugs else None
+        options.focus()
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        if event.option_index >= len(self._slugs):
+            return
+        self.dismiss(self._slugs[event.option_index])
+
+
 class PermissionScreen(ModalScreen[str]):
     """Confirma uma acao destrutiva do agente (escrita, shell)."""
 

@@ -237,3 +237,106 @@ async def test_erro_do_agente_chega_no_telegram():
     assert any("Location not found" in text for text in tg.sent)
     assert "Concluído." not in tg.sent
 
+
+
+class _NewSessionOrchestrator:
+    last_error = ""
+
+    def __init__(self) -> None:
+        self.novas = 0
+
+    async def new_session(self) -> None:
+        self.novas += 1
+
+    async def answer_once(self, text, speak=False, close=False):
+        return "resposta do agente"
+
+
+@pytest.mark.asyncio
+async def test_novo_cria_sessao_e_nao_chama_o_agente():
+    import logging
+
+    cfg = Config()
+    cfg.telegram.allowed_chat_id = "42"
+    tg = _FakeTelegramClient()
+    orch = _NewSessionOrchestrator()
+    service = TelegramService(cfg, orch, tg, None, TerminalUI(quiet=True), logging.getLogger("t"))
+
+    await service._handle_update({"message": {"chat": {"id": 42}, "text": "/novo"}})
+
+    assert orch.novas == 1
+    assert all("resposta do agente" not in text for text in tg.sent)
+    assert any("sessão nova" in text for text in tg.sent)
+
+
+class _ModelOrchestrator:
+    last_error = ""
+
+    def __init__(self) -> None:
+        self.argumentos: list[str] = []
+
+    async def model_messages(self, argument: str):
+        self.argumentos.append(argument)
+        if not argument:
+            return [
+                ("info", " 1. ● deepseek/deepseek-flash"),
+                ("info", " 2. ○ deepseek/deepseek-chat"),
+                ("info", "use /modelo <número> ou /modelo provider/model"),
+            ]
+        return [("success", f"modelo da próxima mensagem: {argument}"), ("info", "salvo")]
+
+    async def answer_once(self, text, speak=False, close=False):
+        return "resposta do agente"
+
+
+@pytest.mark.asyncio
+async def test_modelo_no_telegram_lista_modelos():
+    import logging
+
+    cfg = Config()
+    cfg.telegram.allowed_chat_id = "42"
+    tg = _FakeTelegramClient()
+    orch = _ModelOrchestrator()
+    service = TelegramService(cfg, orch, tg, None, TerminalUI(quiet=True), logging.getLogger("t"))
+
+    await service._handle_update({"message": {"chat": {"id": 42}, "text": "/modelo"}})
+
+    assert orch.argumentos == [""]
+    texto = tg.sent[-1]
+    assert "deepseek/deepseek-flash" in texto
+    assert "deepseek/deepseek-chat" in texto
+    assert all("resposta do agente" not in item for item in tg.sent)
+
+
+@pytest.mark.asyncio
+async def test_modelo_no_telegram_troca_pelo_slug():
+    import logging
+
+    cfg = Config()
+    cfg.telegram.allowed_chat_id = "42"
+    tg = _FakeTelegramClient()
+    orch = _ModelOrchestrator()
+    service = TelegramService(cfg, orch, tg, None, TerminalUI(quiet=True), logging.getLogger("t"))
+
+    await service._handle_update(
+        {"message": {"chat": {"id": 42}, "text": "/modelo deepseek/deepseek-chat"}}
+    )
+
+    assert orch.argumentos == ["deepseek/deepseek-chat"]
+    assert "modelo da próxima mensagem" in tg.sent[-1]
+
+
+@pytest.mark.asyncio
+async def test_modelos_sem_argumento_no_telegram_lista():
+    import logging
+
+    cfg = Config()
+    cfg.telegram.allowed_chat_id = "42"
+    tg = _FakeTelegramClient()
+    orch = _ModelOrchestrator()
+    service = TelegramService(cfg, orch, tg, None, TerminalUI(quiet=True), logging.getLogger("t"))
+
+    await service._handle_update({"message": {"chat": {"id": 42}, "text": "/modelos"}})
+
+    assert orch.argumentos == [""]
+    assert "deepseek/deepseek-flash" in tg.sent[-1]

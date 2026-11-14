@@ -31,17 +31,20 @@ from zaya.interface.textual_render import (
     _STREAM_PREVIEW_CHARS,
     ACCENT,
     CYAN,
+    ERROR,
     LILAC,
     MINT,
     MINT_BG,
     MUTED,
     USER_BG,
+    WARN,
     ZAYA_BG,
     _welcome_art,
     card,
 )
 from zaya.interface.textual_screens import (
     CommandPalette,
+    ModelPicker,
     ModePicker,
     PermissionScreen,
     SessionPicker,
@@ -116,6 +119,7 @@ class ZayaTextualApp(App):
         Binding("f3", "modes", "Modo"),
         Binding("f4", "toggle_mouse", "Seleção"),
         Binding("f5", "toggle_dashboard", "Painéis"),
+        Binding("f6", "models", "Modelo"),
         Binding("ctrl+c", "copy_selection", "Copiar", show=False, priority=True),
         Binding("ctrl+l", "clear_chat", "Limpar"),
     ]
@@ -330,6 +334,10 @@ class ZayaTextualApp(App):
         bar = Text()
         bar.append(name, style=f"bold {ACCENT}")
         bar.append("  ·  ", style=MUTED)
+        model = self._current_model_slug()
+        if model:
+            bar.append(model, style=MINT)
+            bar.append("  ·  ", style=MUTED)
         if session:
             bar.append(f"sessão {session[:14]}", style=CYAN)
         else:
@@ -371,6 +379,80 @@ class ZayaTextualApp(App):
             self._set_status(f"modo desconhecido: {argument}")
             return
         self._switch_mode(persona.key)
+
+    # ---------------------------------------------------------------- modelos
+    def action_models(self) -> None:
+        """Abre o seletor de modelos (F6, paleta ou /modelo sem argumento)."""
+        stack = self.screen_stack
+        if stack and self.screen is not stack[0]:
+            return
+        if self._voice is None:
+            self._set_status("modelos indisponíveis")
+            return
+        self.run_worker(self._open_model_picker(), group="modelo", exclusive=True)
+
+    async def _open_model_picker(self) -> None:
+        self._set_status("◐ consultando modelos…")
+        options: list = []
+        messages: list = []
+        try:
+            show = getattr(self._voice, "show_model_options", None)
+            if callable(show):
+                messages, options = await show()
+        except Exception as exc:
+            self._set_status(f"erro ao listar modelos: {exc}")
+            return
+        self._set_status("● pronto")
+        written = False
+        for kind, text in messages:
+            if kind != "info":
+                self._write_level(kind, text)
+                written = True
+        if not options:
+            if not written:
+                self._write_level(
+                    "warning",
+                    "nenhum modelo listado; use /modelo provider/model "
+                    "ou confira as chaves com `zaya doctor --verbose`",
+                )
+            return
+        current = self._current_model_slug()
+        self.push_screen(ModelPicker(options, current), self._on_model_chosen)
+
+    def _current_model_slug(self) -> str:
+        cfg = getattr(self._voice, "cfg", None)
+        agent = getattr(cfg, "agent", None)
+        slug = getattr(agent, "model_slug", None)
+        return slug() if callable(slug) else ""
+
+    def _on_model_chosen(self, slug: str | None) -> None:
+        if not slug:
+            return
+        self.run_worker(self._apply_model(slug), group="modelo", exclusive=True)
+
+    async def _apply_model(self, slug: str) -> None:
+        if self._voice is None:
+            return
+        switch = getattr(self._voice, "model_messages", None)
+        if not callable(switch):
+            self._set_status("troca de modelo indisponível")
+            return
+        try:
+            messages = await switch(slug)
+        except Exception as exc:
+            self._set_status(f"erro ao trocar modelo: {exc}")
+            return
+        for kind, text in messages:
+            self._write_level(kind, text)
+        self._update_modebar()
+        self._set_status("● pronto")
+
+    def _handle_modelo_command(self, text: str) -> None:
+        argument = text.partition(" ")[2].strip()
+        if not argument:
+            self.action_models()
+            return
+        self.run_worker(self._apply_model(argument), group="modelo", exclusive=True)
 
     async def _apply_mode(self, key: str) -> None:
         if self._voice is None:
@@ -574,6 +656,12 @@ class ZayaTextualApp(App):
             return
         if text == "/modo" or text.startswith("/modo "):
             self._handle_modo_command(text)
+            return
+        if text == "/modelo" or text.startswith("/modelo "):
+            self._handle_modelo_command(text)
+            return
+        if text == "/modelos":
+            self.action_models()
             return
         if text in {"/modos", "/perfil", "/persona"}:
             self.action_modes()
@@ -840,6 +928,7 @@ class ZayaTextualApp(App):
         return [
             ("Ajuda", "?", "atalhos e comandos"),
             ("Trocar modo", "◈", "escolher a persona"),
+            ("Trocar modelo", "✦", "escolher o cérebro"),
             ("Sessões", "▤", "abrir o histórico"),
             ("Nova sessão", "+", "começar do zero"),
             ("Limpar conversa", "⌫", "limpar a tela"),
@@ -863,6 +952,8 @@ class ZayaTextualApp(App):
             self._write_note(_HELP)
         elif label == "Trocar modo":
             self.action_modes()
+        elif label == "Trocar modelo":
+            self.action_models()
         elif label == "Sessões":
             self.action_sessions()
         elif label == "Nova sessão":
@@ -1100,3 +1191,12 @@ class ZayaTextualApp(App):
 
     def _write_note(self, text: str) -> None:
         self._mount(Text(text, style=MUTED))
+
+    def _write_level(self, kind: str, text: str) -> None:
+        """Nota na conversa respeitando o nível (sucesso, aviso, erro)."""
+        marks = {"success": ("✓", MINT), "warning": ("!", WARN), "error": ("✗", ERROR)}
+        mark, color = marks.get(kind, ("•", CYAN))
+        note = Text()
+        note.append(f"{mark} ", style=f"bold {color}")
+        note.append(text, style=MUTED)
+        self._mount(note)

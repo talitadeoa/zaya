@@ -5,8 +5,10 @@ from __future__ import annotations
 import asyncio
 import re
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from zaya.agenda.client import AgendaError
+from zaya.agent.providers.factory import normalize_provider
 from zaya.controller.contract import OrchestratorContract
 from zaya.controller.modes import PERSONAS, get_persona
 from zaya.controller.proactive import parse_reminder
@@ -70,7 +72,7 @@ class CommandsMixin(OrchestratorContract):
                 )
             except Exception as exc:
                 self.ui.error(f"falha ao indexar: {exc}")
-        elif command == "/modelo":
+        elif command in {"/modelo", "/modelos", "/model"}:
             await self._switch_model(argument)
         elif command in {"/modo", "/perfil", "/persona"}:
             await self._switch_mode(argument)
@@ -247,20 +249,118 @@ class CommandsMixin(OrchestratorContract):
         self.ui.success(f"nova sessão: {session.id}")
 
     async def _switch_model(self, argument: str) -> None:
-        if not argument:
-            self.ui.warning("uso: /modelo <provider/model>")
-            return
+        for kind, text in await self.model_messages(argument):
+            getattr(self.ui, kind)(text)
+
+    async def model_messages(self, argument: str) -> list[tuple[str, str]]:
+        """Resposta do /modelo em pares (nível, texto).
+
+        O terminal imprime cada par com ``ui.info``/``success``/``warning``; o
+        Telegram junta o texto, porque a UI de lá é ``quiet``.
+        """
         from zaya.agent.types import ModelRef
 
+        value = (argument or "").strip()
+        if not value:
+            messages, _options = await self.show_model_options()
+            return messages
+        if value.isdigit():
+            messages, options = await self.show_model_options()
+            index = int(value) - 1
+            if not 0 <= index < len(options):
+                return [("warning", f"número fora da lista (1-{len(options)})")]
+            return await self._model_switch_messages(options[index].as_ref())
+        if "/" in value:
+            try:
+                reference = ModelRef.parse(value)
+            except ValueError as exc:
+                return [("error", str(exc))]
+            return await self._model_switch_messages(reference)
+        # Sem barra: id do modelo. A lista ao vivo decide o provedor quando o
+        # id existe em apenas um deles; senão vale o provedor atual.
+        _messages, options = await self.show_model_options()
+        matches = [item for item in options if item.model == value]
+        if len(matches) == 1:
+            reference = matches[0].as_ref()
+        else:
+            reference = ModelRef(
+                provider_id=normalize_provider(self.cfg.agent.provider),
+                model_id=value,
+            )
+        return await self._model_switch_messages(reference)
+
+    async def show_model_options(self) -> tuple[list[tuple[str, str]], list]:
+        """Lista numerada dos modelos e as opções cruas (para o seletor)."""
+        from zaya.agent.catalog import MAX_CHOICES, collect_models, render_choices
+
+        catalog = await collect_models(self.cfg, client=self.client)
+        messages: list[tuple[str, str]] = []
+        if catalog.options:
+            messages.extend(("info", line) for line in render_choices(catalog.options))
+            if len(catalog.options) > MAX_CHOICES:
+                messages.append(
+                    (
+                        "info",
+                        f"… e mais {len(catalog.options) - MAX_CHOICES}; "
+                        "use o slug completo para escolher qualquer um",
+                    )
+                )
+        messages.extend(("warning", f"{name}: {error}") for name, error in catalog.errors)
+        if not catalog.options:
+            messages.append(
+                ("warning", "nenhum modelo listado; use /modelo provider/model")
+            )
+        current = catalog.options[0].slug if catalog.options else self.cfg.agent.model_slug()
+        messages.append(
+            (
+                "info",
+                f"use /modelo <número> ou /modelo provider/model · atual: {current}",
+            )
+        )
+        return messages, catalog.options
+
+    async def _model_switch_messages(self, reference) -> list[tuple[str, str]]:
+        provider = normalize_provider(reference.provider_id)
+        slug = f"{provider}/{reference.model_id}"
+        previous = f"{normalize_provider(self.cfg.agent.provider)}/{self.cfg.agent.model}"
+        self.cfg.agent.apply_model(provider, reference.model_id)
+        self.store.set_meta("model", slug)
+        messages: list[tuple[str, str]] = [
+            ("success", f"modelo da próxima mensagem: {slug}")
+        ]
+        if previous == slug:
+            return messages
+        # O AgentClient guarda o provedor pronto; sem descartar, endpoint e
+        # chave antigos continuariam valendo ate reiniciar.
+        reset = getattr(self.client, "reset_provider", None)
+        if callable(reset):
+            await reset()
+        messages.extend(self._save_model_choice(provider, reference.model_id))
+        return messages
+
+    def _save_model_choice(self, provider: str, model: str) -> list[tuple[str, str]]:
+        """Persiste a escolha no config.toml (nunca segredo, nunca meta)."""
+        from zaya.config import model_env_override, save_agent_model
+
+        messages: list[tuple[str, str]] = []
+        config_file = Path(self.cfg.config_file).expanduser() if self.cfg.config_file else None
         try:
-            model = ModelRef.parse(argument)
-        except ValueError as exc:
-            self.ui.error(str(exc))
-            return
-        self.cfg.agent.provider = model.provider_id
-        self.cfg.agent.model = model.model_id
-        self.store.set_meta("model", model.slug)
-        self.ui.success(f"modelo da próxima mensagem: {model.slug}")
+            path = save_agent_model(provider, model, config_file)
+        except (OSError, ValueError) as exc:
+            messages.append(("warning", f"não consegui salvar em config.toml: {exc}"))
+            return messages
+        messages.append(("info", f"salvo em {path}"))
+        overrides = model_env_override()
+        if overrides:
+            messages.append(
+                (
+                    "warning",
+                    "atenção: "
+                    + ", ".join(overrides)
+                    + " no ambiente/.env sobrescreve o config ao iniciar",
+                )
+            )
+        return messages
 
     async def _show_dashboard(self) -> None:
         moon = moon_details()

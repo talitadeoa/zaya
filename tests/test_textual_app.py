@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 from textual.widgets import Input, OptionList
 
+from zaya.agent.catalog import ModelOption
 from zaya.controller.modes import PERSONAS
 from zaya.interface import textual_app
 from zaya.interface.textual_app import (
@@ -16,7 +17,12 @@ from zaya.interface.textual_app import (
     TextualSink,
     ZayaTextualApp,
 )
-from zaya.interface.textual_screens import CommandPalette, ModePicker, SessionPicker
+from zaya.interface.textual_screens import (
+    CommandPalette,
+    ModelPicker,
+    ModePicker,
+    SessionPicker,
+)
 
 
 class _FakeListener:
@@ -107,6 +113,11 @@ class _FakeVoice:
         self.mode_key = "assistente"
         self.mode_name = "Zaya"
         self.selected_modes: list[str] = []
+        self.model_calls: list[str] = []
+        self.model_options: list = [
+            ModelOption(provider="x", model="y", current=True),
+            ModelOption(provider="p", model="q"),
+        ]
 
     def modes(self) -> list:
         return list(PERSONAS.values())
@@ -135,6 +146,13 @@ class _FakeVoice:
 
     def mark_session_dirty(self) -> None:
         pass
+
+    async def show_model_options(self):
+        return [("info", "lista")], list(self.model_options)
+
+    async def model_messages(self, argument: str):
+        self.model_calls.append(argument)
+        return [("success", f"modelo da próxima mensagem: {argument}")]
 
 
 async def _answer(text: str, sink) -> str:
@@ -334,6 +352,72 @@ async def test_tab_abre_modal_de_modo_sem_trocar():
         await pilot.pause()
         assert len(app.screen_stack) == 1
         assert voice.mode_key == "assistente"
+
+
+@pytest.mark.asyncio
+async def test_f6_abre_seletor_de_modelos():
+    voice = _FakeVoice()
+    app = ZayaTextualApp(_answer, voice=voice)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        await pilot.press("f6")
+        await pilot.pause()
+        assert isinstance(app.screen, ModelPicker)
+        assert voice.model_calls == []
+
+        await pilot.press("escape")
+        await pilot.pause()
+        assert len(app.screen_stack) == 1
+        assert voice.model_calls == []
+
+
+@pytest.mark.asyncio
+async def test_seletor_de_modelos_aplica_a_escolha():
+    voice = _FakeVoice()
+    app = ZayaTextualApp(_answer, voice=voice)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        await pilot.press("f6")
+        await pilot.pause()
+        assert isinstance(app.screen, ModelPicker)
+
+        await pilot.press("down")
+        await pilot.press("enter")
+        for _ in range(20):
+            if voice.model_calls:
+                break
+            await pilot.pause()
+
+        assert voice.model_calls == ["p/q"]
+        assert len(app.screen_stack) == 1
+
+
+@pytest.mark.asyncio
+async def test_modelo_com_argumento_troca_direto():
+    voice = _FakeVoice()
+    app = ZayaTextualApp(_answer, voice=voice)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        app._handle_modelo_command("/modelo p/q")
+        for _ in range(20):
+            if voice.model_calls:
+                break
+            await pilot.pause()
+
+        assert voice.model_calls == ["p/q"]
+        assert len(app.screen_stack) == 1
+
+
+@pytest.mark.asyncio
+async def test_modelo_sem_argumento_abre_seletor():
+    voice = _FakeVoice()
+    app = ZayaTextualApp(_answer, voice=voice)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        app._handle_modelo_command("/modelo")
+        await pilot.pause()
+        assert isinstance(app.screen, ModelPicker)
+        assert voice.model_calls == []
 
 
 @pytest.mark.asyncio
@@ -740,3 +824,18 @@ async def test_markdown_pode_ser_desligado_na_config():
         body = app._body("# Título\n\n**forte**")
         assert not hasattr(body, "elements")
         assert "# Título" in body.plain
+
+
+# ------------------------------------------------------------------- modelos
+@pytest.mark.asyncio
+async def test_f6_sem_modelos_avisa_e_nao_abre_modal():
+    class SemModelos(_FakeVoice):
+        async def show_model_options(self):
+            return [("warning", "nenhum modelo")], []
+
+    app = ZayaTextualApp(_answer, voice=SemModelos())
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        await pilot.press("f6")
+        await pilot.pause()
+        assert len(app.screen_stack) == 1

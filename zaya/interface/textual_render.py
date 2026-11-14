@@ -11,6 +11,9 @@ CYAN = "#8fb0c9"
 MINT = "#8fbfae"
 LILAC = "#c9bce8"
 MUTED = "#7b8494"
+# Avisos e erros: tons empoeirados, sem amarelo/vermelho de terminal.
+WARN = "#d3b184"
+ERROR = "#d4939c"
 TEXT = "#e3e6eb"
 BG = "#0f1115"
 SURFACE = "#151922"
@@ -114,18 +117,20 @@ def _welcome_art(max_cols: int = 78) -> list[list[tuple[str, str]]]:
 
 
 _SHORTCUTS = (
-    "i digitar · f falar · Tab modo · F1 comandos · F2 sessões · "
+    "i digitar · f falar · Tab modo · F1 comandos · F2 sessões · F6 modelo · "
     "F4 seleção · Ctrl+C copiar · F5 painéis · Esc parar"
 )
 
 _HELP = (
     "Modo normal: i digitar · t texto · m mudo · v voz on/off · f falar · "
     "c escuta contínua · Tab alterna o modo · Esc interromper. No modo insert, "
-    "Esc volta ao normal. F1 paleta · F2 sessões · F3 modo · Ctrl+L limpar. "
+    "Esc volta ao normal. F1 paleta · F2 sessões · F3 modo · F6 modelo · Ctrl+L limpar. "
     "F4 liga ou desliga a seleção: arraste sobre o texto para destacar e copiar; "
     "Ctrl+C copia de novo o que estiver selecionado. "
     "F5 mostra ou oculta a lua e as metas. "
-    "Cada modo tem o próprio histórico de sessões; /novo abre uma sessão nova. "
+    "Cada modo tem o próprio histórico de sessões; /novo (ou /nova) abre uma sessão nova. "
+    "/modelo lista os modelos disponíveis e troca pelo número ou pelo slug "
+    "provider/model; a escolha é salva no config.toml. "
     "/consolidar [hoje|ontem|AAAA-MM-DD] salva a memória do dia no Second Brain. "
     "/chines on|off mostra 中文 + pinyin de cada mensagem. "
     "/tokens mostra o consumo de tokens por turno e o total da sessão."

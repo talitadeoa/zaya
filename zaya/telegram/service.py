@@ -96,9 +96,15 @@ class TelegramService:
         if text in {"/start", "/iniciar"}:
             await self.client.send_message(
                 "Oi! Sou a Zaya. Manda texto ou áudio que eu executo e te aviso "
-                "aqui quando terminar.",
+                "aqui quando terminar. Se quiser começar do zero, manda /novo.",
                 chat_id=chat_id,
             )
+            return
+        if text.lower() in {"/novo", "/nova", "/novo chat", "/nova sessao", "/nova sessão"}:
+            await self._start_new_session(chat_id)
+            return
+        if text == "/modelo" or text.startswith("/modelo ") or text in {"/modelos", "/model"}:
+            await self._handle_model_command(text, chat_id)
             return
         if not text:
             text = await self._transcribe_message(message)
@@ -123,6 +129,44 @@ class TelegramService:
             )
         else:
             await self.client.send_message("Concluído.", chat_id=chat_id)
+
+    async def _start_new_session(self, chat_id: Any) -> None:
+        """`/novo` no Telegram = mesma coisa que `/novo` no terminal."""
+        create = getattr(self.orchestrator, "new_session", None)
+        if create is None:
+            await self.client.send_message(
+                "Esse canal não sabe criar sessão nova.", chat_id=chat_id
+            )
+            return
+        try:
+            await create()
+        except Exception as exc:
+            self.logger.exception("falha ao criar sessão")
+            await self.client.send_message(f"Não consegui criar: {exc}", chat_id=chat_id)
+            return
+        await self.client.send_message("Pronto, sessão nova. Contexto zerado.", chat_id=chat_id)
+
+    async def _handle_model_command(self, text: str, chat_id: Any) -> None:
+        """`/modelo` no Telegram: lista numerada ou troca pelo número/slug."""
+        switch = getattr(self.orchestrator, "model_messages", None)
+        if not callable(switch):
+            await self.client.send_message(
+                "Esse canal não sabe trocar de modelo.", chat_id=chat_id
+            )
+            return
+        argument = text.partition(" ")[2].strip()
+        if text.strip() in {"/modelos", "/model"} and not argument:
+            argument = ""
+        try:
+            messages = await switch(argument)
+        except Exception as exc:
+            self.logger.exception("falha ao trocar modelo")
+            await self.client.send_message(
+                f"Não consegui trocar o modelo: {exc}", chat_id=chat_id
+            )
+            return
+        lines = [body for kind, body in messages if kind != "info" or body]
+        await self.client.send_message("\n".join(lines) or "ok", chat_id=chat_id)
 
     async def _transcribe_message(self, message: dict[str, Any]) -> str:
         media = message.get("voice") or message.get("audio")

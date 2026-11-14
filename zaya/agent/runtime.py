@@ -8,6 +8,7 @@ publica eventos tipados consumidos pela interface.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import secrets
@@ -131,6 +132,18 @@ class AgentClient:
             raise AgentError("tempo limite ao consultar a lista de modelos") from exc
         except ProviderError as exc:
             raise AgentError(str(exc)) from exc
+
+    async def reset_provider(self) -> None:
+        """Descarta o provedor em cache para a proxima chamada reler a config.
+
+        Usado ao trocar de modelo: sem isso o endpoint/chave antigos ficariam
+        valendo ate reiniciar.
+        """
+        if self._provider is not None:
+            provider = self._provider
+            self._provider = None
+            with contextlib.suppress(Exception):
+                await provider.aclose()
 
     # ---------------------------------------------------------------- sessions
     def _session(self, session_id: str) -> AgentSession | None:

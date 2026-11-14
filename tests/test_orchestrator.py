@@ -819,3 +819,155 @@ async def test_fecho_da_noite_sem_insight_quando_o_modelo_falha(orch):
     assert "Feito hoje" in mensagem
     assert "Você fechou" not in mensagem
 
+
+# ------------------------------------------------------------------- modelos
+def _catalogo(*slugs: str, current: str = "deepseek/deepseek-flash"):
+    from zaya.agent.catalog import ModelCatalog, ModelOption
+
+    options = []
+    for index, slug in enumerate(slugs):
+        provider, _, model = slug.partition("/")
+        options.append(
+            ModelOption(provider, model, current=slug == current or (index == 0 and not current))
+        )
+    return ModelCatalog(options=options)
+
+
+@pytest.mark.asyncio
+async def test_modelo_sem_argumento_lista_numerada(orch, monkeypatch):
+    import zaya.agent.catalog as catalog_module
+
+    async def fake(cfg, *, client=None, timeout=6.0):
+        return _catalogo("deepseek/deepseek-flash", "deepseek/deepseek-chat")
+
+    monkeypatch.setattr(catalog_module, "collect_models", fake)
+
+    responses = await orch.model_messages("")
+
+    texts = [text for _kind, text in responses]
+    assert " 1. ● deepseek/deepseek-flash" in texts
+    assert " 2. ○ deepseek/deepseek-chat" in texts
+    assert any("use /modelo <número>" in text for text in texts)
+
+
+@pytest.mark.asyncio
+async def test_comando_modelo_imprime_a_lista_no_terminal(orch, monkeypatch):
+    import zaya.agent.catalog as catalog_module
+
+    async def fake(cfg, *, client=None, timeout=6.0):
+        return _catalogo("deepseek/deepseek-flash")
+
+    monkeypatch.setattr(catalog_module, "collect_models", fake)
+
+    await orch._handle_command("/modelo")
+
+    infos = [args[0] for args, _kwargs in orch.ui.called("info")]
+    assert any("deepseek/deepseek-flash" in text for text in infos)
+
+
+@pytest.mark.asyncio
+async def test_modelo_por_numero_troca_e_persiste(orch, monkeypatch, tmp_path):
+    import zaya.agent.catalog as catalog_module
+
+    async def fake(cfg, *, client=None, timeout=6.0):
+        return _catalogo("deepseek/deepseek-flash", "openai/gpt-5")
+
+    monkeypatch.setattr(catalog_module, "collect_models", fake)
+    alvo = tmp_path / "config.toml"
+    alvo.write_text('[agent]\nprovider = "deepseek"\nmodel = "deepseek-flash"\n', encoding="utf-8")
+    orch.cfg.config_file = str(alvo)
+
+    responses = await orch.model_messages("2")
+
+    assert orch.cfg.agent.provider == "openai"
+    assert orch.cfg.agent.model == "gpt-5"
+    assert any("modelo da próxima mensagem: openai/gpt-5" in text for _k, text in responses)
+    assert "openai" in alvo.read_text(encoding="utf-8")
+
+
+@pytest.mark.asyncio
+async def test_modelo_por_numero_fora_da_lista_avisa(orch, monkeypatch):
+    import zaya.agent.catalog as catalog_module
+
+    async def fake(cfg, *, client=None, timeout=6.0):
+        return _catalogo("deepseek/deepseek-flash")
+
+    monkeypatch.setattr(catalog_module, "collect_models", fake)
+
+    responses = await orch.model_messages("9")
+
+    assert responses[0][0] == "warning"
+    assert "fora da lista" in responses[0][1]
+    assert orch.cfg.agent.model == "deepseek-flash"
+
+
+@pytest.mark.asyncio
+async def test_modelo_por_slug_troca_sem_consultar_catalogo(orch, monkeypatch, tmp_path):
+    import zaya.agent.catalog as catalog_module
+
+    def explode(*args, **kwargs):  # pragma: no cover - so falha se for chamado
+        raise AssertionError("slug explícito não deve listar provedores")
+
+    monkeypatch.setattr(catalog_module, "collect_models", explode)
+    orch.cfg.config_file = str(tmp_path / "config.toml")
+
+    responses = await orch.model_messages("anthropic/claude-x")
+
+    assert orch.cfg.agent.provider == "anthropic"
+    assert orch.cfg.agent.model == "claude-x"
+    assert any("claude-x" in text for _k, text in responses)
+    assert any(kind == "info" and "salvo em" in text for kind, text in responses)
+
+
+@pytest.mark.asyncio
+async def test_modelo_sem_barra_resolve_provedor_pela_lista(orch, monkeypatch):
+    import zaya.agent.catalog as catalog_module
+
+    async def fake(cfg, *, client=None, timeout=6.0):
+        return _catalogo("deepseek/deepseek-flash", "openai/gpt-5")
+
+    monkeypatch.setattr(catalog_module, "collect_models", fake)
+
+    await orch.model_messages("gpt-5")
+
+    assert orch.cfg.agent.provider == "openai"
+    assert orch.cfg.agent.model == "gpt-5"
+
+
+@pytest.mark.asyncio
+async def test_modelo_id_desconhecido_cai_no_provedor_atual(orch, monkeypatch):
+    import zaya.agent.catalog as catalog_module
+
+    async def fake(cfg, *, client=None, timeout=6.0):
+        return _catalogo("deepseek/deepseek-flash")
+
+    monkeypatch.setattr(catalog_module, "collect_models", fake)
+    orch.cfg.config_file = ""
+
+    await orch.model_messages("modelo-novo")
+
+    assert orch.cfg.agent.provider == "deepseek"
+    assert orch.cfg.agent.model == "modelo-novo"
+
+
+@pytest.mark.asyncio
+async def test_modelo_slug_invalido_vira_erro(orch):
+    responses = await orch.model_messages("sem-modelo/")
+
+    assert responses[0][0] == "error"
+    assert orch.cfg.agent.model == "deepseek-flash"
+
+
+@pytest.mark.asyncio
+async def test_modelo_reinicia_provedor_em_cache(orch, tmp_path):
+    chamadas: list[bool] = []
+
+    async def reset():
+        chamadas.append(True)
+
+    orch.client.reset_provider = reset
+    orch.cfg.config_file = str(tmp_path / "config.toml")
+
+    await orch.model_messages("deepseek/deepseek-chat")
+
+    assert chamadas == [True]

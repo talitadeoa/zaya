@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import os
+import tomllib
 
-from zaya.config import Config, write_default_config
+import pytest
+
+from zaya.config import Config, model_env_override, save_agent_model, write_default_config
 
 
 def test_defaults(isolated_env):
@@ -144,3 +147,69 @@ def test_write_default_config(tmp_path):
     assert written.read_text(encoding="utf-8") == "# alterado\n"
     write_default_config(target, force=True)
     assert "deepseek-flash" in written.read_text(encoding="utf-8")
+
+
+def test_save_agent_model_preserva_comentarios_e_faz_backup(tmp_path):
+    target = tmp_path / "config.toml"
+    original = (
+        "# topo\n"
+        "[agent]\n"
+        "# provedor em uso\n"
+        'provider = "custom"  # comentario\n'
+        'model = "antigo"\n'
+        'api_key = "segredo"\n'
+        'base_url = ""\n\n'
+        "[tts]\n"
+        'provider = "edge"\n'
+    )
+    target.write_text(original, encoding="utf-8")
+
+    saved = save_agent_model("openai", "gpt-x", target)
+
+    text = saved.read_text(encoding="utf-8")
+    assert "# topo" in text
+    assert "# provedor em uso" in text
+    assert 'provider = "openai" # comentario' in text
+    assert 'model = "gpt-x"' in text
+    # nada alem das duas chaves muda: nem segredo, nem outras secoes.
+    assert 'api_key = "segredo"' in text
+    assert '[tts]\nprovider = "edge"' in text
+    backup = target.with_name("config.toml.bak")
+    assert backup.read_text(encoding="utf-8") == original
+
+    cfg = Config.load(config_path=target, env={"ZAYA_DATA_DIR": str(tmp_path / "data")})
+    assert cfg.agent.provider == "openai"
+    assert cfg.agent.model_slug() == "openai/gpt-x"
+
+
+def test_save_agent_model_adiciona_secao_quando_falta(tmp_path):
+    target = tmp_path / "config.toml"
+    target.write_text('[tts]\nprovider = "say"\n', encoding="utf-8")
+
+    save_agent_model("deepseek", "deepseek-flash", target)
+
+    text = target.read_text(encoding="utf-8")
+    assert "[agent]" in text
+    # a seção nova fica depois da existente, sem quebrar o TOML
+    data = tomllib.loads(text)
+    assert data["agent"] == {"provider": "deepseek", "model": "deepseek-flash"}
+    assert data["tts"]["provider"] == "say"
+
+    cfg = Config.load(config_path=target, env={"ZAYA_DATA_DIR": str(tmp_path / "data")})
+    assert cfg.agent.model_slug() == "deepseek/deepseek-flash"
+
+
+def test_save_agent_model_exige_provider_e_model(tmp_path):
+    with pytest.raises(ValueError, match="obrigatórios"):
+        save_agent_model("", "x", tmp_path / "config.toml")
+    with pytest.raises(ValueError, match="obrigatórios"):
+        save_agent_model("openai", "  ", tmp_path / "config.toml")
+
+
+def test_model_env_override_lista_apenas_variaveis_preenchidas():
+    assert model_env_override({}) == []
+    assert model_env_override({"ZAYA_AGENT_MODEL": "  "}) == []
+    assert model_env_override({"ZAYA_AGENT_MODEL": "gpt-x"}) == ["ZAYA_AGENT_MODEL"]
+    assert model_env_override(
+        {"ZAYA_AGENT_PROVIDER": "openai", "ZAYA_AGENT_MODEL": "gpt-x"}
+    ) == ["ZAYA_AGENT_PROVIDER", "ZAYA_AGENT_MODEL"]

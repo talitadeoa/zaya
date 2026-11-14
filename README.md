@@ -129,8 +129,12 @@ ZAYA_AGENT_API_KEY=...       # vale para qualquer provedor
 ```
 
 Se um provedor não estiver nos presets, use `provider = "custom"` e informe o
-`base_url`. Dá para trocar em tempo real com `/modelo provider/model`, sem
-reiniciar.
+`base_url`. Para trocar sem editar nada, use `/modelo`: sem argumento, lista os
+modelos de todos os provedores que têm chave; com o número (`/modelo 3`) ou o
+slug (`/modelo openai/gpt-4o`) troca na hora. No app, `F6` abre o mesmo seletor.
+A escolha fica salva em `config.toml` (com uma cópia `.bak`) e vale no próximo
+turno e na próxima abertura — a não ser que `ZAYA_AGENT_PROVIDER` ou
+`ZAYA_AGENT_MODEL` estejam definidos no `.env`, que têm prioridade.
 
 Se preferir abrir com um duplo clique, o `Abrir Zaya.command` já aponta para a
 configuração local em `~/zaya`.
@@ -410,8 +414,8 @@ acumulado da sessão — incluindo quantos vieram de cache. `/tokens` lista os
 |---|---|
 | `/ajuda` · `/status` · `/tokens` | comandos · provedor, sessão, modelo · consumo |
 | `/buscar <termo>` · `/nota <título>` | Second Brain |
-| `/indexar` · `/novo` · `/consolidar [dia]` | reindexa · nova conversa · memória do dia |
-| `/modelo <provider/model>` · `/modo [nome]` | trocar modelo · trocar persona |
+| `/indexar` · `/novo` (`/nova`) · `/consolidar [dia]` | reindexa · nova conversa · memória do dia |
+| `/modelo [número\|slug]` · `/modo [nome]` | lista/troca o modelo · troca persona (F6 no app) |
 | `/bolsa <ticker>` · `/carteira` | cotação · sua carteira |
 | `/metas` · `/painel` · `/foco` | foco do ciclo e metas de longo prazo |
 | `/tarefas [sync\|fazer\|concluir\|limpar]` | tarefas de longo prazo |
