@@ -390,10 +390,12 @@ rápido:
    começo e é reutilizado pelo cache do provedor.
 2. **bloco dinâmico** — data, hora, pedido curto e modo rápido. Vai no fim.
 
-O histórico é comprimido num resumo quando passa do limite, e o catálogo de
-ferramentas é filtrado por sessão — leitura sempre disponível, escrita e shell
-entram quando o pedido pede ação. Resultados grandes de ferramenta são vistos
-inteiros no turno atual, mas limitados no histórico.
+O histórico é comprimido num resumo quando passa do limite. O catálogo de
+ferramentas é fixo: todos os modos recebem o mesmo conjunto (`read`, `write`,
+`edit`, `list`, `glob`, `grep`, `bash`) em todos os turnos. Não há filtro por
+modo nem por tipo de pedido — quem quiser desligar ferramentas usa
+`agent.tools = false`. Resultados grandes de ferramenta são vistos inteiros no
+turno atual, mas limitados no histórico.
 
 Tudo isso é ajustável em `[agent]` e `[secondbrain]`. `/status` mostra a economia
 configurada e, quando o provedor informa usage, os tokens do último turno e o

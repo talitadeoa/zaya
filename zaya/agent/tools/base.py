@@ -138,5 +138,9 @@ class ToolSet:
     def __iter__(self):
         return iter(self.tools.values())
 
+    def names(self) -> tuple[str, ...]:
+        """Nomes das ferramentas na ordem de registro."""
+        return tuple(self.tools)
+
     def __len__(self) -> int:
         return len(self.tools)

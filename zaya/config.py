@@ -48,8 +48,6 @@ class AgentConfig(BaseModel):
     allow_outside_project: bool = True
     # Modelo pequeno para pedidos curtos (vazio = sempre o modelo principal).
     fast_model: str = ""
-    # Envia so as ferramentas que o turno pode precisar.
-    tool_filter: bool = True
     # Marca o prefixo estavel do prompt para cache (Anthropic).
     cache_prompt: bool = True
     # Depois desse numero de mensagens, o historico antigo vira um resumo.
@@ -515,7 +513,6 @@ _ENV_MAP: dict[str, tuple[str, str]] = {
     "ZAYA_AGENT_STALL_TIMEOUT": ("agent", "stall_timeout"),
     "ZAYA_AGENT_SUMMARY_CHARS": ("agent", "summary_chars"),
     "ZAYA_AGENT_TEMPERATURE": ("agent", "temperature"),
-    "ZAYA_AGENT_TOOL_FILTER": ("agent", "tool_filter"),
     "ZAYA_AGENT_TOOLS": ("agent", "tools"),
     "ZAYA_AGENT_TOOL_RESULT_CHARS": ("agent", "tool_result_chars"),
     "ZAYA_AGENT_USAGE": ("agent", "usage"),
@@ -724,8 +721,6 @@ tools = true
 allow_outside_project = true
 # Modelo pequeno para pedidos curtos (vazio = sempre o principal).
 fast_model = ""
-# So envia ao modelo as ferramentas que o turno pode precisar.
-tool_filter = true
 # Cacheia o prefixo estavel do prompt (persona + preferencias).
 cache_prompt = true
 # Depois disso o historico antigo vira um resumo compacto.

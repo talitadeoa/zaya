@@ -10,7 +10,6 @@ from zaya.agenda.client import AgendaError
 from zaya.controller.contract import OrchestratorContract
 from zaya.controller.modes import PERSONAS, get_persona
 from zaya.controller.proactive import parse_reminder
-from zaya.controller.prompt import initial_tools
 from zaya.finance.quotes import FinanceError, fetch_quote, format_quote
 from zaya.focus import moon_details, period_label, principal_phase_today
 from zaya.tasks.store import Task
@@ -176,7 +175,7 @@ class CommandsMixin(OrchestratorContract):
             f"{self.cfg.secondbrain.context_chars} chars · "
             f"histórico≤{self.cfg.agent.max_history_messages} msgs/"
             f"{self.cfg.agent.max_history_chars} chars · "
-            f"ferramentas={'filtradas' if self.cfg.agent.tool_filter else 'todas'} · "
+            f"ferramentas={'todas' if self.cfg.agent.tools else 'desligadas'} · "
             f"resultado≤{self.cfg.agent.tool_result_chars} chars · "
             f"resumo={self.cfg.agent.history_summary} · "
             f"cache={'on' if self.cfg.agent.cache_prompt else 'off'} · "
@@ -239,7 +238,6 @@ class CommandsMixin(OrchestratorContract):
             self.store.set_session(conversation_id, session.id)
             self.conversation_id = conversation_id
             self.session_id = session.id
-            self._tool_scope = initial_tools(self.persona.key)
             self._last_assistant_message_id = None
             self._resume_context = ""
             self.store.set_meta("mode", self.persona.key)

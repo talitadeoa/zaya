@@ -46,23 +46,6 @@ ENVIRONMENT_NOTE = (
 # Limite do bloco de preferencias no prefixo cacheado.
 PREFERENCES_MAX_CHARS = 1200
 
-BASE_TOOLS = ("read", "list", "glob", "grep")
-EDIT_TOOLS = ("write", "edit")
-SHELL_TOOLS = ("bash",)
-ALL_TOOL_ORDER = (*BASE_TOOLS, *EDIT_TOOLS, *SHELL_TOOLS)
-
-# Modos que normalmente editam arquivos do projeto.
-EDITING_MODES = {"pesquisadora", "trabalhadora"}
-
-ACTION_HINTS = re.compile(
-    r"\b(escrev\w*|edit\w*|cri[ae]\w*|corrij\w*|corrig\w*|implement\w*|"
-    r"refator\w*|atualiz\w*|instal\w*|rod[ae]\w*|execut\w*|bash|script|"
-    r"commit\w*|delet\w*|remov\w*|apag\w*|mud[ae]\w*|alter\w*|ger[ae]\w*|"
-    r"salv\w*|export\w*|coloc\w*|adicion\w*|insir\w*|acrescent\w*|"
-    r"renome\w*|mov[ae]\w*|organiz\w*)\b",
-    re.IGNORECASE,
-)
-
 FAST_TASK_HINTS = re.compile(
     r"\b(lembr\w*|anot\w*|registr\w*|agend\w*|tarefa\w*|marc\w*|"
     r"avis\w*|toque\w*|paus\w*|pr[óo]xim[ao]\w*|recad\w*|"
@@ -178,33 +161,6 @@ def compose_system(
         static="\n\n---\n\n".join(static_parts),
         dynamic="\n\n".join(dynamic_parts),
     )
-
-
-def initial_tools(persona_key: str) -> set[str]:
-    """Conjunto inicial de ferramentas da sessao, conforme o modo."""
-    names = set(BASE_TOOLS)
-    if persona_key in EDITING_MODES:
-        names.update(EDIT_TOOLS)
-    return names
-
-
-def tools_for_turn(
-    persona_key: str, text: str, *, enabled: bool = True
-) -> tuple[str, ...] | None:
-    """Devolve so as ferramentas que este turno tem chance de usar.
-
-    ``None`` significa "todas" (filtro desligado). Leitura e busca ficam
-    sempre disponiveis; escrita e shell entram por modo ou por verbo de acao.
-    O chamador deve acumular o resultado na sessao: assim o catalogo nao muda
-    a cada turno e o cache do prefixo continua valendo.
-    """
-    if not enabled:
-        return None
-    names = initial_tools(persona_key)
-    if ACTION_HINTS.search(text or ""):
-        names.update(EDIT_TOOLS)
-        names.update(SHELL_TOOLS)
-    return tuple(name for name in ALL_TOOL_ORDER if name in names)
 
 
 def route_model(text: str, fast_model: str, provider: str) -> ModelRef | None:

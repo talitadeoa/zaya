@@ -136,7 +136,6 @@ class OrchestratorContract(ABC):
     _last_assistant_message_id: str | None
     _transition_lock: asyncio.Lock
     _resume_context: str
-    _tool_scope: set[str]
 
     # --- memoria diaria ---
     @abstractmethod

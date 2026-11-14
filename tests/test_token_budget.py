@@ -27,9 +27,7 @@ from zaya.controller.modes import PERSONAS
 from zaya.controller.prompt import (
     clean_preferences,
     compose_system,
-    initial_tools,
     route_model,
-    tools_for_turn,
 )
 
 
@@ -80,32 +78,28 @@ def test_diretriz_concisa_entra_no_prefixo_e_pedido_curto_no_fim():
 
 
 # ----------------------------------------------------------------- ferramentas
-def test_ferramentas_do_turno_so_incluem_o_necessario():
-    leitura = set(tools_for_turn("assistente", "qual a capital da França?"))
-    assert leitura == {"read", "list", "glob", "grep"}
-    assert "bash" not in leitura
+def test_catalogo_completo_independe_do_modo_e_do_pedido():
+    """A capacidade nao varia por modo nem por verbo: o catalogo e unico.
 
-    acao = set(tools_for_turn("assistente", "edite o README e rode os testes"))
-    assert {"write", "edit", "bash"} <= acao
+    Foi uma decisao explicita: em vez de adivinhar intencao pelo texto ou
+    esconder ferramentas por persona, todo modo recebe o conjunto completo.
+    Quem restringe e ``agent.tools=false``.
+    """
+    from pathlib import Path
 
-    pesquisa = set(tools_for_turn("pesquisadora", "resuma este texto"))
-    assert {"write", "edit"} <= pesquisa
-    assert "bash" not in pesquisa
+    from zaya.agent.tools import ToolContext, build_tools
 
-    assert tools_for_turn("assistente", "oi", enabled=False) is None
+    tools = build_tools(ToolContext(Path(".")))
+    assert tools.names() == ("read", "write", "edit", "list", "glob", "grep", "bash")
 
 
-def test_catalogo_inicial_por_modo():
-    assert initial_tools("assistente") == {"read", "list", "glob", "grep"}
-    assert initial_tools("investidora") == {"read", "list", "glob", "grep"}
-    assert initial_tools("pesquisadora") == {
-        "read",
-        "list",
-        "glob",
-        "grep",
-        "write",
-        "edit",
-    }
+def test_sem_filtro_por_turno_ou_por_modo():
+    """Nao existe mais heuristica de intencao nem escopo por persona."""
+    from zaya.controller import prompt
+
+    assert not hasattr(prompt, "tools_for_turn")
+    assert not hasattr(prompt, "ACTION_HINTS")
+    assert not hasattr(prompt, "EDITING_MODES")
 
 
 def test_roteamento_para_modelo_pequeno():

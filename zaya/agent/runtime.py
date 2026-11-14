@@ -518,7 +518,7 @@ class AgentClient:
             session.messages.append(ChatMessage(role="user", content=text))
             user_index = len(session.messages) - 1
             session.allowed_tools = (
-                set(tool_names) if tool_names is not None else None
+                set(tool_names) if tool_names is not None else set(self.tools.names())
             )
             system_text = system
             if session.summary:
@@ -657,7 +657,8 @@ class AgentClient:
             session.cancel.clear()
             session.task = None
             session.permissions.clear()
-            session.allowed_tools = None
+            # Mantem o catalogo permitido entre turnos: a capacidade nao muda
+            # por turno, so o conjunto de ferramentas registradas.
             # Nao ressuscita uma sessao apagada durante o turno.
             if self._sessions.get(session.id) is session:
                 self._save(session)

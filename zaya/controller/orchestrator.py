@@ -28,7 +28,6 @@ from zaya.controller.goals import GoalTracker
 from zaya.controller.initiative import InitiativeMixin
 from zaya.controller.memory import MemoryMixin
 from zaya.controller.modes import PERSONAS, Persona, get_persona, resolve_mode
-from zaya.controller.prompt import initial_tools
 from zaya.controller.registration import RegistrationMixin
 from zaya.controller.speech import SpeechMixin
 from zaya.controller.turns import TurnMixin
@@ -86,8 +85,6 @@ class Orchestrator(
         self.persona = resolve_mode(
             store.get_meta("mode") or cfg.interface.default_mode
         )
-        # Catalogo de ferramentas acumulado na sessao (estavel para o cache).
-        self._tool_scope = initial_tools(self.persona.key)
 
         self.conversation_id: int | None = None
         self.session_id: str = ""
@@ -500,7 +497,6 @@ class Orchestrator(
             self.persona = persona
             self.conversation_id = conversation_id
             self.session_id = sid
-            self._tool_scope = initial_tools(persona.key)
             self._last_assistant_message_id = None
             self.store.set_meta("mode", persona.key)
             await self._clear_stale_session(sid)

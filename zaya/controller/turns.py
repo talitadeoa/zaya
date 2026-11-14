@@ -35,10 +35,8 @@ from zaya.controller.intents import (
 from zaya.controller.modes import parse_mode_switch
 from zaya.controller.proactive import parse_reminder
 from zaya.controller.prompt import (
-    ALL_TOOL_ORDER,
     compose_system,
     route_model,
-    tools_for_turn,
 )
 from zaya.controller.smalltalk import fast_reply
 from zaya.spotify.controller import SpotifyCommand, SpotifyError
@@ -229,20 +227,10 @@ class TurnMixin(OrchestratorContract):
             self.cfg.agent.fast_model,
             normalize_provider(self.cfg.agent.provider),
         )
-        desired_tools = tools_for_turn(
-            self.persona.key,
-            text,
-            enabled=self.cfg.agent.tool_filter,
-        )
-        if desired_tools is None:
-            tool_names = None
-        else:
-            # Acumula na sessao: o catalogo muda no maximo quando aparece uma
-            # acao nova, preservando o cache do prefixo entre turnos.
-            self._tool_scope.update(desired_tools)
-            tool_names = tuple(
-                name for name in ALL_TOOL_ORDER if name in self._tool_scope
-            )
+        # Sem filtro por turno: ``None`` significa "todo o catalogo", que o
+        # runtime resolve para as ferramentas registradas. A capacidade nao
+        # varia por modo nem por verbo de acao.
+        tool_names = None
         # Tudo que muda por turno (hora, pedido curto, modo rápido) vai no fim
         # da mensagem do usuário. O system fica 100% estável para o cache.
         if composed.dynamic:
