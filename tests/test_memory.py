@@ -262,3 +262,78 @@ def test_migrates_old_database_without_mode(tmp_path):
         # o indice foi recriado cobrindo a coluna mode
         indexes = {row["name"] for row in store._conn.execute("PRAGMA index_list(conversations)")}
         assert "idx_conv_project" in indexes
+
+
+def test_conversations_are_separated_by_channel(tmp_path):
+    """Terminal e Telegram nao dividem conversa, mesmo com pasta e modo iguais."""
+    store = MemoryStore(tmp_path / "zaya.db")
+    try:
+        cli = store.get_or_create_conversation("/proj", "assistente")
+        tg = store.get_or_create_conversation("/proj", "assistente", "telegram")
+        assert int(cli["id"]) != int(tg["id"])
+        assert cli["channel"] == "cli"
+        assert tg["channel"] == "telegram"
+
+        store.add_turn(int(tg["id"]), "user", "só no telegram")
+        assert store.turns(int(cli["id"])) == []
+        assert [t["text"] for t in store.turns(int(tg["id"]))] == ["só no telegram"]
+
+        # Cada canal tem a sua "conversa atual" e a sua lista.
+        assert int(store.current_conversation("/proj", "assistente")["id"]) == int(cli["id"])
+        assert int(
+            store.current_conversation("/proj", "assistente", "telegram")["id"]
+        ) == int(tg["id"])
+        assert len(store.list_conversations("/proj", "assistente")) == 1
+        assert len(store.list_conversations("/proj", "assistente", "telegram")) == 1
+
+        # Nova sessao no telegram nao mexe na atual do terminal.
+        nova = store.create_conversation("/proj", title="nova", channel="telegram")
+        assert int(
+            store.current_conversation("/proj", "assistente", "telegram")["id"]
+        ) == int(nova["id"])
+        assert int(store.current_conversation("/proj", "assistente")["id"]) == int(cli["id"])
+
+        # O modo mais rico tambem e por canal.
+        store.add_turn(int(nova["id"]), "user", "oi")
+        assert store.richest_mode("/proj", "telegram") == "assistente"
+        assert store.richest_mode("/proj") is None
+    finally:
+        store.close()
+
+
+def test_channel_migration_defaults_existing_conversations_to_cli(tmp_path):
+    """Banco v4 (sem channel) migra com as conversas antigas no canal cli."""
+    path = tmp_path / "zaya.db"
+    conn = sqlite3.connect(path)
+    with conn:
+        conn.execute(
+            """
+            CREATE TABLE conversations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_path TEXT NOT NULL,
+                mode TEXT NOT NULL DEFAULT 'assistente',
+                agent_session_id TEXT,
+                title TEXT,
+                is_current INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            "INSERT INTO conversations (project_path, mode, is_current, created_at, updated_at)"
+            " VALUES ('/proj', 'assistente', 1, '2026-01-01', '2026-01-01')"
+        )
+        conn.execute("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT)")
+        conn.execute("INSERT INTO meta (key, value) VALUES ('schema_version', '4')")
+    conn.close()
+
+    store = MemoryStore(path)
+    try:
+        assert store.schema_version() == SCHEMA_VERSION
+        atual = store.current_conversation("/proj", "assistente")
+        assert atual is not None and atual["channel"] == "cli"
+        tg = store.current_conversation("/proj", "assistente", "telegram")
+        assert tg is None
+    finally:
+        store.close()

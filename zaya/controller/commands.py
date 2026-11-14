@@ -40,7 +40,7 @@ class CommandsMixin(OrchestratorContract):
             await self._show_status()
         elif command in {"/tokens", "/consumo"}:
             await self._show_tokens()
-        elif command == "/novo":
+        elif command in {"/novo", "/nova"}:
             await self._new_session()
         elif command == "/sessao":
             self.ui.info(f"sessão do agente: {self.session_id}")
@@ -228,7 +228,10 @@ class CommandsMixin(OrchestratorContract):
     async def _new_session(self) -> None:
         async with self._transition_lock:
             conv = self.store.create_conversation(
-                str(self.directory), title="Nova sessão", mode=self.persona.key
+                str(self.directory),
+                title="Nova sessão",
+                mode=self.persona.key,
+                channel=self.channel,
             )
             conversation_id = int(conv["id"])
             session = await self.client.create_session(
@@ -240,7 +243,7 @@ class CommandsMixin(OrchestratorContract):
             self.session_id = session.id
             self._last_assistant_message_id = None
             self._resume_context = ""
-            self.store.set_meta("mode", self.persona.key)
+            self.store.set_meta(self._mode_meta_key(), self.persona.key)
         self.ui.success(f"nova sessão: {session.id}")
 
     async def _switch_model(self, argument: str) -> None:

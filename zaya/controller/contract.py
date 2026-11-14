@@ -68,6 +68,8 @@ class OrchestratorContract(ABC):
     persona: Persona
     conversation_id: int | None
     session_id: str
+    # Canal de origem (cli, telegram, ...): separa historico e modo por canal.
+    channel: str
 
     goals: GoalTracker
     watchlist: Watchlist
@@ -207,6 +209,10 @@ class OrchestratorContract(ABC):
 
     @abstractmethod
     async def _switch_mode(self, argument: str) -> None:
+        ...
+
+    @abstractmethod
+    def _mode_meta_key(self) -> str:
         ...
 
     @abstractmethod

@@ -16,7 +16,10 @@ from pathlib import Path
 from typing import Any
 
 # Versao atual do schema. Incremente ao adicionar novas migracoes em _migrate.
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
+
+# v5: conversas separadas por canal (cli, telegram, whatsapp).
+DEFAULT_CHANNEL = "cli"
 
 # v3: modos renomeados e "conversa" fundida em "assistente".
 MODE_KEY_RENAMES = {
@@ -54,6 +57,7 @@ class MemoryStore:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     project_path TEXT NOT NULL,
                     mode TEXT NOT NULL DEFAULT 'assistente',
+                    channel TEXT NOT NULL DEFAULT 'cli',
                     agent_session_id TEXT,
                     title TEXT,
                     is_current INTEGER NOT NULL DEFAULT 1,
@@ -110,14 +114,22 @@ class MemoryStore:
                 self._conn.execute(
                     "ALTER TABLE conversations ADD COLUMN mode TEXT NOT NULL DEFAULT 'assistente'"
                 )
+        # v5: conversas passaram a ser separadas tambem por canal de origem,
+        # para que terminal e Telegram nao dividam o mesmo historico.
+        if "channel" not in columns:
+            with self._conn:
+                self._conn.execute(
+                    "ALTER TABLE conversations ADD COLUMN channel TEXT NOT NULL DEFAULT 'cli'"
+                )
         with self._conn:
             if version < SCHEMA_VERSION:
                 # remove o indice antigo (project_path, is_current) e recria
-                # com a coluna mode, que pode ter acabado de ser adicionada.
+                # com as colunas mode/channel, que podem ter acabado de ser
+                # adicionadas.
                 self._conn.execute("DROP INDEX IF EXISTS idx_conv_project")
             self._conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_conv_project "
-                "ON conversations(project_path, mode, is_current)"
+                "ON conversations(project_path, mode, channel, is_current)"
             )
         if version < 3:
             self._rename_modes_v3()
@@ -148,6 +160,7 @@ class MemoryStore:
                       SELECT id FROM conversations AS newer
                       WHERE newer.project_path = conversations.project_path
                         AND newer.mode = conversations.mode
+                        AND newer.channel = conversations.channel
                       ORDER BY newer.updated_at DESC, newer.id DESC
                       LIMIT 1
                   )
@@ -178,33 +191,43 @@ class MemoryStore:
             return 1
 
     # ------------------------------------------------------------ conversations
-    def current_conversation(self, project_path: str, mode: str = "assistente") -> sqlite3.Row | None:
+    def current_conversation(
+        self,
+        project_path: str,
+        mode: str = "assistente",
+        channel: str = DEFAULT_CHANNEL,
+    ) -> sqlite3.Row | None:
         with self._lock:
             return self._conn.execute(
                 """
                 SELECT * FROM conversations
-                WHERE project_path = ? AND mode = ? AND is_current = 1
+                WHERE project_path = ? AND mode = ? AND channel = ? AND is_current = 1
                 ORDER BY id DESC LIMIT 1
                 """,
-                (project_path, mode),
+                (project_path, mode, channel),
             ).fetchone()
 
     def create_conversation(
-        self, project_path: str, title: str | None = None, mode: str = "assistente"
+        self,
+        project_path: str,
+        title: str | None = None,
+        mode: str = "assistente",
+        channel: str = DEFAULT_CHANNEL,
     ) -> sqlite3.Row:
         now = _now()
         with self._lock, self._conn:
             self._conn.execute(
-                "UPDATE conversations SET is_current = 0 WHERE project_path = ? AND mode = ?",
-                (project_path, mode),
+                "UPDATE conversations SET is_current = 0 "
+                "WHERE project_path = ? AND mode = ? AND channel = ?",
+                (project_path, mode, channel),
             )
             cursor = self._conn.execute(
                 """
                 INSERT INTO conversations
-                    (project_path, mode, title, is_current, created_at, updated_at)
-                VALUES (?, ?, ?, 1, ?, ?)
+                    (project_path, mode, channel, title, is_current, created_at, updated_at)
+                VALUES (?, ?, ?, ?, 1, ?, ?)
                 """,
-                (project_path, mode, title or "", now, now),
+                (project_path, mode, channel, title or "", now, now),
             )
             conv_id = cursor.lastrowid
         if conv_id is None:
@@ -221,14 +244,22 @@ class MemoryStore:
         return row
 
     def get_or_create_conversation(
-        self, project_path: str, mode: str = "assistente"
+        self,
+        project_path: str,
+        mode: str = "assistente",
+        channel: str = DEFAULT_CHANNEL,
     ) -> sqlite3.Row:
-        row = self.current_conversation(project_path, mode)
+        row = self.current_conversation(project_path, mode, channel)
         if row:
             return row
-        return self.create_conversation(project_path, mode=mode)
+        return self.create_conversation(project_path, mode=mode, channel=channel)
 
-    def list_conversations(self, project_path: str, mode: str) -> list[sqlite3.Row]:
+    def list_conversations(
+        self,
+        project_path: str,
+        mode: str,
+        channel: str = DEFAULT_CHANNEL,
+    ) -> list[sqlite3.Row]:
         with self._lock:
             return list(
                 self._conn.execute(
@@ -237,10 +268,10 @@ class MemoryStore:
                            (SELECT COUNT(*) FROM turns t
                             WHERE t.conversation_id = c.id) AS turn_count
                     FROM conversations c
-                    WHERE c.project_path = ? AND c.mode = ?
+                    WHERE c.project_path = ? AND c.mode = ? AND c.channel = ?
                     ORDER BY c.updated_at DESC, c.id DESC
                     """,
-                    (project_path, mode),
+                    (project_path, mode, channel),
                 ).fetchall()
             )
 
@@ -257,7 +288,9 @@ class MemoryStore:
             ).fetchone()
         return row is not None
 
-    def richest_mode(self, project_path: str) -> str | None:
+    def richest_mode(
+        self, project_path: str, channel: str = DEFAULT_CHANNEL
+    ) -> str | None:
         """Modo com mais turnos no projeto (útil para retomar o histórico)."""
         with self._lock:
             row = self._conn.execute(
@@ -265,12 +298,12 @@ class MemoryStore:
                 SELECT c.mode AS mode, COUNT(t.id) AS total
                 FROM conversations c
                 LEFT JOIN turns t ON t.conversation_id = c.id
-                WHERE c.project_path = ?
+                WHERE c.project_path = ? AND c.channel = ?
                 GROUP BY c.mode
                 ORDER BY total DESC, c.updated_at DESC
                 LIMIT 1
                 """,
-                (project_path,),
+                (project_path, channel),
             ).fetchone()
         if row is None or int(row["total"]) == 0:
             return None
@@ -282,27 +315,28 @@ class MemoryStore:
             return 0
         with self._lock, self._conn:
             rows = self._conn.execute(
-                "SELECT id, mode, updated_at FROM conversations WHERE project_path = ?",
+                "SELECT id, mode, channel, updated_at FROM conversations "
+                "WHERE project_path = ?",
                 (old_path,),
             ).fetchall()
             if not rows:
                 return 0
-            latest: dict[str, tuple[str, int]] = {}
+            latest: dict[tuple[str, str], tuple[str, int]] = {}
             for row in rows:
-                mode = str(row["mode"])
+                key = (str(row["mode"]), str(row["channel"]))
                 updated = str(row["updated_at"])
-                if mode not in latest or updated > latest[mode][0]:
-                    latest[mode] = (updated, int(row["id"]))
+                if key not in latest or updated > latest[key][0]:
+                    latest[key] = (updated, int(row["id"]))
             self._conn.execute(
                 "UPDATE conversations SET project_path = ? WHERE project_path = ?",
                 (new_path, old_path),
             )
-            # A conversa mais recente de cada modo volta a ser a atual.
-            for mode, (_, conversation_id) in latest.items():
+            # A conversa mais recente de cada modo/canal volta a ser a atual.
+            for (mode, channel), (_, conversation_id) in latest.items():
                 self._conn.execute(
                     "UPDATE conversations SET is_current = 0 "
-                    "WHERE project_path = ? AND mode = ?",
-                    (new_path, mode),
+                    "WHERE project_path = ? AND mode = ? AND channel = ?",
+                    (new_path, mode, channel),
                 )
                 self._conn.execute(
                     "UPDATE conversations SET is_current = 1 WHERE id = ?",
@@ -314,8 +348,9 @@ class MemoryStore:
         conv = self.get_conversation(conversation_id)
         with self._lock, self._conn:
             self._conn.execute(
-                "UPDATE conversations SET is_current = 0 WHERE project_path = ? AND mode = ?",
-                (conv["project_path"], conv["mode"]),
+                "UPDATE conversations SET is_current = 0 "
+                "WHERE project_path = ? AND mode = ? AND channel = ?",
+                (conv["project_path"], conv["mode"], conv["channel"]),
             )
             self._conn.execute(
                 "UPDATE conversations SET is_current = 1, updated_at = ? WHERE id = ?",

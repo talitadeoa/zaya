@@ -114,7 +114,9 @@ async def _telegram_poll(client: TelegramClient, ui: TerminalUI, echo: bool = Fa
 
 
 async def _telegram_serve(cfg: Config, ui: TerminalUI, args, client: TelegramClient) -> None:
-    orchestrator, store, index = _build_app(cfg, args.verbose, voice=True, quiet=True)
+    orchestrator, store, index = _build_app(
+        cfg, args.verbose, voice=True, quiet=True, channel="telegram"
+    )
     orchestrator.ui.permission_callback = telegram_permission(cfg.telegram)
     service = TelegramService(
         cfg,

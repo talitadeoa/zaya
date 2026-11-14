@@ -297,6 +297,15 @@ async def test_toggle_commands_update_config(orch):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("command", ["/novo", "/nova"])
+async def test_novo_e_nova_abrem_sessao_nova(orch, command):
+    antes = orch.session_id
+    assert await orch._handle_command(command) is False
+    assert orch.session_id != antes
+    assert orch.ui.called("success")
+
+
+@pytest.mark.asyncio
 async def test_prepare_liga_o_worker_de_memoria(orch, monkeypatch):
     chamadas: list[bool] = []
 
@@ -748,3 +757,5 @@ def test_career_due_respeita_config(orch):
 
     assert career_due(cfg.at, cfg.at, cfg.until, dia.weekday(), cfg.days) is True
     assert career_due(cfg.until, cfg.at, cfg.until, dia.weekday(), cfg.days) is False
+
+

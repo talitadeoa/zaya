@@ -68,6 +68,7 @@ class Orchestrator(
         transcriber: WhisperTranscriber,
         recorder: Recorder,
         client: AgentClient,
+        channel: str = "cli",
     ):
         self.cfg = cfg
         self.logger = logger
@@ -81,9 +82,13 @@ class Orchestrator(
         self.client = client
         self.telegram = TelegramClient(cfg.telegram)
         self.directory = cfg.project_directory()
+        # Canal de origem (cli, telegram, ...). Cada canal tem conversas e
+        # historico proprios: mesma pasta + mesmo modo nao basta para dividir
+        # o fio, senao o terminal e o Telegram conversam entre si.
+        self.channel = channel
         self._adopt_legacy_history()
         self.persona = resolve_mode(
-            store.get_meta("mode") or cfg.interface.default_mode
+            store.get_meta(self._mode_meta_key()) or cfg.interface.default_mode
         )
 
         self.conversation_id: int | None = None
@@ -156,6 +161,10 @@ class Orchestrator(
         # nao existe mais (a conversa continua, o contexto do provedor nao).
         self._resume_context = ""
 
+    def _mode_meta_key(self) -> str:
+        """Chave do meta onde o modo ativo fica salvo, por canal."""
+        return "mode" if self.channel == "cli" else f"mode@{self.channel}"
+
     def _adopt_legacy_history(self) -> None:
         """Traz conversas do nome antigo do repositório (zora) para o atual."""
         legacy = self.directory.parent / "zora"
@@ -175,9 +184,9 @@ class Orchestrator(
                 self.directory,
                 moved,
             )
-            mode = self.store.richest_mode(str(self.directory))
+            mode = self.store.richest_mode(str(self.directory), self.channel)
             if mode:
-                self.store.set_meta("mode", mode)
+                self.store.set_meta(self._mode_meta_key(), mode)
         except Exception:
             self.logger.exception("falha ao adotar o histórico antigo")
 
@@ -392,7 +401,7 @@ class Orchestrator(
 
     def _prepare_conversation(self) -> None:
         conv = self.store.get_or_create_conversation(
-            str(self.directory), self.persona.key
+            str(self.directory), self.persona.key, self.channel
         )
         self.conversation_id = int(conv["id"])
 
@@ -498,7 +507,7 @@ class Orchestrator(
             self.conversation_id = conversation_id
             self.session_id = sid
             self._last_assistant_message_id = None
-            self.store.set_meta("mode", persona.key)
+            self.store.set_meta(self._mode_meta_key(), persona.key)
             await self._clear_stale_session(sid)
 
     def _history_context(self, conversation_id: int, limit: int = 12) -> str:
@@ -614,7 +623,9 @@ class Orchestrator(
         return self.persona.name
 
     def sessions(self) -> list[dict[str, Any]]:
-        rows = self.store.list_conversations(str(self.directory), self.persona.key)
+        rows = self.store.list_conversations(
+            str(self.directory), self.persona.key, self.channel
+        )
         result: list[dict[str, Any]] = []
         for row in rows:
             result.append(
@@ -641,7 +652,9 @@ class Orchestrator(
         persona = get_persona(key)
         if persona is None:
             return
-        conv = self.store.get_or_create_conversation(str(self.directory), persona.key)
+        conv = self.store.get_or_create_conversation(
+            str(self.directory), persona.key, self.channel
+        )
         await self._activate_conversation(int(conv["id"]), persona)
 
     async def select_conversation(self, conversation_id: int) -> None:

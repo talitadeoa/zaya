@@ -21,7 +21,13 @@ from zaya.stt.faster_whisper import WhisperTranscriber
 from zaya.tts.manager import TTSManager
 
 
-def _build_app(cfg: Config, verbose: bool, voice: bool = True, quiet: bool = False):
+def _build_app(
+    cfg: Config,
+    verbose: bool,
+    voice: bool = True,
+    quiet: bool = False,
+    channel: str = "cli",
+):
     logger = setup_logging(cfg.log_dir(), verbose=verbose)
     ui = TerminalUI(quiet=quiet)
     store = MemoryStore(cfg.db_path())
@@ -45,6 +51,7 @@ def _build_app(cfg: Config, verbose: bool, voice: bool = True, quiet: bool = Fal
         transcriber=transcriber,
         recorder=recorder,
         client=client,
+        channel=channel,
     )
     return orchestrator, store, index
 
