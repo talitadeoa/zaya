@@ -5,7 +5,10 @@ from datetime import date
 from zaya.briefing.compose import (
     collect_habits,
     collect_tasks,
+    day_recap,
     due_slot,
+    evening_due,
+    evening_message,
     habits_from_routines,
     morning_message,
     noon_message,
@@ -167,3 +170,74 @@ def test_noon_message_nao_mostra_rotina():
     assert "Rotina matinal" not in text
     assert "alongar" not in text
     assert "meditar" not in text
+
+
+def test_evening_due_abre_as_18_e_fecha_as_23():
+    assert evening_due("17:59", "18:00", "23:00") is False
+    assert evening_due("18:00", "18:00", "23:00") is True
+    assert evening_due("22:59", "18:00", "23:00") is True
+    assert evening_due("23:00", "18:00", "23:00") is False
+
+
+def test_evening_message_mostra_feito_e_nao_foi_com_a_rotina():
+    notes = _notes()
+    tasks = collect_tasks(notes)
+    habits, found = collect_habits(notes, "matinal")
+    assert found
+
+    text = evening_message("Talita", DAY, tasks, habits)
+
+    assert text.startswith("Boa noite, Talita.")
+    assert "terça, 10/11" in text
+    # 1 tarefa feita + 1 hábito feito, sobre 4 no total.
+    assert "Feito: 2/4" in text
+    assert "Feito hoje" in text
+    assert "  ☑ Ajustar seção de dados" in text
+    assert "☑ alongar" in text
+    assert "Não foi" in text
+    assert "☐ Revisar currículo" in text
+    assert "☐ meditar" in text
+    assert "Rotina matinal" not in text
+
+
+def test_evening_message_sem_nada_marcado():
+    text = evening_message("Talita", DAY, [], [])
+
+    assert text.startswith("Boa noite, Talita.")
+    assert "Nada marcado na Agenda hoje." in text
+
+
+def test_evening_message_dia_todo_fechado():
+    notes = [
+        {
+            "id": "t1",
+            "text": "Pagar boleto",
+            "is_checkbox": True,
+            "completed": True,
+            "parent_id": None,
+            "routine_id": None,
+            "order": 1,
+        }
+    ]
+
+    text = evening_message("Talita", DAY, collect_tasks(notes), [])
+
+    assert "Feito: 1/1" in text
+    assert "Tudo fechado" in text
+
+
+def test_day_recap_alimenta_o_prompt_do_insight():
+    notes = _notes()
+    tasks = collect_tasks(notes)
+    habits, _ = collect_habits(notes, "matinal")
+
+    recap = day_recap(tasks, habits, ["cnh"])
+
+    assert "Tarefas feitas (1/2):" in recap
+    assert "- Ajustar seção de dados" in recap
+    assert "Tarefas que não foram:" in recap
+    assert "- Revisar currículo" in recap
+    assert "Rotina que não foi:" in recap
+    assert "- meditar" in recap
+    assert "Metas ativas:" in recap
+    assert "- cnh" in recap

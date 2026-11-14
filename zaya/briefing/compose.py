@@ -229,3 +229,73 @@ def due_slot(
     if noon_at <= now_hm < noon_until:
         return "noon"
     return None
+
+
+def evening_due(now_hm: str, at: str, until: str) -> bool:
+    """O fecho da noite vale da hora marcada ate o limite (exclusive)."""
+    return at <= now_hm < until
+
+
+def partition(items: list[Item]) -> tuple[list[Item], list[Item]]:
+    """Achata as subtasks e devolve (feitos, pendentes) na ordem da Agenda."""
+    flat = [item for _, item in _flatten(items)]
+    return ([item for item in flat if item.done], [item for item in flat if not item.done])
+
+
+def evening_message(
+    name: str,
+    day: date,
+    tasks: list[Item],
+    habits: list[Item],
+    max_items: int = 15,
+) -> str:
+    """Fecho do dia: o que foi feito e o que nao foi, rotina junto."""
+    greeting = f"Boa noite, {name}." if name else "Boa noite."
+    flat = list(_flatten(tasks))
+    done = [(depth, item) for depth, item in flat if item.done]
+    pending = [(depth, item) for depth, item in flat if not item.done]
+    done.extend((0, item) for item in habits if item.done)
+    pending.extend((0, item) for item in habits if not item.done)
+    if not done and not pending:
+        return "\n".join([greeting, _date_label(day), "", "Nada marcado na Agenda hoje."])
+
+    lines = [
+        greeting,
+        _date_label(day),
+        "",
+        f"Feito: {len(done)}/{len(done) + len(pending)}",
+        "",
+        "Feito hoje",
+    ]
+    lines.extend(_flat_lines(done, max_items) or ["Nada marcado como feito."])
+    lines.extend(["", "Não foi"])
+    lines.extend(_flat_lines(pending, max_items) or ["Tudo fechado. 🎉"])
+    return "\n".join(lines)
+
+
+def day_recap(
+    tasks: list[Item], habits: list[Item], metas: list[str]
+) -> str:
+    """Recap do dia em texto puro: entra no prompt do insight da noite."""
+    done_tasks, pending_tasks = partition(tasks)
+    done_habits = [item for item in habits if item.done]
+    pending_habits = [item for item in habits if not item.done]
+
+    def bullet(items: list[Item]) -> list[str]:
+        return [f"- {item.text}" for item in items] or ["- (nenhum)"]
+
+    total = len(done_tasks) + len(pending_tasks)
+    lines = [
+        f"Tarefas feitas ({len(done_tasks)}/{total}):",
+        *bullet(done_tasks),
+        "Tarefas que não foram:",
+        *bullet(pending_tasks),
+        "Rotina feita:",
+        *bullet(done_habits),
+        "Rotina que não foi:",
+        *bullet(pending_habits),
+    ]
+    if metas:
+        lines.append("Metas ativas:")
+        lines.extend(f"- {meta}" for meta in metas)
+    return "\n".join(lines)

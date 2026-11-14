@@ -8,14 +8,28 @@ from datetime import date, datetime
 
 from zaya.agenda.client import AgendaError
 from zaya.briefing.compose import (
+    collect_habits,
     collect_tasks,
+    day_recap,
     due_slot,
+    evening_due,
+    evening_message,
+    habits_from_routines,
     morning_message,
     noon_message,
 )
 from zaya.briefing.market import MarketRow, market_due, market_message
 from zaya.controller.contract import OrchestratorContract
 from zaya.finance.quotes import fetch_quote
+
+_INSIGHT_PROMPT = (
+    "Você é a Zaya, agente pessoal da Talita. É o fim da tarde de hoje e ela pediu "
+    "um fecho do dia. Use só estas informações da Agenda:\n\n{recap}\n\n"
+    "Escreva UM insight curto: 2 a 3 frases, em português do Brasil, informal, em "
+    "primeira pessoa, como quem conhece ela. Diga o que o dia revela — o que avançou, "
+    "o que travou, o padrão. Nada de lista, nada de título, não comece com emoji e não "
+    "dê conselho motivacional. Se o dia foi tranquilo, diga isso sem drama."
+)
 
 
 class BriefingMixin(OrchestratorContract):
@@ -59,6 +73,50 @@ class BriefingMixin(OrchestratorContract):
                     raise
                 except Exception as exc:  # pragma: no cover - depende da rede
                     self.logger.warning("falha no resumo da bolsa: %s", exc, exc_info=True)
+            if cfg.evening_enabled and evening_due(
+                now.strftime("%H:%M"), cfg.evening_at, cfg.evening_until
+            ):
+                try:
+                    await self._send_evening_report(day)
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:  # pragma: no cover - depende da rede
+                    self.logger.warning("falha no fecho da noite: %s", exc, exc_info=True)
+
+    async def _send_evening_report(self, day: date) -> bool:
+        """Fecha o dia no Telegram uma vez por dia: feito, nao foi e insight."""
+        cfg = self.cfg.briefing
+        key = f"briefing:{day.isoformat()}:evening"
+        if self.store.get_meta(key):
+            return False
+        if time.monotonic() - self._briefing_last_attempt < cfg.retry_minutes * 60:
+            return False
+        if not self.store.claim_meta(key, "sending"):
+            return False
+        self._briefing_last_attempt = time.monotonic()
+
+        try:
+            text = await self._compose_evening(day)
+        except AgendaError as exc:
+            self.logger.warning("fecho da noite: Agenda indisponível: %s", exc)
+            self.store.delete_meta(key)
+            return False
+        except Exception:
+            self.store.delete_meta(key)
+            raise
+        if not text:
+            self.store.delete_meta(key)
+            return False
+        try:
+            await self.telegram.send_message(text)
+        except Exception as exc:
+            self.logger.warning("fecho da noite: falha ao enviar no Telegram: %s", exc)
+            self.store.delete_meta(key)
+            return False
+
+        self.store.set_meta(key, datetime.now().astimezone().isoformat(timespec="seconds"))
+        self.logger.info("fecho da noite de %s enviado", day.isoformat())
+        return True
 
     async def _send_briefing(self, slot: str, day: date) -> bool:
         """Envia uma vez por dia/slot; devolve se enviou agora."""
@@ -148,3 +206,69 @@ class BriefingMixin(OrchestratorContract):
             return morning_message(name, day, tasks, max_items=cfg.max_tasks)
 
         return noon_message(name, day, tasks, max_items=cfg.max_tasks)
+
+    async def _compose_evening(self, day: date) -> str:
+        """Lista do dia + insight curto gerado pelo modelo."""
+        cfg = self.cfg.briefing
+        if not self.agenda.enabled:
+            self.logger.info("fecho da noite ignorado: Agenda desabilitada")
+            return ""
+
+        notes = await self.agenda.notes_on(day.isoformat())
+        tasks = collect_tasks(notes)
+        habits, found = collect_habits(notes, cfg.morning_routine)
+        if not found:
+            routines = await self.agenda.routines()
+            habits, _ = habits_from_routines(routines, day, cfg.morning_routine)
+
+        text = evening_message(
+            self._user_name(), day, tasks, habits, max_items=cfg.max_tasks
+        )
+        if cfg.evening_insight:
+            metas = await self._evening_metas()
+            insight = await self._evening_insight(day, tasks, habits, metas)
+            if insight:
+                text = f"{text}\n\n{insight}"
+        return text
+
+    async def _evening_metas(self) -> list[str]:
+        """Metas ativas da Agenda; falha vira lista vazia, nunca quebra o envio."""
+        try:
+            rows = await self.agenda.metas()
+        except Exception as exc:
+            self.logger.warning("fecho da noite: metas indisponíveis: %s", exc)
+            return []
+        return [
+            str(row.get("text") or "").strip()
+            for row in rows
+            if str(row.get("text") or "").strip()
+        ]
+
+    async def _evening_insight(
+        self, day: date, tasks: list, habits: list, metas: list[str]
+    ) -> str:
+        """Pede um insight curto do dia ao modelo; falha manda só a lista."""
+        cfg = self.cfg.briefing
+        prompt = _INSIGHT_PROMPT.format(recap=day_recap(tasks, habits, metas))
+        session_id = ""
+        try:
+            session = await self.client.create_session(
+                title=f"insight {day.isoformat()}"
+            )
+            session_id = session.id
+            message = await asyncio.wait_for(
+                self.client.prompt_sync(session_id, prompt),
+                timeout=max(10.0, cfg.evening_timeout_seconds),
+            )
+            return str(message.text or "").strip()
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # pragma: no cover - depende do provedor
+            self.logger.warning("insight da noite falhou: %s", exc)
+            return ""
+        finally:
+            if session_id:
+                try:
+                    await self.client.delete_session(session_id)
+                except Exception as exc:  # pragma: no cover - depende do provedor
+                    self.logger.warning("insight: falha ao limpar sessão: %s", exc)

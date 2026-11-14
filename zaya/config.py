@@ -214,6 +214,14 @@ class BriefingConfig(BaseModel):
     market_days: list[int] = Field(default_factory=lambda: [0, 2, 4])
     market_at: str = "12:00"
     # Depois desse horario o resumo da carteira nao e mais enviado.
+    # Fecho da noite no Telegram: o que foi feito, o que nao foi e um insight.
+    evening_enabled: bool = True
+    evening_at: str = "18:00"
+    # Depois desse horario nao envia mais (quiet hours comecam as 23:00).
+    evening_until: str = "23:00"
+    # Insight curto gerado pelo modelo junto com a lista (false = so a lista).
+    evening_insight: bool = True
+    evening_timeout_seconds: float = 60.0
     market_until: str = "18:00"
 
 
@@ -533,6 +541,10 @@ _ENV_MAP: dict[str, tuple[str, str]] = {
     "ZAYA_CAREER_ENABLED": ("career", "enabled"),
     "ZAYA_CAREER_AT": ("career", "at"),
     "ZAYA_CAREER_UNTIL": ("career", "until"),
+    "ZAYA_BRIEFING_EVENING_AT": ("briefing", "evening_at"),
+    "ZAYA_BRIEFING_EVENING_ENABLED": ("briefing", "evening_enabled"),
+    "ZAYA_BRIEFING_EVENING_INSIGHT": ("briefing", "evening_insight"),
+    "ZAYA_BRIEFING_EVENING_UNTIL": ("briefing", "evening_until"),
     "ZAYA_CAREER_MAX_ITEMS": ("career", "max_items"),
     "ZAYA_CAREER_STATE_FILE": ("career", "state_file"),
     "ZAYA_PROACTIVE_CHECK_INTERVAL_SECONDS": ("proactive", "check_interval_seconds"),
@@ -847,7 +859,7 @@ use_llm = true
 folder = "Memoria"
 
 [briefing]
-# Bom dia e resumo do meio-dia no Telegram, direto da Agenda (sem LLM).
+# Bom dia, meio-dia e fecho da noite no Telegram, direto da Agenda.
 enabled = true
 morning_at = "08:00"
 noon_at = "12:00"
@@ -860,6 +872,11 @@ max_tasks = 15
 # entrega no Telegram. O metodo esta em ~/SecondBrain/cv/playbook-vagas.md.
 enabled = true
 days = [0]                  # 0=seg, 1=ter, 2=qua, 3=qui, 4=sex
+# Fecho da noite: o que foi feito, o que ficou e um insight seu.
+evening_enabled = true
+evening_at = "18:00"
+evening_until = "23:00"
+evening_insight = true
 at = "09:00"
 until = "18:00"             # depois disso nao envia mais (recupera na proxima)
 max_items = 8               # vagas por mensagem; o resto fica no estado

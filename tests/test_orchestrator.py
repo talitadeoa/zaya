@@ -759,3 +759,63 @@ def test_career_due_respeita_config(orch):
     assert career_due(cfg.until, cfg.at, cfg.until, dia.weekday(), cfg.days) is False
 
 
+class InsightClient(FakeClient):
+    """Cliente que devolve um insight pronto (sem rede)."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.prompts: list[str] = []
+
+    async def prompt_sync(self, session_id, text, **kwargs):
+        self.prompts.append(text)
+        return types.SimpleNamespace(text="Você fechou o que era trabalho e deixou a decisão pra depois.")
+
+    async def delete_session(self, session_id) -> None:
+        pass
+
+
+@pytest.mark.asyncio
+async def test_fecho_da_noite_manda_feito_nao_foi_e_insight(orch):
+    orch.agenda = FakeAgendaBriefing(_notas_briefing())
+    orch.telegram = FakeTelegram()
+    orch.client = InsightClient()
+    orch.cfg.briefing.morning_routine = "matinal"
+    dia = datetime.now().astimezone().date()
+
+    assert await orch._send_evening_report(dia) is True
+    assert len(orch.telegram.sent) == 1
+    mensagem = orch.telegram.sent[0]
+    assert mensagem.startswith("Boa noite")
+    assert "Feito hoje" in mensagem
+    assert "☑ alongar" in mensagem
+    assert "Não foi" in mensagem
+    assert "☐ Responder a Stefanini" in mensagem
+    assert "☐ meditar" in mensagem
+    assert "Você fechou o que era trabalho" in mensagem
+
+    # o prompt levou o recap do dia
+    assert "Tarefas que não foram:" in orch.client.prompts[0]
+    # a fake de Agenda não expõe metas: fica de fora do recap, sem quebrar
+    assert "Metas ativas" not in orch.client.prompts[0]
+
+    # uma vez por dia: de novo, não manda
+    assert await orch._send_evening_report(dia) is False
+    assert len(orch.telegram.sent) == 1
+
+
+@pytest.mark.asyncio
+async def test_fecho_da_noite_sem_insight_quando_o_modelo_falha(orch):
+    class SemInsight(InsightClient):
+        async def prompt_sync(self, session_id, text, **kwargs):
+            raise RuntimeError("provedor fora do ar")
+
+    orch.agenda = FakeAgendaBriefing(_notas_briefing())
+    orch.telegram = FakeTelegram()
+    orch.client = SemInsight()
+    dia = datetime.now().astimezone().date()
+
+    assert await orch._send_evening_report(dia) is True
+    mensagem = orch.telegram.sent[0]
+    assert "Feito hoje" in mensagem
+    assert "Você fechou" not in mensagem
+
