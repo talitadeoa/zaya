@@ -1,11 +1,11 @@
-"""TTS via Edge TTS (online) + reproducao com afplay (macOS)."""
+"""TTS via Edge TTS (online) + reproducao pelo player do sistema."""
 
 from __future__ import annotations
 
-import asyncio
 import tempfile
 from pathlib import Path
 
+from zaya.audio.player import AudioPlayer
 from zaya.tts.base import TTSBackend
 
 
@@ -16,7 +16,7 @@ class EdgeTTSBackend(TTSBackend):
         self.voice = voice
         self.rate = rate
         self.tmp_dir = tmp_dir
-        self._proc: asyncio.subprocess.Process | None = None
+        self._player = AudioPlayer()
 
     async def synthesize(self, text: str) -> Path:
         import edge_tts
@@ -33,18 +33,7 @@ class EdgeTTSBackend(TTSBackend):
         return tmp
 
     async def play(self, path: Path) -> None:
-        self._proc = await asyncio.create_subprocess_exec(
-            "afplay",
-            str(path),
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.DEVNULL,
-        )
-        await self._proc.wait()
+        await self._player.play(path)
 
     def stop(self) -> None:
-        proc = self._proc
-        if proc and proc.returncode is None:
-            try:
-                proc.terminate()
-            except ProcessLookupError:
-                pass
+        self._player.stop()

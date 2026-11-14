@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import shutil
 import subprocess
 import sys
 import threading
@@ -945,15 +946,31 @@ class ZayaTextualApp(App):
             self.copy_to_clipboard(text)
         except Exception:
             pass
-        # OSC 52 não funciona no Terminal.app do macOS; pbcopy cobre esse caso.
-        if sys.platform != "darwin":
+        # OSC 52 não funciona no Terminal.app do macOS nem em vários terminais
+        # do Linux; a ferramenta nativa cobre esses casos.
+        command = self._clipboard_command()
+        if not command:
             return
         try:
             subprocess.run(
-                ["pbcopy"], input=text.encode("utf-8"), timeout=3, check=False
+                command, input=text.encode("utf-8"), timeout=3, check=False
             )
         except (OSError, subprocess.SubprocessError):
             pass
+
+    @staticmethod
+    def _clipboard_command() -> list[str] | None:
+        if sys.platform == "darwin":
+            return ["pbcopy"] if shutil.which("pbcopy") else None
+        if sys.platform.startswith("linux"):
+            for tool, args in (
+                ("wl-copy", []),
+                ("xclip", ["-selection", "clipboard"]),
+                ("xsel", ["--clipboard", "--input"]),
+            ):
+                if shutil.which(tool):
+                    return [tool, *args]
+        return None
 
     # ------------------------------------------------------------------ helpers
     def _scroll_chat(self) -> None:

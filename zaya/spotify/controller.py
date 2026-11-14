@@ -1,9 +1,14 @@
-"""Controle do Spotify no macOS via AppleScript."""
+"""Controle do Spotify no macOS via AppleScript.
+
+No Linux o AppleScript nao existe: o controle fica indisponivel e as
+ferramentas respondem com uma mensagem clara em vez de um erro de comando.
+"""
 
 from __future__ import annotations
 
 import shutil
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -21,7 +26,15 @@ class SpotifyCommand:
 APP = "Spotify"
 
 
+def _unsupported_reason() -> str:
+    if sys.platform != "darwin":
+        return "controle do Spotify por AppleScript so existe no macOS"
+    return "Spotify nao instalado neste Mac"
+
+
 def is_installed() -> bool:
+    if sys.platform != "darwin":
+        return False
     candidates = [
         Path("/Applications/Spotify.app"),
         Path.home() / "Applications" / "Spotify.app",
@@ -53,7 +66,7 @@ def _tell(command: str) -> str:
 
 def status() -> str:
     if not is_installed():
-        raise SpotifyError("Spotify nao instalado neste Mac")
+        raise SpotifyError(_unsupported_reason())
     try:
         state = _tell("player state as string")
     except SpotifyError:
@@ -72,7 +85,7 @@ def status() -> str:
 
 def execute(command: SpotifyCommand) -> str:
     if not is_installed():
-        raise SpotifyError("Spotify nao instalado neste Mac")
+        raise SpotifyError(_unsupported_reason())
     action = command.action
     if action == "toggle":
         _tell("playpause")

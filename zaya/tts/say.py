@@ -1,4 +1,4 @@
-"""TTS offline com o comando nativo `say` do macOS."""
+"""TTS offline com o comando nativo `say` (macOS)."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import asyncio
 import tempfile
 from pathlib import Path
 
+from zaya.audio.player import AudioPlayer
 from zaya.tts.base import TTSBackend
 
 
@@ -15,7 +16,7 @@ class SayTTSBackend(TTSBackend):
     def __init__(self, voice: str, tmp_dir: Path):
         self.voice = voice
         self.tmp_dir = tmp_dir
-        self._proc: asyncio.subprocess.Process | None = None
+        self._player = AudioPlayer()
 
     async def synthesize(self, text: str) -> Path:
         self.tmp_dir.mkdir(parents=True, exist_ok=True)
@@ -51,18 +52,7 @@ class SayTTSBackend(TTSBackend):
         return audio_path
 
     async def play(self, path: Path) -> None:
-        self._proc = await asyncio.create_subprocess_exec(
-            "afplay",
-            str(path),
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.DEVNULL,
-        )
-        await self._proc.wait()
+        await self._player.play(path)
 
     def stop(self) -> None:
-        proc = self._proc
-        if proc and proc.returncode is None:
-            try:
-                proc.terminate()
-            except ProcessLookupError:
-                pass
+        self._player.stop()

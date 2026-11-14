@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+import shutil
 from pathlib import Path
 
 from zaya.config import TTSConfig
@@ -83,10 +84,20 @@ class TTSManager:
     def enabled(self, value: bool) -> None:
         self.cfg.enabled = value
 
+    @staticmethod
+    def _say_supported() -> bool:
+        return shutil.which("say") is not None
+
     def _build_backend(self, provider: str) -> TTSBackend | None:
         if provider == "edge":
             return EdgeTTSBackend(self.cfg.edge_voice, self.cfg.rate, self.tmp_dir)
         if provider == "say":
+            if not self._say_supported():
+                self.logger.warning(
+                    "TTS 'say' e exclusivo do macOS; usando edge neste sistema"
+                )
+                self.cfg.provider = "edge"
+                return EdgeTTSBackend(self.cfg.edge_voice, self.cfg.rate, self.tmp_dir)
             return SayTTSBackend(self.cfg.say_voice, self.tmp_dir)
         if provider == "none":
             return None
@@ -109,7 +120,7 @@ class TTSManager:
             return self._backend, await self._backend.synthesize(clean)
         except Exception as exc:
             self.logger.warning("TTS '%s' falhou: %s", self._backend.name, exc)
-            if self._backend.name != "edge":
+            if self._backend.name != "edge" or not self._say_supported():
                 return None
             self._fallback = self._fallback or SayTTSBackend(self.cfg.say_voice, self.tmp_dir)
             try:
@@ -139,7 +150,7 @@ class TTSManager:
                 await self._backend.speak(chunk)
             except Exception as exc:
                 self.logger.warning("TTS '%s' falhou: %s", self._backend.name, exc)
-                if self._backend.name != "edge":
+                if self._backend.name != "edge" or not self._say_supported():
                     return
                 self._fallback = self._fallback or SayTTSBackend(self.cfg.say_voice, self.tmp_dir)
                 try:

@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 from zaya.agent import AgentClient, AgentError
+from zaya.audio.player import find_player
 from zaya.audio.recorder import Recorder
 from zaya.config import Config, write_default_config
 from zaya.interface.terminal import TerminalUI
@@ -117,8 +118,22 @@ async def _doctor(cfg: Config, ui: TerminalUI, verbose: bool) -> None:
         await client.aclose()
 
     ui.check(bool(shutil.which("ffmpeg")), "ffmpeg", shutil.which("ffmpeg") or "não encontrado")
-    ui.check(bool(shutil.which("afplay")), "afplay", shutil.which("afplay") or "não encontrado")
-    ui.check(bool(shutil.which("say")), "say", shutil.which("say") or "não encontrado")
+    player = find_player()
+    ui.check(
+        player is not None,
+        "player de áudio",
+        player[0] if player else "não encontrado (instale ffmpeg ou pulseaudio-utils)",
+    )
+    if sys.platform == "darwin":
+        ui.check(bool(shutil.which("say")), "say", shutil.which("say") or "não encontrado")
+    elif cfg.tts.provider == "say":
+        ui.check(False, "TTS say", "só existe no macOS; use provider = \"edge\"")
+    if sys.platform.startswith("linux"):
+        ui.check(
+            bool(shutil.which("wl-copy") or shutil.which("xclip") or shutil.which("xsel")),
+            "clipboard (wl-copy/xclip)",
+            "opcional: instale wl-clipboard ou xclip para copiar do chat",
+        )
 
     audio_ok, audio_msg = Recorder.available()
     ui.check(audio_ok, "microfone (sounddevice/PortAudio)", audio_msg)
